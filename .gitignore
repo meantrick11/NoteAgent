@@ -1,0 +1,22 @@
+# API KEY files
+.env
+.env.local
+
+# Python virtual enviroment
+.venv/
+venv/
+env/
+
+# Python Plance
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# privacy notes
+notes/
+
+# IDE
+.idea/
+.vscode/
+*.swp
