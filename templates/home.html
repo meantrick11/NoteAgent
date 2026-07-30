@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NoteAgent</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  :root {
+    --bg: #f9fafb;
+    --surface: #ffffff;
+    --border: #e5e7eb;
+    --text: #1f2937;
+    --text-secondary: #6b7280;
+    --accent: #4f6ef7;
+    --accent-hover: #3b5de7;
+    --user-bubble: #eef2ff;
+    --radius: 12px;
+    --sidebar-width: 260px;
+    --header-height: 48px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+  }
+
+  /* ====== Sidebar ====== */
+  .sidebar {
+    width: var(--sidebar-width);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .sidebar-header {
+    padding: 12px 16px;
+    font-weight: 700;
+    font-size: 15px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: var(--header-height);
+  }
+  .sidebar-header .logo { font-size: 18px; }
+  .sidebar-body { flex: 1; overflow-y: auto; padding: 12px; }
+  .sidebar-body .placeholder {
+    color: var(--text-secondary);
+    font-size: 13px;
+    text-align: center;
+    margin-top: 40px;
+  }
+  .sidebar-footer {
+    padding: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .btn-new-chat {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: background 0.15s;
+  }
+  .btn-new-chat:hover { background: var(--bg); }
+
+  /* ====== Main ====== */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .main-header {
+    height: var(--header-height);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    background: var(--surface);
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+
+  /* ====== Chat area ====== */
+  .chat-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 0;
+  }
+  .chat-inner {
+    max-width: 768px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* Welcome */
+  .welcome {
+    text-align: center;
+    margin-top: 80px;
+  }
+  .welcome h2 { font-size: 22px; margin-bottom: 8px; }
+  .welcome p  { color: var(--text-secondary); font-size: 14px; }
+
+  /* Message */
+  .msg-row {
+    display: flex;
+    margin-bottom: 20px;
+  }
+  .msg-row.user { justify-content: flex-end; }
+  .msg-bubble {
+    max-width: 85%;
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .msg-row.user .msg-bubble {
+    background: var(--user-bubble);
+    border-bottom-right-radius: 4px;
+  }
+  .msg-row.assistant .msg-bubble {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+  }
+
+  /* Markdown inside bubble */
+  .msg-bubble p { margin: 0 0 8px; }
+  .msg-bubble p:last-child { margin-bottom: 0; }
+  .msg-bubble ul, .msg-bubble ol { padding-left: 20px; margin: 8px 0; }
+  .msg-bubble li { margin: 4px 0; }
+  .msg-bubble strong { font-weight: 600; }
+  .msg-bubble h1, .msg-bubble h2, .msg-bubble h3, .msg-bubble h4 {
+    margin: 12px 0 6px;
+    font-weight: 600;
+  }
+  .msg-bubble h1 { font-size: 18px; }
+  .msg-bubble h2 { font-size: 16px; }
+  .msg-bubble h3 { font-size: 15px; }
+
+  /* Code */
+  .msg-bubble code {
+    background: #f3f4f6;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: "Fira Code", "Cascadia Code", "JetBrains Mono", monospace;
+  }
+  .msg-bubble pre {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    padding: 14px 16px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 10px 0;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .msg-bubble pre code {
+    background: none;
+    padding: 0;
+    color: inherit;
+    font-size: inherit;
+  }
+  .msg-bubble blockquote {
+    border-left: 3px solid var(--accent);
+    padding-left: 12px;
+    color: var(--text-secondary);
+    margin: 8px 0;
+  }
+  .msg-bubble table {
+    border-collapse: collapse;
+    margin: 8px 0;
+    width: 100%;
+  }
+  .msg-bubble th, .msg-bubble td {
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    text-align: left;
+    font-size: 13px;
+  }
+  .msg-bubble th { background: #f3f4f6; }
+  .msg-bubble hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+
+  /* Avatar */
+  .msg-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+    margin: 0 10px;
+  }
+  .msg-row.assistant .msg-avatar { background: #eef2ff; }
+  .msg-row.user .msg-avatar { background: #dbeafe; order: 2; }
+
+  /* ====== Input ====== */
+  .input-area {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 16px 24px;
+  }
+  .input-inner {
+    max-width: 768px;
+    margin: 0 auto;
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    transition: border-color 0.15s;
+  }
+  .input-inner:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(79,110,247,0.1);
+  }
+  .input-inner textarea {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    resize: none;
+    font-size: 14px;
+    font-family: inherit;
+    line-height: 1.5;
+    min-height: 24px;
+    max-height: 200px;
+    padding: 4px 0;
+  }
+  .btn-send {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    font-size: 16px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+  }
+  .btn-send:hover { background: var(--accent-hover); }
+  .btn-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Typing indicator */
+  .typing-dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--text-secondary);
+    margin: 0 2px;
+    animation: blink 1.4s infinite both;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink {
+    0%, 80%, 100% { opacity: 0.2; }
+    40% { opacity: 1; }
+  }
+
+  /* Scrollbar */
+  .chat-container::-webkit-scrollbar { width: 6px; }
+  .chat-container::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <span class="logo">📒</span> NoteAgent
+  </div>
+  <div class="sidebar-body">
+    <p class="placeholder">对话历史<br>（后续实现）</p>
+  </div>
+  <div class="sidebar-footer">
+    <button class="btn-new-chat" onclick="newChat()">
+      <span>＋</span> 新对话
+    </button>
+  </div>
+</aside>
+
+<!-- Main -->
+<div class="main">
+  <div class="main-header">学习笔记助手</div>
+
+  <div class="chat-container" id="chatContainer">
+    <div class="chat-inner" id="chatInner">
+      <div class="welcome" id="welcome">
+        <h2>今天想学点什么？</h2>
+        <p>告诉我你的学习内容，我帮你整理成结构化笔记</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="input-inner">
+      <textarea id="question"
+        placeholder="输入你的问题…"
+        rows="1"
+        onkeydown="handleKeydown(event)"
+        oninput="autoResize(this)"></textarea>
+      <button class="btn-send" id="btnSend" onclick="ask()" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== 状态 ==========
+let currentThreadId = "1";
+let isStreaming = false;
+
+const chatInner = document.getElementById("chatInner");
+const chatContainer = document.getElementById("chatContainer");
+const textarea = document.getElementById("question");
+const btnSend = document.getElementById("btnSend");
+const welcome = document.getElementById("welcome");
+
+// ========== 输入处理 ==========
+textarea.addEventListener("input", () => {
+  btnSend.disabled = textarea.value.trim().length === 0;
+});
+
+function autoResize(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 200) + "px";
+}
+
+function handleKeydown(e) {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    ask();
+  }
+}
+
+// ========== 新对话 ==========
+function newChat() {
+  currentThreadId = String(Date.now());
+  chatInner.innerHTML = `<div class="welcome" id="welcome">
+    <h2>今天想学点什么？</h2>
+    <p>告诉我你的学习内容，我帮你整理成结构化笔记</p>
+  </div>`;
+}
+
+// ========== 主逻辑 ==========
+async function ask() {
+  if (isStreaming) return;
+
+  const question = textarea.value.trim();
+  if (!question) return;
+
+  isStreaming = true;
+  btnSend.disabled = true;
+  textarea.value = "";
+  textarea.style.height = "auto";
+
+  // 隐藏欢迎页
+  if (welcome) welcome.remove();
+
+  // 渲染用户消息
+  appendMessage("user", question);
+
+  // 渲染空的助手消息
+  const assistEl = appendMessage("assistant", "");
+  const bodyEl = assistEl.querySelector(".msg-body");
+
+  try {
+    const res = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, thread_id: currentThreadId })
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let rawText = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const raw = line.slice(6);
+          try {
+            rawText += JSON.parse(raw);
+          } catch {
+            rawText += raw;
+          }
+        }
+      }
+
+      // 流式渲染 markdown
+      bodyEl.innerHTML = marked.parse(rawText);
+    }
+
+    // 最终渲染
+    bodyEl.innerHTML = marked.parse(rawText);
+
+  } catch (err) {
+    bodyEl.textContent = "请求失败：" + err.message;
+  } finally {
+    isStreaming = false;
+    btnSend.disabled = false;
+    textarea.focus();
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+}
+
+function appendMessage(role, text) {
+  const row = document.createElement("div");
+  row.className = `msg-row ${role}`;
+
+  let avatar = role === "user" ? "👤" : "🤖";
+
+  row.innerHTML = `
+    <div class="msg-avatar">${avatar}</div>
+    <div class="msg-bubble">
+      ${role === "assistant"
+        ? `<div class="msg-body">${text}</div>`
+        : `<div class="msg-body">${escapeHtml(text)}</div>`}
+    </div>
+  `;
+
+  chatInner.appendChild(row);
+  chatContainer.scrollTop = chatContainer.scrollHeight;
+  return row;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>
