@@ -16,6 +16,9 @@ __pycache__/
 # privacy notes
 notes/
 
+# chromadb persist data
+chromadb_persist/
+
 # IDE
 .idea/
 .vscode/

@@ -340,6 +340,24 @@ const textarea = document.getElementById("question");
 const btnSend = document.getElementById("btnSend");
 const welcome = document.getElementById("welcome");
 
+// ========== 退出时自动总结 ==========
+let _summarized = false;
+function sendSummarize() {
+  if (_summarized) return;
+  _summarized = true;
+  const blob = new Blob([JSON.stringify({
+    question: "",
+    thread_id: currentThreadId
+  })], { type: "application/json" });
+  navigator.sendBeacon("/chat/user_exit", blob);
+}
+// 切走标签页时触发（比 beforeunload 更可靠）
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") sendSummarize();
+});
+// 关闭/刷新时触发（兜底）
+window.addEventListener("beforeunload", sendSummarize);
+
 // ========== 输入处理 ==========
 textarea.addEventListener("input", () => {
   btnSend.disabled = textarea.value.trim().length === 0;
