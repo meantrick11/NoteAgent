@@ -7,17 +7,28 @@
 venv/
 env/
 
-# Python Plance
+# Python bytecode
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
+dist/
+build/
 
-# privacy notes
-notes/
+# privacy notes (keep directory README)
+notes/*
+!notes/README.md
 
 # chromadb persist data
 chromadb_persist/
+
+# runtime data (keep directory README)
+var/*
+!var/README.md
+
+# legacy log dir
+logs/
 
 # IDE
 .idea/
