@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-
+#/chat&/chat/user_exit的路由的请求体模型
 class RequestModel(BaseModel):
     """JSON body for /chat and /chat/user_exit."""
 
@@ -10,7 +10,7 @@ class RequestModel(BaseModel):
     conversation_id: str | None = None
     thread_id: str | None = None
 
-
+# 
 class ReviewRequest(BaseModel):
     """JSON body for /chat/review."""
 

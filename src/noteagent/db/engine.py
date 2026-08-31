@@ -7,7 +7,7 @@ from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-
+#输入数据库URL并创建数据库的连接引擎engine
 def create_engine_from_url(url: str) -> Engine:
     """Create a synchronous engine from a SQLAlchemy URL string.
 
@@ -24,7 +24,7 @@ def create_engine_from_url(url: str) -> Engine:
         return engine
     return create_engine(url)
 
-
+#每次 SQLAlchemy 新建一条数据库连接时，自动执行 PRAGMA foreign_keys=ON，开启 SQLite 外键强制校验。
 def _enable_sqlite_foreign_keys(engine: Engine) -> None:
     """Turn on SQLite FK enforcement for every new connection."""
 
@@ -35,7 +35,9 @@ def _enable_sqlite_foreign_keys(engine: Engine) -> None:
 
     event.listen(engine, "connect", _set_sqlite_pragma)
 
-
+# 生产 session 工厂，关闭两个自动行为（expire_on_commit、autoflush）
+# 业务代码拿这个工厂创建 session 做数据库读写。
+# 普通的Session(engine)只
 def create_session_factory(engine: Engine) -> sessionmaker[Session]:
     """Build a sessionmaker with expire_on_commit off and no autoflush."""
     return sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)

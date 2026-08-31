@@ -7,15 +7,16 @@ from noteagent.notes.repository import FileNoteRepository, NotePathError
 _logger = logging.getLogger(__name__)
 
 current_thread_id: ContextVar[str] = ContextVar("noteagent_thread_id", default="")
+current_turn_id: ContextVar[str] = ContextVar("noteagent_turn_id", default="")
 
-
+#获取对应的笔记文件
 def markdown_name(file_name: str) -> str:
     """Ensure a notes file name ends with .md."""
     if not file_name.endswith(".md"):
         return f"{file_name}.md"
     return file_name
 
-
+#笔记草稿类
 @dataclass
 class NoteDraft:
     """Pending note proposal waiting for human approval."""
@@ -60,7 +61,7 @@ class DraftStore:
     def pop(self, thread_id: str) -> NoteDraft | None:
         return self._pending.pop(thread_id, None)
 
-
+##如果用户确认提交对应的笔记，此函数表示确认然后执行write到对应文件的
 def commit_review(
     notes: FileNoteRepository,
     store: DraftStore,
@@ -106,7 +107,7 @@ def commit_review(
     )
     return {"status": "written", "action": target_action, "file_name": target_name}
 
-
+# 撰写草稿
 def _write_draft(
     notes: FileNoteRepository,
     action: str,

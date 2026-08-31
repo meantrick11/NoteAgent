@@ -2,8 +2,8 @@ import logging
 
 import uvicorn
 
-from noteagent.bootstrap.app import build_container, create_app #构建
-from noteagent.bootstrap.settings import Settings
+from noteagent.bootstrap.app import build_container, create_app #构建Agent+FastAPI的函数
+from noteagent.bootstrap.settings import Settings   #设置文件
 from noteagent.observability.logging import setup_logging
 
 _logger = logging.getLogger(__name__)
@@ -11,7 +11,7 @@ _logger = logging.getLogger(__name__)
 
 def main() -> None:
     """Start logging, assemble the app, and run uvicorn."""
-    settings = Settings()
+    settings = Settings()   #初始化设置，内部获取chatmodel\notes路径、RAG路径等初始化设置
     level = getattr(logging, settings.log_level.upper(), logging.DEBUG)
 
     setup_logging(settings.log_dir, level=level)

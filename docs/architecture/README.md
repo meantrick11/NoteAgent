@@ -1,23 +1,15 @@
 # architecture
 
-现行架构基线与可视化。**实现以 `knowledge-workflow-v1.md` 为准。**
+本目录文档分工如下。实现前先看 [`docs/README.md`](../README.md) 的阅读顺序。
 
-## 包含模块
+## 文件
 
-| 文件 | 作用 |
-|------|------|
-| `knowledge-workflow-v1.md` | 知识子系统：提案、审批、索引、检索给文章 Agent |
-| `noteagent-architecture.canvas.tsx` | 结构画布 |
-| `noteagent-system-workflow.canvas.tsx` | 流程画布 |
-| `architecture.md` | 早期屏幕/OCR 方案，历史参考 |
-| `DESIGN.md` | 早期设计，与当前代码不一致时忽略 |
-
-## 基础使用
-
-给人和编码 Agent 的主文档：
-
-```text
-docs/architecture/knowledge-workflow-v1.md
-```
-
-当前仓库 MVP 只覆盖其中「对话 → 草稿审批 → 本地 Markdown」；自动索引、引用 API、URL 抓取尚未做。
+| 文件 | 大概内容 | 对实现的约束 |
+|------|----------|----------------|
+| [architecture.md](./architecture.md) | **项目架构书**：4.1 前端、4.2 后端、4.3 数据库、4.4 笔记 | 按用户路径；细节跟小节链接 |
+| [database.md](./database.md) | PostgreSQL 表、Store、现行/目标列与实例 | 聊天落库；向量/笔记文件不在本库 |
+| [DESIGN.md](./DESIGN.md) | Phase 1 屏幕/音频笔记的**历史**设计 | 不实现 |
+| [draft-generation.md](./draft-generation.md) | 笔记草稿生成与入库（目标 + 代码证据） | 产品边界；文首证据优先 |
+| [context-management.md](./context-management.md) | 短期记忆全文 | ChatAgent 上下文契约（代码已落地） |
+| `noteagent-architecture.canvas.tsx` | 结构画布（目标流程） | 可视化，非 API 契约 |
+| `noteagent-system-workflow.canvas.tsx` | 系统流程画布 | 同上 |

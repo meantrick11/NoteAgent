@@ -1,6 +1,6 @@
 # references
 
-外部文章摘录与阅读笔记，**不是实现契约**。实现仍以 `docs/architecture/knowledge-workflow-v1.md` 为准。
+外部文章摘录与阅读笔记，**不是实现契约**。笔记写盘目标见 [../architecture/draft-generation.md](../architecture/draft-generation.md)；短期记忆契约见 [../architecture/context-management.md](../architecture/context-management.md)。
 
 ## 包含模块
 

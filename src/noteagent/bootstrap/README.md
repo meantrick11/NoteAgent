@@ -1,13 +1,13 @@
 # bootstrap
 
-读环境变量、把笔记仓库 / 检索 / Agent 装进容器、交出 FastAPI `app`。不写笔记、不调 LLM、不碰 Chroma。
+读环境变量、把笔记仓库 / 检索 / Agent / 历史装进容器、交出 FastAPI `app`。不写笔记、不调 LLM、不碰 Chroma。缺 `DATABASE_URL` 时 `build_container` 失败。
 
 ## 包含模块
 
 | 文件 | 模块 | 作用 |
 |------|------|------|
-| `settings.py` | `Settings`、`project_root()` | 从 `.env` 读密钥、路径、模型名；相对路径接到仓库根 |
-| `app.py` | `AppContainer`、`build_container`、`create_app` | 构造运行时依赖（含 `engine`、`history`）并挂到 `app.state.container`；shutdown 时 dispose engine |
+| `settings.py` | `Settings`、`project_root()` | `.env`：密钥、路径、模型、**上下文窗口/压缩/stub/`CHAT_MAX_TOOL_HOPS`** |
+| `app.py` | `AppContainer`、`build_container`、`create_app` | 构造 `engine`、`history`、`ChatAgent(..., budget=budget_from_settings)`；shutdown dispose engine |
 | `__init__.py` | 再导出上述符号 | `from noteagent.bootstrap import Settings` |
 
 ## 基础使用

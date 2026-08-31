@@ -6,10 +6,10 @@
 
 | 文件 | 覆盖 |
 |------|------|
-| `test_app.py` | `GET /` 首页；`POST /chat` 为 SSE 且 `data:` 行可解析；会话历史/重命名/删除；`/chat/review`、`/chat/user_exit` |
+| `test_app.py` | 首页、SSE、会话 CRUD、messages 隐藏 tool stub、`user_exit` 不写 `context.md`、只入库最终 assistant |
 | `test_retrieval_service.py` | 假向量下 index + search，metadata 带 `file_name` |
 
-`test_app.py` 用 `FakeAgent` 注入 `AppContainer`，不跑 LangGraph。
+`test_app.py` 用 `FakeAgent` 注入 `AppContainer`，不跑真实模型。
 
 ## 基础使用
 

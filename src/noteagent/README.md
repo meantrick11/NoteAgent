@@ -7,7 +7,7 @@
 | 子包 | 做什么 |
 |------|--------|
 | [`bootstrap/`](bootstrap/README.md) | `Settings`、组装依赖、创建 FastAPI |
-| [`chat/`](chat/README.md) | SSE 聊天、会话历史、Agent、草稿审批 |
+| [`chat/`](chat/README.md) | SSE 聊天、会话历史、Agent、上下文压缩、草稿审批 |
 | [`db/`](db/README.md) | 会话/消息表、engine（只放 ORM，不写 HTTP/LLM） |
 | [`notes/`](notes/README.md) | 读写 `notes/` 下的 Markdown |
 | [`llm/`](llm/README.md) | 根据配置创建聊天模型 |

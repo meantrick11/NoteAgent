@@ -5,15 +5,16 @@ from fastapi.testclient import TestClient
 
 from noteagent.bootstrap.app import AppContainer, create_app
 from noteagent.bootstrap.settings import Settings
-from noteagent.chat.history import ConversationStore
+from noteagent.chat.history import ConversationStore, start_turn
 from noteagent.db import Base, create_engine_from_url, create_session_factory
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.web import read_home_html
 
 
 class FakeAgent:
-    async def stream(self, question: str, thread_id: str):
+    async def stream(self, question: str, thread_id: str, turn_id: str | None = None):
         yield {"event": "token", "data": f"echo:{question}"}
+        yield {"event": "assistant_final", "data": f"echo:{question}"}
 
     async def summarize_on_exit(self, thread_id: str) -> None:
         return None
@@ -125,6 +126,65 @@ def test_chat_persists_messages(tmp_path: Path):
     assert len(messages) == 4
 
 
+def test_messages_api_hides_tool_stubs(tmp_path: Path):
+    client, history = _client(tmp_path)
+    record = history.create("t")
+    tid = start_turn()
+    history.append_message(record.id, "user", "hi", turn_id=tid)
+    history.append_tool_stub(
+        record.id, turn_id=tid, tool_name="read_file",
+        arguments='{"file_name":"A.md"}', output="x" * 200,
+        status="ok", stub_preview_tokens=2, args_preview_chars=500,
+    )
+    history.append_message(record.id, "assistant", "done", turn_id=tid)
+
+    resp = client.get(f"/conversations/{record.id}/messages")
+    assert resp.status_code == 200
+    assert [m["role"] for m in resp.json()] == ["user", "assistant"]
+
+
+def test_chat_persists_final_assistant_not_tool_hop_tokens(tmp_path: Path):
+    class FakeToolHopAgent:
+        async def stream(self, question: str, thread_id: str, turn_id: str | None = None):
+            yield {"event": "token", "data": "calling-tool"}
+            yield {"event": "assistant_final", "data": "done"}
+
+        async def summarize_on_exit(self, thread_id: str) -> None:
+            return None
+
+        def review(self, thread_id: str, action: str, write_action=None, file_name=None):
+            return {"status": "rejected"}
+
+    settings = Settings(notes_dir=tmp_path, chroma_dir=tmp_path / "chroma")
+    engine, history = _sqlite_history()
+    container = AppContainer(
+        settings=settings,
+        notes=FileNoteRepository(tmp_path),
+        retrieval=None,  # type: ignore[arg-type]
+        chat_agent=FakeToolHopAgent(),  # type: ignore[arg-type]
+        engine=engine,
+        history=history,
+    )
+    client = TestClient(create_app(container))
+    chat = client.post("/chat", json={"question": "hi"})
+    assert chat.status_code == 200
+    events = _parse_sse(chat.text)
+    conv_data = next(data for event, data in events if event == "conversation")
+    conv_id = json.loads(conv_data)["id"]
+    messages = client.get(f"/conversations/{conv_id}/messages").json()
+    assert messages[1]["content"] == "done"
+    assert _collect_tokens(chat.text) == "calling-tool"
+
+
+def test_user_exit_does_not_create_context_md(tmp_path: Path):
+    client, history = _client(tmp_path)
+    rec = history.create("t")
+    res = client.post("/chat/user_exit", json={"question": "", "thread_id": rec.id})
+    assert res.status_code == 200
+    assert res.json()["status"] == "finished"
+    assert not (tmp_path / "context.md").exists()
+
+
 def test_conversations_and_messages_routes(tmp_path: Path):
     client, history = _client(tmp_path)
 
@@ -133,7 +193,7 @@ def test_conversations_and_messages_routes(tmp_path: Path):
     assert resp.json() == []
 
     record = history.create("t")
-    history.append_message(record.id, "user", "hi")
+    history.append_message(record.id, "user", "hi", turn_id=start_turn())
 
     resp = client.get("/conversations")
     assert resp.status_code == 200
@@ -192,8 +252,9 @@ def test_rename_conversation_too_long(tmp_path: Path):
 def test_delete_conversation_route(tmp_path: Path):
     client, history = _client(tmp_path)
     record = history.create("t")
-    history.append_message(record.id, "user", "hi")
-    history.append_message(record.id, "assistant", "hello")
+    tid = start_turn()
+    history.append_message(record.id, "user", "hi", turn_id=tid)
+    history.append_message(record.id, "assistant", "hello", turn_id=tid)
 
     resp = client.delete(f"/conversations/{record.id}")
     assert resp.status_code == 204

@@ -19,4 +19,4 @@ Chroma 默认仍在仓库根 `chromadb_persist/`，兼容已有索引。可设 `
 var/logs/noteagent.log
 ```
 
-排查 Agent：搜 `LLM start`、`Tool start`、`draft pending`、`draft committed`。磁盘满了可删 `noteagent.log` 或整个 `logs/`，下次启动会再建。
+排查 Agent：搜 `LLM start`、`Tool start`、`context pack`、`compact`、`draft pending`、`draft committed`。磁盘满了可删 `noteagent.log` 或整个 `logs/`，下次启动会再建。

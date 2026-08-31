@@ -17,14 +17,14 @@ def build_chat_tools(
     drafts: DraftStore,
 ) -> list[BaseTool]:
     """Build list/read/search/propose tools. Disk writes happen only after review."""
-
+    #列处所有文件的工具
     @tool("list_files", description="列出 notes/ 下已有笔记文件名。提案前必须先调用。")
     def list_files() -> dict:
         try:
             return {"files": notes.list_notes()}
         except Exception as exc:
             return {"error": str(exc)}
-
+    #读取文件内容的工具
     @tool(
         "read_file",
         description="读取已存在的笔记。file_name 为文件名如 Agent.md。不能创建或修改文件。",
@@ -36,7 +36,7 @@ def build_chat_tools(
             return {"file_content": notes.read(file_name)}
         except Exception as exc:
             return {"error": str(exc)}
-
+    #从RAG中检索工具
     @tool(
         "search_relative_from_chromadb",
         description="按问题语义检索笔记片段。询问历史知识点时优先使用。",
@@ -48,7 +48,7 @@ def build_chat_tools(
             return {"fragments": docs, "count": len(docs)}
         except Exception as exc:
             return {"error": str(exc)}
-
+    #提出笔记建议工具
     @tool(
         "propose_note",
         description=(

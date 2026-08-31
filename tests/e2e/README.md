@@ -8,4 +8,4 @@
 
 ## 基础使用
 
-有真实模型的手工验收：启动 `uv run python main.py`，打开首页走一轮「提案 → 同意写入」。自动化 e2e 以后再补。
+有真实模型的手工验收：启动 `uv run python main.py`（Postgres 已 `alembic upgrade head`），打开首页走一轮「提案 → 同意写入」。自动化 e2e 以后再补。

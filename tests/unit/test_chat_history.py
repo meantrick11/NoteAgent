@@ -3,7 +3,7 @@ import uuid
 import pytest
 from sqlalchemy import func, select
 
-from noteagent.chat.history import ConversationStore, conversation_title_from_question
+from noteagent.chat.history import ConversationStore, conversation_title_from_question, start_turn
 from noteagent.db import (
     Base,
     Conversation,
@@ -72,8 +72,9 @@ def test_list_orders_newest_first(store: ConversationStore):
 
 def test_append_and_list_messages_order(store: ConversationStore):
     record = store.create("t")
-    store.append_message(record.id, "user", "hi")
-    store.append_message(record.id, "assistant", "hello")
+    tid = start_turn()
+    store.append_message(record.id, "user", "hi", turn_id=tid)
+    store.append_message(record.id, "assistant", "hello", turn_id=tid)
     messages = store.list_messages(record.id)
     assert messages is not None
     assert [m.role for m in messages] == ["user", "assistant"]
@@ -86,18 +87,20 @@ def test_list_messages_unknown_id_returns_none(store: ConversationStore):
 
 def test_append_message_unknown_id_raises(store: ConversationStore):
     with pytest.raises(KeyError):
-        store.append_message("00000000-0000-0000-0000-000000000001", "user", "x")
+        store.append_message(
+            "00000000-0000-0000-0000-000000000001", "user", "x", turn_id=start_turn()
+        )
 
 
 def test_append_message_invalid_role(store: ConversationStore):
     record = store.create("t")
     with pytest.raises(ValueError):
-        store.append_message(record.id, "system", "x")
+        store.append_message(record.id, "system", "x", turn_id=start_turn())
 
 
 def test_cascade_delete_removes_messages(store: ConversationStore):
     record = store.create("t")
-    store.append_message(record.id, "user", "hi")
+    store.append_message(record.id, "user", "hi", turn_id=start_turn())
     with store._session_factory() as session:
         conversation = session.get(Conversation, uuid.UUID(record.id))
         session.delete(conversation)
@@ -143,7 +146,7 @@ def test_rename_too_long_raises(store: ConversationStore):
 
 def test_delete_removes_conversation_and_messages(store: ConversationStore):
     record = store.create("t")
-    store.append_message(record.id, "user", "hi")
+    store.append_message(record.id, "user", "hi", turn_id=start_turn())
     store.delete(record.id)
     assert store.get(record.id) is None
     assert store.list_messages(record.id) is None
