@@ -180,7 +180,7 @@ HTTP 入口见 4.2.1 `POST /chat/review`。
 
 文件：[`chat/prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt)
 
-约定：人审后才落盘；闲聊不 `propose_note`；问旧知识先 search；提案前 list/核对；回复不粘贴完整草稿。首轮可能附带 `context.md`。
+约定：人审后才落盘；闲聊不 `propose_note`；意图不清先问、再提案；正文按用户材料忠实润色（可段落与多级标题，禁止默认压成短要点）；问旧知识先 search；提案前 list/核对；回复不粘贴完整草稿。
 
 ##### 4.2.2.5 上下文管理
 

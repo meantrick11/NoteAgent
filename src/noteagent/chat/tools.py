@@ -54,7 +54,9 @@ def build_chat_tools(
         description=(
             "提交笔记草稿供用户审批，不会写入磁盘。"
             "action 只能是 append（追加到已有文件）或 create（新建文件）。"
-            "file_name 如 Backtracking.md；content 为 Markdown 正文，追加时从 ## 开始。"
+            "file_name 如 Backtracking.md。"
+            "content 为按用户材料组织的 Markdown：可段落、可 ## / ###；"
+            "不是短要点清单。追加时不要写一级标题。"
             "reason 一句话说明分类理由；similar 为逗号分隔的相近已有文件名。"
         ),
     )
