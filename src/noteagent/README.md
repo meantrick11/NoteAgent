@@ -17,6 +17,8 @@
 
 依赖方向：`chat` 可以调 `notes`、`retrieval`、`llm`、`observability`、`db`。`notes`、`retrieval` 与 `db` 不得 import `chat`。
 
+系统提示在 [`chat/prompts/`](chat/prompts/README.md)。记笔记人工评测在仓库根 [`evals/`](../../evals/README.md)，不在本包内。
+
 ## 基础使用
 
 进程入口（`main.py` 已封装）：

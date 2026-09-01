@@ -1,6 +1,9 @@
 import logging
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 from noteagent.notes.repository import FileNoteRepository, NotePathError
 
@@ -8,6 +11,35 @@ _logger = logging.getLogger(__name__)
 
 current_thread_id: ContextVar[str] = ContextVar("noteagent_thread_id", default="")
 current_turn_id: ContextVar[str] = ContextVar("noteagent_turn_id", default="")
+
+WRITE_ACTIONS = ("append", "create", "replace", "delete")
+
+
+class ProposeNoteInput(BaseModel):
+    """Arguments for propose_note. Sent to the model via bind_tools JSON schema."""
+
+    action: Literal["append", "create", "replace", "delete"] = Field(
+        description=(
+            "append 往已有文件末尾加新内容；create 新建文件；"
+            "replace 用完整新正文覆盖已有文件；delete 删除已有文件。"
+            "新知识默认 append 或 create，不要用 replace。"
+        )
+    )
+    file_name: str = Field(description="笔记文件名，如 Backtracking.md")
+    content: str = Field(
+        default="",
+        description=(
+            "按用户材料组织的 Markdown 正文：可段落。"
+            "材料已有章节标题时须含编号原文写入，按编号深度映射 ## / ### / ####；"
+            "禁止自拟或合并标题。不是短要点清单。"
+            "create/append 不要写一级标题；replace 须含读到的完整文件（含原有一级标题）。"
+            "delete 时可空。"
+            "代码用围栏；路径与命令用行内 code；备注用 > 引用。"
+        )
+    )
+    reason: str = Field(default="", description="一句话说明为何归到这个文件")
+    similar: str = Field(default="", description="逗号分隔的相近已有文件名，没有则空字符串")
+
 
 #获取对应的笔记文件
 def markdown_name(file_name: str) -> str:
@@ -80,7 +112,7 @@ def commit_review(
         return {"status": "rejected"}
 
     if action == "override":
-        if write_action not in ("append", "create") or not file_name:
+        if write_action not in WRITE_ACTIONS or not file_name:
             store.put(thread_id, draft)
             return {"error": "override requires write_action and file_name"}
         target_action = write_action
@@ -114,7 +146,7 @@ def _write_draft(
     file_name: str,
     content: str,
 ) -> None:
-    """Create and/or append the approved markdown. Does not call the LLM."""
+    """Apply the approved action to disk. Does not call the LLM."""
     file_name = markdown_name(file_name)
     if action == "create":
         title = file_name[:-3]
@@ -123,5 +155,11 @@ def _write_draft(
         return
     if action == "append":
         notes.write(file_name, content, append=True)
+        return
+    if action == "replace":
+        notes.write(file_name, content, append=False)
+        return
+    if action == "delete":
+        notes.delete(file_name)
         return
     raise ValueError(f"unknown write action {action}")

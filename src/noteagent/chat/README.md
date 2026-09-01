@@ -12,11 +12,11 @@ HTTP 聊天、`bind_tools` Agent、工具、**人审之后才写盘**。不直�
 | `context_budget.py` | `ContextBudget`、`budget_from_settings` | 窗口 W、压缩比例、stub 截断、`max_tool_hops` |
 | `context_tokens.py` | `estimate_tokens`、`prefix_until_tokens` | 字符/4 估算，无 tiktoken |
 | `context_compact.py` | `group_turns`、`select_turns_to_drop` 等 | 完整 Turn 边界压缩 |
-| `context_pack.py` | `build_pack` | Persistent + summary + 当前 Runtime |
-| `drafts.py` | `DraftStore`、`NoteDraft`、`commit_review`、`current_turn_id` | 按会话暂存提案；同意后 `create`/`write` |
-| `tools.py` | `build_chat_tools` | `list_files`、`read_file`、`search_*`、`propose_note`（无写盘工具） |
+| `context_pack.py` | `build_pack` | Persistent + summary + 当前 Runtime；用户句若有编号/`##` 标题则注入「材料标题树」 |
+| `drafts.py` | `DraftStore`、`NoteDraft`、`ProposeNoteInput`、`commit_review` | 按会话暂存提案；`propose_note` 的 args_schema；同意后 create/append/replace/delete |
+| `tools.py` | `build_chat_tools` | `list_files`、`read_file`、`search_*`、`propose_note`（无写盘；四动作）。契约：[docs/architecture/chat-tools.md](../../../docs/architecture/chat-tools.md) |
 | `schemas.py` | 请求/响应体 | 含 `ConversationOut`、`MessageOut` |
-| [`prompts/`](prompts/README.md) | `system.txt` | 系统提示 |
+| [`prompts/`](prompts/README.md) | `system.txt` | 现行五要素提示（含 replace/delete 写模式）；归档 [`prompts/iterations/`](prompts/iterations/README.md) v1–v7 |
 
 ## 基础使用
 
@@ -60,6 +60,8 @@ HTTP：
 
 契约全文：[docs/architecture/context-management.md](../../../docs/architecture/context-management.md) §7.1。
 
+记笔记质量与意图门的人工集：[evals/](../../../evals/README.md)（不要放进 `tests/`）。
+
 ```bash
-uv run pytest tests/unit/test_chat_agent_context.py tests/unit/test_context_store.py tests/integration/test_app.py -q
+uv run pytest tests/unit/test_chat_agent_context.py tests/unit/test_context_store.py tests/unit/test_context_pack.py tests/integration/test_app.py -q
 ```

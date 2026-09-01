@@ -1,6 +1,7 @@
 # NoteAgent 项目架构书
 
 > 现行总览，按用户路径组织。细节文档只在对应小节索引。  
+> 聊天工具：[chat-tools.md](./chat-tools.md)  
 > 笔记草稿：[draft-generation.md](./draft-generation.md)  
 > 短期记忆：[context-management.md](./context-management.md)  
 > 数据库表与代码：[database.md](./database.md)  
@@ -95,7 +96,7 @@ notes/           正式笔记数据
 |------|----------|------|
 | 进页 / 切会话 | `loadConversations`；点会话再拉消息气泡 | `GET /conversations`、`GET /conversations/{id}/messages` |
 | 发一句 | 立刻画 user 气泡和空 assistant；`fetch("/chat")` 读 SSE：`conversation` 记下 id 并刷新侧栏，字符串当 token 用 marked 渲染，`draft` 出卡片 | `POST /chat` |
-| 审草稿 | 卡片：同意 / 拒 / 改追加到所选 / 改为新建；`sendReview` 带 `thread_id` | `POST /chat/review`；结果再画一条 assistant（已写入 / 已取消） |
+| 审草稿 | 卡片：同意 / 拒；create/append 还可改追加到所选 / 改为新建；replace/delete 仅同意或拒绝 | `POST /chat/review`；结果再画一条 assistant（已写入 / 已删除 / 已取消） |
 | 离开 | `visibilitychange=hidden` 或 `beforeunload`：`sendBeacon("/chat/user_exit")` | `POST /chat/user_exit` |
 
 侧栏还可 PATCH 重命名、DELETE 删除。气泡只渲染 user / assistant；工具过程不展示。`isStreaming` 期间不能连发。
@@ -153,34 +154,30 @@ Checkpoint：**现状**无 `InMemorySaver` / `create_agent` 跨 Turn 记忆；�
 
 ##### 4.2.2.2 工具
 
-文件：[`chat/tools.py`](../../src/noteagent/chat/tools.py)，`build_chat_tools(notes, retrieval, drafts)`。
+契约全文：[chat-tools.md](./chat-tools.md)（工作流、参数、意图门、人审）。装配：[`chat/tools.py`](../../src/noteagent/chat/tools.py) `build_chat_tools(notes, retrieval, drafts)`。
 
 | 名称 | 作用 | 副作用 |
 |------|------|--------|
 | `list_files` | `notes.list_notes()` | 无写盘 |
-| `read_file` | `notes.read`；禁止创建/修改 | 无写盘 |
-| `search_relative_from_chromadb` | `retrieval.search(query, top_k=3)`，返回 fragments | 无写盘 |
-| `propose_note` | 校验 append/create 与文件是否已存在；`DraftStore.put` | **不写磁盘**；返回 `pending_review` |
+| `read_file` | `notes.read` | 无写盘 |
+| `search_relative_from_chromadb` | `retrieval.search(query, top_k=3)` | 无写盘 |
+| `propose_note` | 校验四动作后 `DraftStore.put` | **不写磁盘** |
 
-提案前 prompt 要求先 `list_files`。`propose_note` 用 `current_thread_id` 绑定会话；无 thread 则报错。
+Hop / stub：[context-management.md §7.1](./context-management.md#71-工具循环与-stub-截断代码现状)。
 
 ##### 4.2.2.3 草稿与人审
 
-文件：[`chat/drafts.py`](../../src/noteagent/chat/drafts.py)
+文件：[`chat/drafts.py`](../../src/noteagent/chat/drafts.py)。细节：[chat-tools.md](./chat-tools.md) §5–§6。
 
-- `NoteDraft`：`action`（append/create）、`file_name`、`content`、`reason`、`similar`、`existing_files`；`as_dict()` 给 SSE 卡片。
-- `DraftStore`：`dict[thread_id, NoteDraft]`，**重启丢失**。
-- `commit_review`：`approve` / `reject` / `override`（须带 `write_action`+`file_name`）。写盘只在此处：`create` 或 `write(append=True)`。失败则把 draft 放回 store。
-
-HTTP 入口见 4.2.1 `POST /chat/review`。
-
-目标工作流（Job、ChangeSet、独立 Reviewer）不在本包，见 [draft-generation.md](./draft-generation.md) [§1](./draft-generation.md#1-系统定位目标)、[§2](./draft-generation.md#2-端到端工作流目标)、[§5](./draft-generation.md#5-笔记与质量目标)、[§7](./draft-generation.md#7-实现约束给-ai)。
+- 每会话一份 pending `NoteDraft`（`DraftStore`，重启丢失）。
+- `propose_note` 不写盘；`commit_review` 才 `create` / `write` / `delete`。
+- HTTP：`POST /chat/review`。目标 Job/ChangeSet 见 [draft-generation.md](./draft-generation.md)。
 
 ##### 4.2.2.4 系统提示
 
-文件：[`chat/prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt)
+文件：[`chat/prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt)。历次全文：[`prompts/iterations/`](../../src/noteagent/chat/prompts/iterations/README.md)（v1–v7）。
 
-约定：人审后才落盘；闲聊不 `propose_note`；意图不清先问、再提案；正文按用户材料忠实润色（可段落与多级标题，禁止默认压成短要点）；问旧知识先 search；提案前 list/核对；回复不粘贴完整草稿。
+约定：人审后才落盘；闲聊不 `propose_note`；意图不清先问、再提案；记笔记正文按忠实/完整/结构/流畅/形态/可检索；材料已有章节标题则原文含编号映射层级；问旧知识先 search；提案前 list/核对；回复不粘贴完整草稿。人工评测集见仓库根目录 [`evals/`](../../evals/README.md)。
 
 ##### 4.2.2.5 上下文管理
 
@@ -245,7 +242,7 @@ HTTP 入口见 4.2.1 `POST /chat/review`。
 
 包：[`notes/repository.py`](../../src/noteagent/notes/repository.py)。这是人审之后的正式知识落盘，不是聊天历史。
 
-`FileNoteRepository`：根目录默认 `notes/`。`list_notes` / `read` / `create`（写 `# title`）/ `write`（默认追加）/ `exists`。`NotePathError` 拒绝空名、绝对路径、`..`、子目录。Agent 工具只读列表与内容；真正 `create`/`write` 仅 `commit_review`。聊天记忆不写 `context.md`。
+`FileNoteRepository`：根目录默认 `notes/`。`list_notes` / `read` / `create`（写 `# title`）/ `write`（默认追加，可覆盖）/ `delete` / `exists`。`NotePathError` 拒绝空名、绝对路径、`..`、子目录。Agent 工具只读列表与内容；真正 `create`/`write`/`delete` 仅 `commit_review`。聊天记忆不写 `context.md`。
 
 ---
 

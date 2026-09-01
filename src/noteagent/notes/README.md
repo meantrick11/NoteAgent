@@ -6,7 +6,7 @@
 
 | 文件 | 模块 | 作用 |
 |------|------|------|
-| `repository.py` | `FileNoteRepository` | `list_notes` / `read` / `create` / `write` / `exists` |
+| `repository.py` | `FileNoteRepository` | `list_notes` / `read` / `create` / `write` / `delete` / `exists` |
 | `repository.py` | `NotePathError` | 空名、绝对路径、`..`、子目录 |
 | `__init__.py` | 再导出 | `from noteagent.notes import FileNoteRepository` |
 
@@ -22,6 +22,7 @@ repo.write("Go.md", "## 循环\n- 只有 for\n\n", append=True)
 print(repo.read("Go.md"))
 print(repo.list_notes())
 print(repo.exists("Go.md"))
+repo.delete("Go.md")
 ```
 
 `write` 默认追加；`append=False` 为覆盖。文件必须已存在。`read("../x.md")` 会抛 `NotePathError`。

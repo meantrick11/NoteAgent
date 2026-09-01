@@ -60,6 +60,16 @@ class FileNoteRepository:
             content,
         )
 
+    def delete(self, file_name: str) -> None:
+        """Remove an existing note file. Missing files raise FileNotFoundError."""
+        file_name = self._ensure_markdown_name(file_name)
+        path = self._resolve(file_name)
+        if not path.exists():
+            _logger.warning("note delete missing file=%s", file_name)
+            raise FileNotFoundError(file_name)
+        path.unlink()
+        _logger.info("note delete file=%s", file_name)
+
     def exists(self, file_name: str) -> bool:
         """True if a note with this name exists under the root."""
         try:

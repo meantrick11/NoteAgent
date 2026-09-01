@@ -48,6 +48,22 @@ def test_rejects_nested_path(repo: FileNoteRepository):
         repo.read("sub/x.md")
 
 
+def test_delete_existing_file(repo: FileNoteRepository):
+    repo.create("Go.md", "Go")
+    repo.delete("Go.md")
+    assert repo.list_notes() == []
+
+
+def test_delete_missing_raises(repo: FileNoteRepository):
+    with pytest.raises(FileNotFoundError):
+        repo.delete("missing.md")
+
+
+def test_delete_rejects_parent_escape(repo: FileNoteRepository):
+    with pytest.raises(NotePathError):
+        repo.delete("../secret.md")
+
+
 def test_list_notes(repo: FileNoteRepository):
     repo.create("a.md", "A")
     repo.create("b.md", "B")

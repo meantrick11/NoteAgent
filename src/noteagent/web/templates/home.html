@@ -253,6 +253,10 @@
     background: var(--user-bubble);
     border-bottom-right-radius: 4px;
   }
+  .msg-row.user .msg-body {
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+  }
   .msg-row.assistant .msg-bubble {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -888,27 +892,43 @@ function renderDraftCard(draft) {
   card.className = "draft-card";
   const similar = (draft.similar || []).filter(Boolean);
   const files = draft.existing_files || [];
+  const action = draft.action;
   let ask;
-  if (draft.action === "append") {
+  let approveLabel;
+  if (action === "append") {
     const extra = similar.length ? `，相近：${similar.join("、")}` : "";
     ask = `识别到已经有笔记「${draft.file_name}」${extra}，是否要追加？`;
+    approveLabel = "同意追加";
+  } else if (action === "replace") {
+    ask = `是否用以下内容覆盖「${draft.file_name}」？旧内容将被替换。`;
+    approveLabel = "同意覆盖";
+  } else if (action === "delete") {
+    ask = `是否删除笔记「${draft.file_name}」？删除后无法从本页恢复。`;
+    approveLabel = "同意删除";
   } else {
     ask = `没有相关笔记，是否要新建笔记文件（提议文件名：${draft.file_name}）？`;
+    approveLabel = "同意新建";
   }
+  const showOverride = action === "append" || action === "create";
   const options = files.map(
     (name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`
   ).join("");
-  const approveLabel = draft.action === "append" ? "同意追加" : "同意新建";
+  const bodyHtml = action === "delete"
+    ? ""
+    : `<div class="draft-body">${marked.parse(draft.content || "")}</div>`;
+  const overrideHtml = showOverride
+    ? `<select data-role="append-target">${options}</select>
+      <button data-act="override-append">改追加到所选</button>
+      <input data-role="new-name" placeholder="新文件名.md" value="${action === "create" ? escapeHtml(draft.file_name) : ""}">
+      <button data-act="override-create">改为新建</button>`
+    : "";
   card.innerHTML = `
     <div class="draft-label">笔记草稿</div>
-    <div class="draft-body">${marked.parse(draft.content || "")}</div>
+    ${bodyHtml}
     <p class="draft-ask">${escapeHtml(ask)}</p>
     <div class="draft-actions">
       <button class="primary" data-act="approve">${approveLabel}</button>
-      <select data-role="append-target">${options}</select>
-      <button data-act="override-append">改追加到所选</button>
-      <input data-role="new-name" placeholder="新文件名.md" value="${draft.action === "create" ? escapeHtml(draft.file_name) : ""}">
-      <button data-act="override-create">改为新建</button>
+      ${overrideHtml}
       <button data-act="reject">拒绝</button>
     </div>
   `;
@@ -918,26 +938,32 @@ function renderDraftCard(draft) {
     disable();
     await sendReview({ action: "approve" });
   };
-  card.querySelector('[data-act="override-append"]').onclick = async () => {
-    const select = card.querySelector('[data-role="append-target"]');
-    if (!select || !select.value) return;
-    disable();
-    await sendReview({
-      action: "override",
-      write_action: "append",
-      file_name: select.value,
-    });
-  };
-  card.querySelector('[data-act="override-create"]').onclick = async () => {
-    const input = card.querySelector('[data-role="new-name"]');
-    const name = (input && input.value.trim()) || draft.file_name;
-    disable();
-    await sendReview({
-      action: "override",
-      write_action: "create",
-      file_name: name,
-    });
-  };
+  const overrideAppend = card.querySelector('[data-act="override-append"]');
+  if (overrideAppend) {
+    overrideAppend.onclick = async () => {
+      const select = card.querySelector('[data-role="append-target"]');
+      if (!select || !select.value) return;
+      disable();
+      await sendReview({
+        action: "override",
+        write_action: "append",
+        file_name: select.value,
+      });
+    };
+  }
+  const overrideCreate = card.querySelector('[data-act="override-create"]');
+  if (overrideCreate) {
+    overrideCreate.onclick = async () => {
+      const input = card.querySelector('[data-role="new-name"]');
+      const name = (input && input.value.trim()) || draft.file_name;
+      disable();
+      await sendReview({
+        action: "override",
+        write_action: "create",
+        file_name: name,
+      });
+    };
+  }
   card.querySelector('[data-act="reject"]').onclick = async () => {
     disable();
     await sendReview({ action: "reject" });
@@ -953,14 +979,17 @@ async function sendReview(body) {
     body: JSON.stringify({ thread_id: currentConversationId, ...body }),
   });
   const json = await res.json();
-  const row = appendMessage(
-    "assistant",
-    json.status === "written"
-      ? `已写入 ${json.file_name}`
-      : json.status === "rejected"
-        ? "已取消写入"
-        : ("审批失败：" + (json.error || res.status)),
-  );
+  let text;
+  if (json.status === "written") {
+    text = json.action === "delete"
+      ? `已删除 ${json.file_name}`
+      : `已写入 ${json.file_name}`;
+  } else if (json.status === "rejected") {
+    text = "已取消写入";
+  } else {
+    text = "审批失败：" + (json.error || res.status);
+  }
+  const row = appendMessage("assistant", text);
   return row;
 }
 

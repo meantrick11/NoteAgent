@@ -20,7 +20,7 @@
 | 不把聊天摘要写入 `notes/context.md` | [`ChatAgent.summarize_on_exit`](../../src/noteagent/chat/agent.py) 向 `context.md` 追加；[`POST /chat/user_exit`](../../src/noteagent/chat/router.py) | 目标仍是停用；**现状会写** |
 | 发给模型的短期记忆已是 watermark 方案 | 同上 `InMemorySaver`；[`chat/README.md`](../../src/noteagent/chat/README.md) 写明重启不带旧轮次 | §4 指向目标文档；现状单独一行 |
 | 章节感知 Chunk、BGE、引用字段 | [`chunker.py`](../../src/noteagent/retrieval/chunker.py) 按字符切；[`settings.py`](../../src/noteagent/bootstrap/settings.py) 默认 `all-MiniLM-L6-v2`；[`SearchHit`](../../src/noteagent/retrieval/models.py) 仅 `content/distance/metadata` | §6 标明目标；现状为粗 RAG |
-| 人审后才写盘 | [`propose_note`](../../src/noteagent/chat/tools.py) 不写盘；[`commit_review`](../../src/noteagent/chat/drafts.py) 才 `create`/`write` | **与代码一致，不改** |
+| 人审后才写盘 | [`propose_note`](../../src/noteagent/chat/tools.py) 不写盘；[`commit_review`](../../src/noteagent/chat/drafts.py) 才 `create` / `write` / `delete`（含 replace 覆盖） | **与代码一致**；现行四工具见 [chat-tools.md](./chat-tools.md) |
 
 可视化（目标流程，非运行时截图）：
 

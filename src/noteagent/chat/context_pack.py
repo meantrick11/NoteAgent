@@ -5,6 +5,8 @@ full text lives in ``runtime_messages``), so the model never sees both the stub
 line and the full ToolMessage for the same hop.
 """
 
+import logging
+import re
 from dataclasses import dataclass
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -14,6 +16,38 @@ from noteagent.chat.context_compact import compute_f
 from noteagent.chat.context_tokens import estimate_tokens
 from noteagent.chat.drafts import NoteDraft
 from noteagent.chat.history import MessageRecord
+
+_logger = logging.getLogger(__name__)
+
+# Numbered tutorial headings: "2. Title" / "2.1. Title". ATX: "## Title".
+_NUMBERED_HEADING = re.compile(r"^\d+(?:\.\d+)*\.?\s+\S")
+_ATX_HEADING = re.compile(r"^#{1,6}\s+\S")
+_SKIP_ATX = re.compile(r"^#\s*(-\*-|!)")
+
+
+def extract_source_headings(text: str) -> list[str]:
+    """Return numbered or ATX heading lines from the user's material."""
+    headings: list[str] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if _SKIP_ATX.match(line):
+            continue
+        if _NUMBERED_HEADING.match(line) or _ATX_HEADING.match(line):
+            headings.append(line)
+    return headings
+
+
+def source_heading_tree_line(text: str) -> str | None:
+    """None if no headings; else a pack hint listing original heading lines."""
+    headings = extract_source_headings(text)
+    if not headings:
+        return None
+    return (
+        "材料标题树（须原文用作 ##/###，禁止合并或另造标题）：\n"
+        + "\n".join(headings)
+    )
 
 
 def stub_text(record: MessageRecord) -> str:
@@ -83,6 +117,10 @@ def build_pack(
         messages.append(SystemMessage(content="历史摘要：\n" + summary))
     if draft_line:
         messages.append(SystemMessage(content=draft_line))
+    outline_line = source_heading_tree_line(current_user)
+    if outline_line:
+        _logger.info("source heading tree headings=%d", outline_line.count("\n"))
+        messages.append(SystemMessage(content=outline_line))
     messages.extend(records_to_langchain(hist))
     if not any(r.role == "user" and r.turn_id == current_turn_id for r in hist):
         messages.append(HumanMessage(content=current_user))
@@ -97,7 +135,7 @@ def build_pack(
         draft_line=draft_line,
         runtime=runtime_text,
         budget=budget,
-    )
+    ) + estimate_tokens(outline_line or "")
     k_tokens = max(0, budget.target_tokens() - f_tokens)
     pack_text = tool_defs + "\n".join(_content_text(m) for m in messages)
     pack_tokens = estimate_tokens(pack_text)

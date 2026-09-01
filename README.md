@@ -2,7 +2,7 @@
 
 个人学习笔记助手。对话里把值得保留的内容整理成 Markdown 草稿，**经前端审批后**才写入 `notes/`。检索是手动索引后的粗 RAG，供问答和后续文章生成用。
 
-正式说明：[项目架构书](docs/architecture/architecture.md)、[草稿生成](docs/architecture/draft-generation.md)、[短期记忆](docs/architecture/context-management.md)。阅读顺序见 [docs/README.md](docs/README.md)。尚未做 Job 状态机、审批后自动索引。
+正式说明：[项目架构书](docs/architecture/architecture.md)、[草稿生成](docs/architecture/draft-generation.md)、[短期记忆](docs/architecture/context-management.md)。阅读顺序见 [docs/README.md](docs/README.md)。提示词人工评测见 [evals/](evals/README.md)。尚未做 Job 状态机、审批后自动索引。
 
 ## 仓库里有什么
 
@@ -12,7 +12,8 @@
 | [`main.py`](main.py) | 读配置、打日志、启动 uvicorn |
 | [`notes/`](notes/README.md) | 正式 Markdown 数据 |
 | [`scripts/`](scripts/README.md) | 索引、API 冒烟 |
-| [`tests/`](tests/README.md) | 单测 / 集成测 |
+| [`tests/`](tests/README.md) | 单测 / 集成测（无真实 LLM） |
+| [`evals/`](evals/README.md) | 提示词/Agent/RAG 黄金集；人工打分，不进默认 CI |
 | [`docs/`](docs/README.md) | 架构与参考 |
 | [`var/`](var/README.md) | 日志等运行时数据（不入库） |
 

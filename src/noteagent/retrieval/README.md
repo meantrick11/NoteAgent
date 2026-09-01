@@ -28,7 +28,9 @@ hits = service.search("注意力机制", top_k=3)
 # hits[0].content / .distance / .metadata["file_name"]
 ```
 
-聊天工具 `search_relative_from_chromadb` 内部就是 `search`。测试用假 embedder，不加载真实模型：
+聊天工具 `search_relative_from_chromadb` 内部就是 `search`。检索黄金集（尚未填）预定在 [`evals/rag/`](../../../evals/rag/README.md)，与 `tests/` 分开。
+
+测试用假 embedder，不加载真实模型：
 
 ```bash
 uv run pytest tests/unit/test_chunker.py tests/integration/test_retrieval_service.py -q

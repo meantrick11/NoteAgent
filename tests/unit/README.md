@@ -9,15 +9,15 @@
 | `test_import.py` | 包从 `src/noteagent` 导入 |
 | `test_settings.py` | 路径解析、密钥不出现在 repr、env 覆盖 |
 | `test_app_container.py` | `build_container` 要求 `DATABASE_URL` |
-| `test_note_repository.py` | 创建/读写、路径逃逸 |
+| `test_note_repository.py` | 创建/读写/删除、路径逃逸 |
 | `test_chunker.py` | 短文不拆、长文拆开 |
-| `test_chat_tools.py` | 工具列表无写盘；`propose_note` 不落盘 |
-| `test_drafts.py` | 同意追加/新建、override、拒绝 |
+| `test_chat_tools.py` | 工具列表无写盘；`propose_note` 四动作不落盘；`ProposeNoteInput` schema |
+| `test_drafts.py` | 同意追加/新建/覆盖/删除、override、拒绝 |
 | `test_chat_history.py` | 标题归一化；create/get/list/append；级联删除；重命名/删除 |
 | `test_context_budget.py` | Settings → `ContextBudget` |
 | `test_context_tokens.py` | token 估算与 stub 截断 |
 | `test_context_compact.py` | Turn 分组、触发、drop/keep、stub 不计双份 |
-| `test_context_pack.py` | pack 装配 |
+| `test_context_pack.py` | pack 装配；从用户句抽取编号/`##` 标题树 |
 | `test_context_store.py` | turn_id、stub、watermark、UI 过滤 tool |
 | `test_chat_agent_context.py` | stub 入库、跨 Turn 无全文工具、hop 上限、压缩 |
 

@@ -76,6 +76,55 @@ def test_reject_does_not_write(tmp_path: Path):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_approve_replace_overwrites_file(tmp_path: Path):
+    notes = FileNoteRepository(tmp_path)
+    notes.create("Backtracking.md", "Backtracking")
+    notes.write("Backtracking.md", "## 旧段\n\n- 过时\n\n", append=True)
+    store = _store_with(NoteDraft(
+        action="replace",
+        file_name="Backtracking.md",
+        content="# Backtracking\n\n## 新段\n\n更正后的正文。\n",
+    ))
+    result = commit_review(notes, store, "t1", "approve")
+    assert result["status"] == "written"
+    assert result["action"] == "replace"
+    text = notes.read("Backtracking.md")
+    assert "## 旧段" not in text
+    assert "## 新段" in text
+    assert store.get("t1") is None
+
+
+def test_approve_delete_removes_file(tmp_path: Path):
+    notes = FileNoteRepository(tmp_path)
+    notes.create("Go.md", "Go")
+    store = _store_with(NoteDraft(
+        action="delete",
+        file_name="Go.md",
+        content="",
+    ))
+    result = commit_review(notes, store, "t1", "approve")
+    assert result == {
+        "status": "written",
+        "action": "delete",
+        "file_name": "Go.md",
+    }
+    assert notes.list_notes() == []
+    assert store.get("t1") is None
+
+
+def test_reject_delete_keeps_file(tmp_path: Path):
+    notes = FileNoteRepository(tmp_path)
+    notes.create("Go.md", "Go")
+    store = _store_with(NoteDraft(
+        action="delete",
+        file_name="Go.md",
+        content="",
+    ))
+    result = commit_review(notes, store, "t1", "reject")
+    assert result == {"status": "rejected"}
+    assert notes.exists("Go.md")
+
+
 def test_approve_without_pending_errors(tmp_path: Path):
     result = commit_review(FileNoteRepository(tmp_path), DraftStore(), "t1", "approve")
     assert result == {"error": "no pending draft"}

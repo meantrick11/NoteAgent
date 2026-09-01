@@ -6,8 +6,8 @@
 
 | 文件 | 作用 |
 |------|------|
-| `system.txt` | 系统提示：历史摘要由系统注入；何时提案、必须先 `list_files`、禁止声称已写盘 |
-| `__init__.py` | 无逻辑 |
+| `system.txt` | **现行**系统提示（Agent 只读这一份）。结构为 Role / Context / Task / Constraint / Example；Constraint 为笔记六条质量 |
+| [`iterations/`](iterations/README.md) | 历次全文归档；现为 v1–v7。v7 与现行 `system.txt` 相同 |
 
 `ChatAgent` 用文件路径读取，不经过包 import：
 
@@ -15,6 +15,6 @@
 
 ## 基础使用
 
-改行为时编辑 `system.txt` 后重启进程。每次 `stream()` 都会重新读该文件。
+改 `system.txt` 后**重启进程**（每次 `stream()` 会重新读该文件）。不要改 `ChatAgent` 去加载 `iterations/`。
 
-无独立单测；改完用一次真实对话或看 `var/logs/noteagent.log` 里的 prompt 长度是否变化。
+人工黄金集（不进 pytest）：[evals/](../../../../evals/README.md)。改完提示词用 [`evals/prompt/cases.jsonl`](../../../../evals/prompt/cases.jsonl) 人工回归。

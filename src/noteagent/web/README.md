@@ -18,7 +18,7 @@ from noteagent.web import read_home_html
 html = read_home_html()  # GET / 直接返回这段字符串
 ```
 
-改 UI 只编辑 `templates/home.html`，刷新浏览器即可（后端若已启动不用为静态文案重启，但 SSE 逻辑改了要重启）。
+改 UI 只编辑 `templates/home.html`，刷新浏览器即可。用户气泡换行是否可见，看 `.msg-row.user .msg-body` 的 `pre-wrap`。
 
 ```bash
 uv run pytest tests/integration/test_app.py::test_home_serves_template -q

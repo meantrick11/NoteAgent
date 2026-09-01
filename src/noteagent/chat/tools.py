@@ -2,8 +2,10 @@ from langchain_core.tools import BaseTool
 from langchain.tools import tool
 
 from noteagent.chat.drafts import (
+    WRITE_ACTIONS,
     DraftStore,
     NoteDraft,
+    ProposeNoteInput,
     current_thread_id,
     markdown_name,
 )
@@ -53,12 +55,14 @@ def build_chat_tools(
         "propose_note",
         description=(
             "提交笔记草稿供用户审批，不会写入磁盘。"
-            "action 只能是 append（追加到已有文件）或 create（新建文件）。"
+            "action：append 追加；create 新建；replace 覆盖已有全文；delete 删除文件。"
+            "新内容默认 append 或 create。更正过时正文才 replace；明确删文件才 delete。"
             "file_name 如 Backtracking.md。"
-            "content 为按用户材料组织的 Markdown：可段落、可 ## / ###；"
-            "不是短要点清单。追加时不要写一级标题。"
+            "content 为 Markdown。create/append 不要写一级标题；"
+            "replace 须为读到的完整文件（含原有一级标题）；delete 可空。"
             "reason 一句话说明分类理由；similar 为逗号分隔的相近已有文件名。"
         ),
+        args_schema=ProposeNoteInput,
     )
     def propose_note(
         action: str,
@@ -70,13 +74,15 @@ def build_chat_tools(
         thread_id = current_thread_id.get()
         if not thread_id:
             return {"error": "no thread_id"}
-        if action not in ("append", "create"):
-            return {"error": "action must be append or create"}
-        if not file_name or not content:
-            return {"error": "file_name and content are required"}
+        if action not in WRITE_ACTIONS:
+            return {"error": "action must be append, create, replace, or delete"}
+        if not file_name:
+            return {"error": "file_name is required"}
+        if action != "delete" and not content:
+            return {"error": "content is required"}
         name = markdown_name(file_name)
         exists = notes.exists(name)
-        if action == "append" and not exists:
+        if action in ("append", "replace", "delete") and not exists:
             return {"error": f"{name} does not exist; use create or pick an existing file"}
         if action == "create" and exists:
             return {"error": f"{name} already exists; use append"}
