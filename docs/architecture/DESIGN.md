@@ -1,7 +1,7 @@
 # Phase 1 模块设计文档
 
 > **历史文档（屏幕截图 + 音频转写方案）。** 与当前 Web 聊天代码不一致：仓库没有 `capture/screen.py` / Whisper 主循环。  
-> 只作演进起点。现行总览：[architecture.md](./architecture.md)。笔记写盘：[draft-generation.md](./draft-generation.md)。对话上下文：[context-management.md](./context-management.md)。
+> 只作演进起点。现行系统：[architecture.md](./architecture.md)。对话上下文细则：[context-management.md](./context-management.md)。入库 Job 设想：[../plans/draft-generation.md](../plans/draft-generation.md)。
 
 > 写给当时实现阶段的自己看。这里记的是**为什么这样设计**、**各模块的职责边界**、**关键权衡**，不是现行任务清单。
 

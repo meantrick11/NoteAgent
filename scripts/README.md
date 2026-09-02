@@ -6,7 +6,7 @@
 
 | 文件 | 作用 |
 |------|------|
-| `index_notes.py` | 把 `NOTES_DIR` 下指定 Markdown 切块写入 Chroma |
+| `index_notes.py` | 按篇重建 Chroma（与审批后的 `index_note` 相同；collection 损坏时用） |
 | `sdk_smoke.py` | 用 `DEEPSEEK_API_KEY` ping 一次聊天 API |
 
 ## 基础使用

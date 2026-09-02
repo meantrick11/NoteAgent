@@ -1,8 +1,8 @@
 # 聊天工具（现行契约）
 
-> 以代码为准。描述 Agent 四个 `@tool`、何时调用、参数与返回、以及人审后如何落盘。  
-> 工具 hop、stub 截断、Runtime vs Persistent 见 [context-management.md §7.1](./context-management.md#71-工具循环与-stub-截断代码现状)。  
-> Job / 审批后自动索引等目标见 [draft-generation.md](./draft-generation.md)，本文不写未落地能力。
+> 以代码为准。描述 Agent 四个 `@tool`、何时调用、参数与返回、以及人审后如何落盘。全局架构见 [architecture.md](./architecture.md)。  
+> 工具 hop、stub 截断、Runtime vs Persistent 见 [context-management.md §7.1](./context-management.md#71-工具循环与-stub-截断)。  
+> 切块、Chroma 点、审批后同步见 [retrieval.md](./retrieval.md)。
 
 | 项 | 内容 |
 |---|---|
@@ -20,7 +20,7 @@
 - `list_files` / `read_file` / `search_relative_from_chromadb` **只读**。
 - `propose_note` 只把一份 [`NoteDraft`](../../src/noteagent/chat/drafts.py) 放进按会话的内存 [`DraftStore`](../../src/noteagent/chat/drafts.py)，**不写磁盘、不写 Chroma**。
 - 磁盘只在用户审批后的 `commit_review` → `_write_draft`：`FileNoteRepository.create` / `write` / `delete`。
-- 审批后**不会**自动 `index_note`。检索仍靠手动 [`scripts/index_notes.py`](../../scripts/index_notes.py)。
+- 审批写盘成功后同步该文件的 Chroma 点（先删旧再索引；`delete` 只删向量）。失败不回滚 Markdown。手动 [`scripts/index_notes.py`](../../scripts/index_notes.py) 仍可用。
 
 路径规则在 [`FileNoteRepository._resolve`](../../src/noteagent/notes/repository.py)：拒绝空名、绝对路径、`..`、子目录。工具侧把异常收成 `{error: str}`。
 
@@ -48,7 +48,8 @@ flowchart TD
   propose -->|是| draft --> hop
   hop -->|本 Turn 结束且有 pending| sse --> card --> review
   review -->|approve 或 override| disk
-  review -->|reject| drop[不写盘]
+  disk --> chroma[按 file_name 同步 Chroma]
+  review -->|reject| drop[不写盘不改向量]
 ```
 
 实现要点（[`agent.py`](../../src/noteagent/chat/agent.py) `stream`）：
@@ -114,7 +115,7 @@ flowchart TD
 | 失败 | `{error}` |
 | 副作用 | 不写 Chroma、不改笔记 |
 
-未索引或空库时 fragments 可为空列表，不算工具实现错误。
+未索引或空库时 fragments 可为空列表，不算工具实现错误。点上的 `file_name` / `distance` 与审批后如何写入见 [retrieval.md](./retrieval.md)。
 
 ### 4.4 `propose_note`
 
@@ -186,11 +187,10 @@ HTTP：`POST /chat/review`，body [`ReviewRequest`](../../src/noteagent/chat/sch
 
 ---
 
-## 7. 边界（现状没有）
+## 7. 本文件不覆盖
 
 - 笔记 rename、节删除、节级 diff/patch、回收站
 - 工具内 `write` / `delete` / 覆盖
-- 审批后自动 embedding / 删 Chroma 旧 chunk（replace/delete 后检索可能过期）
 - 独立 Reviewer、ChangeSet 表、多 pending 队列（每会话最多一份草稿）
 
 ---
@@ -207,4 +207,5 @@ HTTP：`POST /chat/review`，body [`ReviewRequest`](../../src/noteagent/chat/sch
 | [`prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt) | 意图门与质量约束 |
 | [`web/templates/home.html`](../../src/noteagent/web/templates/home.html) | 审批卡片 |
 | [`notes/repository.py`](../../src/noteagent/notes/repository.py) | 真正 IO |
+| [retrieval.md](./retrieval.md) | 切块、Chroma、审批后同步（不在本文展开） |
 | [`evals/prompt/`](../../evals/prompt/README.md) | 人工意图门（含 replace/delete） |

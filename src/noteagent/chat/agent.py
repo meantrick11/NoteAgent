@@ -24,6 +24,7 @@ from noteagent.chat.drafts import (
 from noteagent.chat.history import ConversationStore
 from noteagent.notes.repository import FileNoteRepository   #记笔记相关的功能函数类，比如read_file\write_file\create_file\delete_file等,用来记录笔记内容
 from noteagent.observability.agent_trace import AgentTraceHandler   #Agent的跟踪器，用来记录Agent的运行轨迹
+from noteagent.retrieval.service import RetrievalService
 
 _logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class ChatAgent:
         history: ConversationStore,
         budget: ContextBudget,
         summarize_dropped: Callable[[str | None, str], str] | None = None,
+        retrieval: RetrievalService | None = None,
     ) -> None:
         self._model = model
         self._tools = tools
@@ -63,6 +65,7 @@ class ChatAgent:
         self._history = history
         self._budget = budget
         self._summarize_dropped = summarize_dropped or self._default_summarize
+        self._retrieval = retrieval
         self._prompt_path = Path(__file__).resolve().parent / "prompts" / "system.txt"
 
     def _default_summarize(self, old: str | None, dropped: str) -> str:
@@ -235,9 +238,5 @@ class ChatAgent:
             action,
             write_action=write_action,
             file_name=file_name,
+            retrieval=self._retrieval,
         )
-
-    # 用户退出，由chat_user_exit路由激活使用
-    async def summarize_on_exit(self, thread_id: str) -> None:
-        """No-op. Log that context.md memory is disabled. Do not write notes/."""
-        _logger.info("summarize_on_exit disabled thread=%s (context.md memory off)", thread_id)

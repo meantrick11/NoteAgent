@@ -1,6 +1,6 @@
 # rag evals
 
-检索命中评测。第二期再填数据。跑检索脚本时只读本目录，不要扫整个 `notes/`。
+检索命中评测。第二期再填数据。跑检索脚本时只读本目录，不要扫整个 `notes/`。现行检索架构：[docs/architecture/retrieval.md](../../docs/architecture/retrieval.md)。
 
 ## 包含模块
 

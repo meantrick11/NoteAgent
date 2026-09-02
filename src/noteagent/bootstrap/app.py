@@ -71,6 +71,7 @@ def build_container(settings: Settings) -> AppContainer:
         drafts=drafts,
         history=history,
         budget=budget_from_settings(settings),
+        retrieval=retrieval,
     )       #上层封装Agent
 
     return AppContainer(

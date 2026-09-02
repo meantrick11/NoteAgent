@@ -14,9 +14,9 @@
 
 ## 基础使用
 
-- 日常由聊天审批通过后写入，不要手改文件名成带空格或子目录。
+- 日常由聊天审批通过后写入并自动索引。不要手改文件名成带空格或子目录。
 - 文件名用主题：`Go.md`、`Backtracking.md`。
-- 写入后若要语义检索：
+- 向量库损坏时可用脚本按篇重建：
 
 ```bash
 uv run python scripts/index_notes.py Backtracking.md

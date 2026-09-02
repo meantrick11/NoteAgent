@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from noteagent.notes.repository import FileNoteRepository, NotePathError
+from noteagent.retrieval.service import RetrievalService
 
 _logger = logging.getLogger(__name__)
 
@@ -101,8 +102,13 @@ def commit_review(
     action: str,
     write_action: str | None = None,
     file_name: str | None = None,
+    retrieval: RetrievalService | None = None,
 ) -> dict:
-    """Apply or discard the pending draft. Writes happen only here, not in tools."""
+    """Apply or discard the pending draft. Writes happen only here, not in tools.
+
+    After a successful disk write, sync Chroma for that file. Index failures are
+    logged and do not roll back the Markdown or change the written response.
+    """
     draft = store.pop(thread_id)
     if draft is None:
         return {"error": "no pending draft"}
@@ -137,7 +143,26 @@ def commit_review(
         target_action,
         target_name,
     )
+    _sync_index(retrieval, target_action, target_name)
     return {"status": "written", "action": target_action, "file_name": target_name}
+
+
+def _sync_index(
+    retrieval: RetrievalService | None,
+    action: str,
+    file_name: str,
+) -> None:
+    """Mirror one approved file into Chroma. Never raises to the review caller."""
+    if retrieval is None:
+        return
+    try:
+        if action == "delete":
+            retrieval.delete_note(file_name)
+            return
+        chunks = retrieval.index_note(file_name)
+        _logger.info("draft indexed file=%s chunks=%d", file_name, chunks)
+    except Exception:
+        _logger.exception("draft index failed action=%s file=%s", action, file_name)
 
 # 撰写草稿
 def _write_draft(

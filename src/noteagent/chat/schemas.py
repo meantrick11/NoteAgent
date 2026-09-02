@@ -2,9 +2,9 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-#/chat&/chat/user_exit的路由的请求体模型
+#/chat 路由的请求体模型
 class RequestModel(BaseModel):
-    """JSON body for /chat and /chat/user_exit."""
+    """JSON body for /chat."""
 
     question: str
     conversation_id: str | None = None

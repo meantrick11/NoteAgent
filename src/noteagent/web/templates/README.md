@@ -18,7 +18,6 @@ FastAPI `GET /` 返回的 HTML。不要把笔记正文或密钥写进模板。
 | DELETE | `/conversations/{id}` | —（204，删会话） |
 | POST | `/chat` | `question`、可选 `conversation_id` |
 | POST | `/chat/review` | `thread_id`、`action`，可选 `write_action`、`file_name` |
-| POST | `/chat/user_exit` | `question`、`thread_id`（空实现，不写 `context.md`） |
 
 SSE：先 `event: conversation`（`{id, title}`），再 `event: token` 拼进助手气泡、`event: draft` 渲染审批卡片。后端内部的 `assistant_final` 不推给页面。
 

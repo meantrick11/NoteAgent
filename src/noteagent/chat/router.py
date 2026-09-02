@@ -164,16 +164,3 @@ async def chat_review(
         write_action=require.write_action,
         file_name=require.file_name,
     )
-
-# 用户离开页面时触发；summarize_on_exit 为空实现，不再写 context.md
-@router.post("/chat/user_exit")
-async def chat_user_exit(
-    request: Request,
-    require: Annotated[RequestModel, Body()],
-) -> dict[str, str]:
-    """Trigger session summarization when the user leaves the chat."""
-    agent = request.app.state.container.chat_agent
-    _logger.info("[thread=%s] User exit: summarizing session", require.thread_id)
-    await agent.summarize_on_exit(require.thread_id)
-    _logger.info("[thread=%s] User exit: finished", require.thread_id)
-    return {"status": "finished"}

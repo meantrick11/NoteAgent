@@ -33,6 +33,10 @@ class ChromaVectorStore:
             metadatas=metadatas,
         )
 
+    def delete_by_file_name(self, file_name: str) -> None:
+        """Remove all chunks whose metadata file_name matches. No-op if none exist."""
+        self._collection.delete(where={"file_name": file_name})
+
     def query(self, embedding: list[float], top_k: int) -> list[SearchHit]:
         """Nearest-neighbor search; empty Chroma fields become empty hits."""
         results = self._collection.query(

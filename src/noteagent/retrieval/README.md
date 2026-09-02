@@ -1,6 +1,6 @@
 # retrieval
 
-把已有 Markdown 切块、向量化、写入 Chroma，再按查询返回片段。不改笔记文件、不改聊天状态。
+把已有 Markdown 切块、向量化、写入 Chroma，再按查询返回片段。不改笔记文件、不改聊天状态。架构细则：[docs/architecture/retrieval.md](../../../docs/architecture/retrieval.md)。
 
 ## 包含模块
 
@@ -8,8 +8,8 @@
 |------|------|------|
 | `chunker.py` | `MarkdownChunker` | 默认 chunk 500、overlap 50，中文标点分隔 |
 | `embedder.py` | `SentenceTransformerEmbedder` | 本地句向量；模型/缓存在 Settings |
-| `vector_store.py` | `ChromaVectorStore` | PersistentClient upsert / query |
-| `service.py` | `RetrievalService`、`Embedder` Protocol | `index_note`、`search` |
+| `vector_store.py` | `ChromaVectorStore` | PersistentClient upsert / query / 按 file_name 删除 |
+| `service.py` | `RetrievalService`、`Embedder` Protocol | `index_note`（先删再写）、`delete_note`、`search` |
 | `models.py` | `SearchHit` | `content`、`distance`、`metadata` |
 | `__init__.py` | 再导出常用类型 | |
 
@@ -23,10 +23,12 @@
 from noteagent.retrieval.service import RetrievalService
 # 或直接跑：uv run python scripts/index_notes.py Agent.md
 
-n = service.index_note("Agent.md")   # 返回 chunk 数
+n = service.index_note("Agent.md")   # 先删该文件旧点，再切块写入；返回 chunk 数
 hits = service.search("注意力机制", top_k=3)
 # hits[0].content / .distance / .metadata["file_name"]
 ```
+
+索引步骤 INFO 在 [`IndexTrace`](../observability/index_trace.py)，不在 chunker/embedder。`RetrievalService` 只在步骤边界调用。文件：`var/logs/noteagent.log`。
 
 聊天工具 `search_relative_from_chromadb` 内部就是 `search`。检索黄金集（尚未填）预定在 [`evals/rag/`](../../../evals/rag/README.md)，与 `tests/` 分开。
 

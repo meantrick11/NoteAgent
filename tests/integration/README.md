@@ -6,8 +6,8 @@
 
 | 文件 | 覆盖 |
 |------|------|
-| `test_app.py` | 首页、SSE、会话 CRUD、messages 隐藏 tool stub、`user_exit` 不写 `context.md`、只入库最终 assistant |
-| `test_retrieval_service.py` | 假向量下 index + search，metadata 带 `file_name` |
+| `test_app.py` | 首页、SSE、会话 CRUD、messages 隐藏 tool stub、只入库最终 assistant |
+| `test_retrieval_service.py` | 假向量下 index + search；reindex 去掉旧 chunk；审批 create 后可搜；索引步骤 INFO |
 
 `test_app.py` 用 `FakeAgent` 注入 `AppContainer`，不跑真实模型。
 

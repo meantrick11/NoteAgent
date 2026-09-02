@@ -1,8 +1,8 @@
 # NoteAgent
 
-个人学习笔记助手。对话里把值得保留的内容整理成 Markdown 草稿，**经前端审批后**才写入 `notes/`。检索是手动索引后的粗 RAG，供问答和后续文章生成用。
+个人学习笔记助手。对话里把值得保留的内容整理成 Markdown 草稿，**经前端审批后**才写入 `notes/`，并按该文件重建 Chroma。检索仍是粗 RAG（字符切块 + MiniLM）。
 
-正式说明：[项目架构书](docs/architecture/architecture.md)、[草稿生成](docs/architecture/draft-generation.md)、[短期记忆](docs/architecture/context-management.md)。阅读顺序见 [docs/README.md](docs/README.md)。提示词人工评测见 [evals/](evals/README.md)。尚未做 Job 状态机、审批后自动索引。
+正式说明：[项目架构书](docs/architecture/architecture.md)。工具参数、上下文公式、表结构见同目录附件。阅读顺序见 [docs/README.md](docs/README.md)。提示词人工评测见 [evals/](evals/README.md)。
 
 ## 仓库里有什么
 
@@ -58,7 +58,7 @@ uv run python main.py
 | `HOST` / `PORT` | 服务监听 |
 | `LOG_DIR` / `LOG_LEVEL` | 日志 |
 
-手动索引（审批写入后若要能语义检索，需跑一次）：
+审批写入后会自动按该文件重建向量。collection 损坏时仍可手动重建：
 
 ```bash
 uv run python scripts/index_notes.py Agent.md

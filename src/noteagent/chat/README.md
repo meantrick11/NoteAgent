@@ -6,14 +6,14 @@ HTTP 聊天、`bind_tools` Agent、工具、**人审之后才写盘**。不直�
 
 | 文件 | 模块 | 作用 |
 |------|------|------|
-| `router.py` | `router` | `GET /`、会话 CRUD、`POST /chat`、`POST /chat/review`、`POST /chat/user_exit` |
+| `router.py` | `router` | `GET /`、会话 CRUD、`POST /chat`、`POST /chat/review` |
 | `agent.py` | `ChatAgent` | `bind_tools` 循环；SSE token / 内部 `assistant_final` / draft；每步写 tool stub；hop 上限来自 budget |
 | `history.py` | `ConversationStore` | 会话/消息唯一写入口；`start_turn`、`append_tool_stub`、`apply_compact`、`list_persistent_after_watermark` |
 | `context_budget.py` | `ContextBudget`、`budget_from_settings` | 窗口 W、压缩比例、stub 截断、`max_tool_hops` |
 | `context_tokens.py` | `estimate_tokens`、`prefix_until_tokens` | 字符/4 估算，无 tiktoken |
 | `context_compact.py` | `group_turns`、`select_turns_to_drop` 等 | 完整 Turn 边界压缩 |
 | `context_pack.py` | `build_pack` | Persistent + summary + 当前 Runtime；用户句若有编号/`##` 标题则注入「材料标题树」 |
-| `drafts.py` | `DraftStore`、`NoteDraft`、`ProposeNoteInput`、`commit_review` | 按会话暂存提案；`propose_note` 的 args_schema；同意后 create/append/replace/delete |
+| `drafts.py` | `DraftStore`、`NoteDraft`、`ProposeNoteInput`、`commit_review` | 按会话暂存提案；同意后写盘并同步 Chroma |
 | `tools.py` | `build_chat_tools` | `list_files`、`read_file`、`search_*`、`propose_note`（无写盘；四动作）。契约：[docs/architecture/chat-tools.md](../../../docs/architecture/chat-tools.md) |
 | `schemas.py` | 请求/响应体 | 含 `ConversationOut`、`MessageOut` |
 | [`prompts/`](prompts/README.md) | `system.txt` | 现行五要素提示（含 replace/delete 写模式）；归档 [`prompts/iterations/`](prompts/iterations/README.md) v1–v7 |
@@ -31,7 +31,7 @@ from noteagent.chat.agent import ChatAgent
 
 drafts = DraftStore()
 tools = build_chat_tools(notes, retrieval, drafts)
-agent = ChatAgent(model, tools, notes, drafts, history=history, budget=budget_from_settings(settings))
+agent = ChatAgent(model, tools, notes, drafts, history=history, budget=budget_from_settings(settings), retrieval=retrieval)
 
 async for item in agent.stream("讲一下 for 循环", thread_id="t1", turn_id=start_turn()):
     # token / draft；assistant_final 只给路由写库，不推前端
@@ -45,8 +45,7 @@ HTTP：
 - `GET /conversations/{id}/messages`：气泡，仅 `user`/`assistant`（**无 tool stub**）
 - `PATCH` / `DELETE /conversations/{id}`：重命名不改 `updated_at`；删除 CASCADE
 - `POST /chat` JSON：`{"question": "...", "conversation_id": "<uuid>"?}`。先落库 user（带 `turn_id`），SSE：`conversation` → `token` / `draft`；结束后只把最终 assistant 入库
-- `POST /chat/review`：审批草稿
-- `POST /chat/user_exit`：200 `{status: finished}`；`summarize_on_exit` 为空，**不写** `context.md`
+- `POST /chat/review`：审批草稿；写盘成功后同步该文件向量
 
 跨回合记忆 = watermark 后 Persistent（user + 最终 assistant + tool stub）+ `running_summary`。当前 Turn 工具全文只活在本次 `stream()` 的 Runtime。压缩阈值全部来自 Settings，不在 compact/agent 里写死窗口数字。
 

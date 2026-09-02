@@ -12,7 +12,7 @@
 | `test_note_repository.py` | 创建/读写/删除、路径逃逸 |
 | `test_chunker.py` | 短文不拆、长文拆开 |
 | `test_chat_tools.py` | 工具列表无写盘；`propose_note` 四动作不落盘；`ProposeNoteInput` schema |
-| `test_drafts.py` | 同意追加/新建/覆盖/删除、override、拒绝 |
+| `test_drafts.py` | 同意追加/新建/覆盖/删除、override、拒绝；可选 retrieval 同步 |
 | `test_chat_history.py` | 标题归一化；create/get/list/append；级联删除；重命名/删除 |
 | `test_context_budget.py` | Settings → `ContextBudget` |
 | `test_context_tokens.py` | token 估算与 stub 截断 |

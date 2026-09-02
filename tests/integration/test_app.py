@@ -16,9 +16,6 @@ class FakeAgent:
         yield {"event": "token", "data": f"echo:{question}"}
         yield {"event": "assistant_final", "data": f"echo:{question}"}
 
-    async def summarize_on_exit(self, thread_id: str) -> None:
-        return None
-
     def review(self, thread_id: str, action: str, write_action=None, file_name=None):
         return {"status": "rejected"} if action == "reject" else {"status": "written", "file_name": "Go.md"}
 
@@ -77,7 +74,7 @@ def test_home_serves_template(tmp_path: Path):
     assert read_home_html() == response.text
 
 
-def test_chat_and_exit_routes(tmp_path: Path):
+def test_chat_and_review_routes(tmp_path: Path):
     client, history = _client(tmp_path)
     record = history.create("t")
     chat = client.post("/chat", json={"question": "你好", "thread_id": record.id})
@@ -92,13 +89,6 @@ def test_chat_and_exit_routes(tmp_path: Path):
     )
     assert review.status_code == 200
     assert review.json()["status"] == "rejected"
-
-    exit_response = client.post(
-        "/chat/user_exit",
-        json={"question": "", "thread_id": record.id},
-    )
-    assert exit_response.status_code == 200
-    assert exit_response.json() == {"status": "finished"}
 
 
 def test_chat_persists_messages(tmp_path: Path):
@@ -149,9 +139,6 @@ def test_chat_persists_final_assistant_not_tool_hop_tokens(tmp_path: Path):
             yield {"event": "token", "data": "calling-tool"}
             yield {"event": "assistant_final", "data": "done"}
 
-        async def summarize_on_exit(self, thread_id: str) -> None:
-            return None
-
         def review(self, thread_id: str, action: str, write_action=None, file_name=None):
             return {"status": "rejected"}
 
@@ -174,15 +161,6 @@ def test_chat_persists_final_assistant_not_tool_hop_tokens(tmp_path: Path):
     messages = client.get(f"/conversations/{conv_id}/messages").json()
     assert messages[1]["content"] == "done"
     assert _collect_tokens(chat.text) == "calling-tool"
-
-
-def test_user_exit_does_not_create_context_md(tmp_path: Path):
-    client, history = _client(tmp_path)
-    rec = history.create("t")
-    res = client.post("/chat/user_exit", json={"question": "", "thread_id": rec.id})
-    assert res.status_code == 200
-    assert res.json()["status"] == "finished"
-    assert not (tmp_path / "context.md").exists()
 
 
 def test_conversations_and_messages_routes(tmp_path: Path):
