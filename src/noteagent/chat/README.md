@@ -6,7 +6,7 @@ HTTP 聊天、`bind_tools` Agent、工具、**人审之后才写盘**。不直�
 
 | 文件 | 模块 | 作用 |
 |------|------|------|
-| `router.py` | `router` | `GET /`、会话 CRUD、`POST /chat`、`POST /chat/review` |
+| `router.py` | `router` | `GET /`、`GET /documents`、会话 CRUD、`POST /chat`、`POST /chat/review` |
 | `agent.py` | `ChatAgent` | `bind_tools` 循环；SSE token / 内部 `assistant_final` / draft；每步写 tool stub；hop 上限来自 budget |
 | `history.py` | `ConversationStore` | 会话/消息唯一写入口；`start_turn`、`append_tool_stub`、`apply_compact`、`list_persistent_after_watermark` |
 | `context_budget.py` | `ContextBudget`、`budget_from_settings` | 窗口 W、压缩比例、stub 截断、`max_tool_hops` |
@@ -16,7 +16,7 @@ HTTP 聊天、`bind_tools` Agent、工具、**人审之后才写盘**。不直�
 | `drafts.py` | `DraftStore`、`NoteDraft`、`ProposeNoteInput`、`commit_review` | 按会话暂存提案；同意后写盘并同步 Chroma |
 | `tools.py` | `build_chat_tools` | `list_files`、`read_file`、`search_*`、`propose_note`（无写盘；四动作）。契约：[docs/architecture/chat-tools.md](../../../docs/architecture/chat-tools.md) |
 | `schemas.py` | 请求/响应体 | 含 `ConversationOut`、`MessageOut` |
-| [`prompts/`](prompts/README.md) | `system.txt` | 现行五要素提示（含 replace/delete 写模式）；归档 [`prompts/iterations/`](prompts/iterations/README.md) v1–v7 |
+| [`prompts/`](prompts/README.md) | `system.txt` | 现行五要素提示（含一层目录相对路径）；归档 [`prompts/iterations/`](prompts/iterations/README.md) v1–v8 |
 
 ## 基础使用
 

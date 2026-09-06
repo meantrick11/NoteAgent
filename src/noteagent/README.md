@@ -13,7 +13,7 @@
 | [`llm/`](llm/README.md) | 根据配置创建聊天模型 |
 | [`retrieval/`](retrieval/README.md) | 切块、向量、Chroma 检索 |
 | [`observability/`](observability/README.md) | 进程日志、LLM/工具追踪、索引步骤 |
-| [`web/`](web/README.md) | HTML 模板 |
+| [`web/`](web/README.md) | HTML 模板（Chat / Documents，见 [frontend.md](../../docs/architecture/frontend.md)） |
 
 依赖方向：`chat` 可以调 `notes`、`retrieval`、`llm`、`observability`、`db`。`retrieval` 可调 `observability`（`IndexTrace`）。`notes`、`retrieval` 与 `db` 不得 import `chat`。
 

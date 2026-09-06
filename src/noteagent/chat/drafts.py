@@ -1,6 +1,7 @@
 import logging
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -26,7 +27,7 @@ class ProposeNoteInput(BaseModel):
             "新知识默认 append 或 create，不要用 replace。"
         )
     )
-    file_name: str = Field(description="笔记文件名，如 Backtracking.md")
+    file_name: str = Field(description="笔记相对路径，如 Backtracking.md 或 Python/GIL.md")
     content: str = Field(
         default="",
         description=(
@@ -44,10 +45,11 @@ class ProposeNoteInput(BaseModel):
 
 #获取对应的笔记文件
 def markdown_name(file_name: str) -> str:
-    """Ensure a notes file name ends with .md."""
-    if not file_name.endswith(".md"):
-        return f"{file_name}.md"
-    return file_name
+    """Ensure a notes relative path ends with .md and uses /."""
+    name = file_name.replace("\\", "/").strip()
+    if not name.endswith(".md"):
+        return f"{name}.md"
+    return name
 
 #笔记草稿类
 @dataclass
@@ -174,7 +176,7 @@ def _write_draft(
     """Apply the approved action to disk. Does not call the LLM."""
     file_name = markdown_name(file_name)
     if action == "create":
-        title = file_name[:-3]
+        title = Path(file_name).stem
         notes.create(file_name, title)
         notes.write(file_name, content, append=True)
         return

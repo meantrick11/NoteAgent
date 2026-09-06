@@ -7,7 +7,7 @@
 | 文件 | 作用 |
 |------|------|
 | `system.txt` | **现行**系统提示（Agent 只读这一份）。结构为 Role / Context / Task / Constraint / Example；Constraint 为笔记六条质量 |
-| [`iterations/`](iterations/README.md) | 历次全文归档；现为 v1–v7。v7 与现行 `system.txt` 相同 |
+| [`iterations/`](iterations/README.md) | 历次全文归档；现为 v1–v8。v8 与现行 `system.txt` 相同 |
 
 `ChatAgent` 用文件路径读取，不经过包 import：
 

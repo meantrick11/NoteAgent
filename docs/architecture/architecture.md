@@ -7,9 +7,10 @@
 | 附件 | 内容 |
 |------|------|
 | [chat-tools.md](./chat-tools.md) | 四工具参数、返回值、人审动作 |
+| [frontend.md](./frontend.md) | 单页布局：Chat 与 Documents 树/编辑/拖拽/芯片 |
 | [context-management.md](./context-management.md) | 上下文 pack、K=T−F、stub 截断 |
 | [database.md](./database.md) | `conversations` / `messages` 列、索引、实例行 |
-| [retrieval.md](./retrieval.md) | 切块、Chroma 点、审批后同步、查询路径 |
+| [retrieval.md](./retrieval.md) | 切块、Chroma 点、人写盘后同步、查询路径 |
 
 读者：实现与维护本仓库的开发者。范围：`src/noteagent/`、`notes/`、`scripts/index_notes.py`、PostgreSQL 会话库、Chroma 派生索引。
 
@@ -19,7 +20,7 @@
 
 ### 1.1 一句话
 
-NoteAgent 是个人学习笔记助手：在浏览器里对话，把值得保留的内容整理成 Markdown 草稿，经用户在卡片上同意后写入本地 `notes/`；已索引的笔记可供语义问答。
+NoteAgent 是个人学习笔记助手：在浏览器里对话，把值得保留的内容整理成 Markdown 草稿，经用户在卡片上同意后写入本地 `notes/`；也可以在 Documents 里直接管这些文件。已索引的笔记可供语义问答。
 
 ### 1.2 产品形态
 
@@ -30,7 +31,7 @@ NoteAgent 是个人学习笔记助手：在浏览器里对话，把值得保留�
 ### 1.3 核心能力
 
 1. **对话。** 多会话侧栏、气泡历史、SSE 流式回复。
-2. **记笔记。** 模型通过工具提交草稿；用户审批后系统改文件（新建、追加、覆盖、删除）。
+2. **记笔记。** 模型通过工具提交草稿；用户审批后系统改文件（新建、追加、覆盖、删除）。Documents 页可直接新建、编辑、移动、删除已落地的 Markdown。
 3. **问旧知识。** 工具按语义检索已索引笔记片段，再组织回答。
 
 ### 1.4 运行时原则
@@ -38,12 +39,12 @@ NoteAgent 是个人学习笔记助手：在浏览器里对话，把值得保留�
 这三条决定了后面所有模块怎么切：
 
 1. **LLM 只出提案。** 工具不能 `open()` 笔记。`propose_note` 只把草稿放进内存。
-2. **磁盘只走人审。** `create` / `append` / `replace` / `delete` 只发生在 `commit_review`。
+2. **磁盘只走人类操作。** `create` / `append` / `replace` / `delete` 发生在聊天 `commit_review`，或 Documents 的 `/notes*`。工具不能写盘。
 3. **气泡不是全过程。** 前端只画 `user` 与最终 `assistant`。工具调用给模型和日志，不进侧栏。
 
 ### 1.5 文档目的
 
-打开本文应能回答：项目做什么、分成哪些模块、一次发消息数据怎么走、笔记为何不能由工具写盘、上下文为何分四层、已批准笔记如何进向量库、每个模块的代码在哪。
+打开本文应能回答：项目做什么、分成哪些模块、一次发消息数据怎么走、笔记为何不能由工具写盘、Documents 与聊天审批如何并列写盘、上下文为何分四层、已落地笔记如何进向量库、每个模块的代码在哪。界面布局见 [frontend.md](./frontend.md)。
 
 ---
 
@@ -85,20 +86,22 @@ NoteAgent 是个人学习笔记助手：在浏览器里对话，把值得保留�
 
 ```text
 浏览器  home.html
-    │  侧栏会话、气泡、输入、草稿卡片、SSE
+    │  顶栏 Chat | Documents
+    │  Chat：侧栏会话、气泡、输入、草稿卡片、SSE
+    │  Documents：一层目录树、编辑/预览、拖拽、芯片入库
     ▼
-HTTP  chat/router.py
-    │  会话 CRUD；POST /chat；POST /chat/review
+HTTP  chat/router.py     会话；POST /chat；POST /chat/review；下发 HTML
+      notes/router.py    Documents 对 notes/ 的读写与入库
     ▼
-ChatAgent  chat/agent.py
+ChatAgent  chat/agent.py          仅 Chat 路径
     │  装配上下文 → bind_tools 循环 → SSE token / draft
     ├── LLM          llm/factory.py          DeepSeek
     ├── 工具         chat/tools.py            只读 + 提案
     ├── 上下文       context_pack / compact   Persistent + Runtime
     ├── 会话写入口   chat/history.py          → PostgreSQL
-    ├── 草稿槽       chat/drafts.py           内存 DraftStore
-    ├── 笔记 IO      notes/repository.py      仅 commit_review 写入
-    └── 检索         retrieval/               工具 search；脚本 index
+    ├── 草稿槽       chat/drafts.py           内存 DraftStore；审批才写盘
+    ├── 笔记 IO      notes/repository.py      审批或 Documents HTTP 写入
+    └── 检索         retrieval/               工具 search；写盘后 index
 ```
 
 四种存储职责不同：PostgreSQL 管会话；`DraftStore` 管未审批全文；`notes/` 管正式知识；Chroma 管由 Markdown 派生的向量。
@@ -134,11 +137,15 @@ scripts/          按篇重建 Chroma 等
 
 ## 4. 关键流程（数据流）
 
-本节用一条主路径把前后端和存储串起来。模块内部细节见第 5 章。
+两条并行写盘路径共用 `notes/` 和 Chroma，不共用 Agent。模块内部细节见第 5 章；界面显隐见 [frontend.md](./frontend.md)。
+
+同一份 [`home.html`](../../src/noteagent/web/templates/home.html)：`GET /` 与 `GET /documents` 都下发它。顶栏切换只改 `#viewChat` / `#viewDocs` 的 `.active` 和地址栏，不再要 HTML。
+
+### 4.1 聊天：对话 → 提案 → 人审 → 磁盘
 
 ```mermaid
 flowchart TD
-  page["GET /  home.html"]
+  page["GET / 或 GET /documents 同一 home.html"]
   list["GET /conversations"]
   msgs["GET /conversations/id/messages"]
   post["POST /chat"]
@@ -169,11 +176,49 @@ flowchart TD
   chroma -->|search 工具| tools
 ```
 
-**进页。** `GET /` 下发页面；侧栏 `GET /conversations`；点会话 `GET /conversations/{id}/messages`，只渲染 user / assistant。
+**进页。** 下发页面；Chat 侧栏 `GET /conversations`；点会话 `GET /conversations/{id}/messages`，只渲染 user / assistant。
 
 **发一句。** `POST /chat`：先把本句 user 写入 PostgreSQL（新 `turn_id`），SSE 推 `conversation`（侧栏拿到 id），再 `ChatAgent.stream`。每一跳：按 watermark 后 Persistent、`running_summary`、本轮 Runtime、可选 draft 一行装配；超预算则压缩；再 `astream`。有 `tool_calls` 则本地执行、立刻写 stub、全文进 Runtime 再跳。无工具则推 `token`，路由把最终 assistant 入库。若本轮 `propose_note` 成功，再推 `draft`。
 
 **人审。** `POST /chat/review` → `commit_review` → 改 `notes/`。写盘成功后按该 `file_name` 删除旧向量，再对当前全文切块写入 Chroma（`delete` 只删向量）。索引失败只记日志，不回滚文件。手动 [`scripts/index_notes.py`](../../scripts/index_notes.py) 仍可整篇重建。
+
+### 4.2 Documents：树 → 编辑 → 人写盘 → 同一套向量
+
+不经过 Agent、不经过 `DraftStore`。
+
+```mermaid
+flowchart TD
+  page["同一 home.html"]
+  show["showView documents 显隐 不重新下发 HTML"]
+  tree["GET /notes"]
+  openNote["GET /notes/path"]
+  edit["textarea 与预览"]
+  save["PUT /notes/path"]
+  createNote["POST /notes"]
+  moveNote["POST /notes/move"]
+  delNote["DELETE /notes/path"]
+  indexChip["POST /notes/path/index"]
+  folderOps["folders 新建 改名 删除"]
+  disk["notes/*.md"]
+  chroma["Chroma"]
+
+  page --> show --> tree
+  tree -->|单击笔记| openNote --> edit
+  edit --> save --> disk
+  show --> createNote --> disk
+  show --> moveNote --> disk
+  show --> delNote --> disk
+  show --> folderOps --> disk
+  tree -->|点未索引| indexChip
+  disk --> chroma
+  indexChip --> chroma
+```
+
+**进 Documents。** 刷新 `/documents` 仍是同一 HTML，JS 按 pathname 显示 `#viewDocs`；点顶栏则只 `showView`。`GET /notes` 画树（mtime + 是否已索引）。
+
+**打开与保存。** 点笔记 `GET /notes/{path}` 填编辑器和预览。保存 `PUT` 覆盖后 `index_note`。新建 `POST /notes` 后立刻入库。拖到文件夹组确认后 `POST /notes/move`（删旧路径向量、索引新路径）。删笔记或删文件夹对其内每篇 `delete_note`。点灰芯片 `POST /notes/{path}/index` 只重建向量、不改文件。
+
+两条路径在磁盘和 Chroma 汇合；聊天检索工具读的就是这套索引。
 
 ---
 
@@ -185,41 +230,52 @@ flowchart TD
 
 ### 5.1 前端
 
-**职责。** 单页聊天：侧栏管会话，主栏画气泡，底栏发消息，草稿以卡片出现。不实现独立前端工程，不渲染工具过程。
+**职责。** 单页：顶栏切 Chat / Documents。Chat 侧栏管会话，主栏画气泡，底栏发消息，草稿以卡片出现。Documents 用一层目录树管已落地的 Markdown：打开即编辑+预览，保存/移动/删除/点芯片同步向量。不实现独立前端工程，不渲染工具过程。
 
-**结构与协作。** 页面由 `GET /` 下发 [`web/templates/home.html`](../../src/noteagent/web/templates/home.html)。进页或切会话：`loadConversations` → `GET /conversations`；点会话再 `GET /conversations/{id}/messages`。发一句：立刻画 user 气泡和空的 assistant 气泡，`fetch("/chat")` 读 SSE——`conversation` 记下 id 并刷新侧栏，`token` 用 marked 增量渲染，`draft` 画出审批卡片。审草稿：同意、拒绝，或在 create/append 时改目标文件；`POST /chat/review`。结果再画一条助手说明（已写入 / 已删除 / 已取消）。侧栏还可 `PATCH` 重命名、`DELETE` 删除会话。`isStreaming` 为真时不能连发。
+**结构与协作。** `GET /` 与 `GET /documents` 下发同一 [`web/templates/home.html`](../../src/noteagent/web/templates/home.html)，默认 Chat。Chat：`GET /conversations`、点会话再取消息、`POST /chat` 读 SSE、`POST /chat/review` 审草稿；会话三点走 `PATCH`/`DELETE /conversations/{id}`。Documents：文件夹与根 `.md` 同级；拖到文件夹组确认后 `POST /notes/move`；芯片 `POST /notes/{path}/index`。树、弹窗、同步滚动、两条写盘路径的界面约定见 [frontend.md](./frontend.md)。`isStreaming` 为真时不能连发。
 
-**为什么。** 界面只服务「对话 + 对人审草稿说是或否」。工具 hop 是模型内部过程，画出来会把笔记卡片和自我对话混在一起。单文件模板与 FastAPI 同进程下发，个人工具不需要打包流水线。
+**为什么。** Chat 仍是「对话 + 对人审草稿说是或否」。Documents 让人直接管磁盘上的笔记，保存即人写盘，不另建笔记表、不经过 Agent。两套 overlay 分开，避免聊天删会话和笔记确认抢同一个 DOM。工具 hop 仍不画在气泡里。
 
-**代码落点。** [`src/noteagent/web/templates/home.html`](../../src/noteagent/web/templates/home.html)；[`web/__init__.py`](../../src/noteagent/web/__init__.py) `read_home_html`。
+**代码落点。** [`src/noteagent/web/templates/home.html`](../../src/noteagent/web/templates/home.html)；[`web/__init__.py`](../../src/noteagent/web/__init__.py) `read_home_html`；界面附件 [frontend.md](./frontend.md)。
 
 ---
 
 ### 5.2 后端
 
-后端是同一 FastAPI 应用里的应用层：HTTP 只做会话与两次聊天动作；认知循环在 Agent；笔记与检索是 Agent 调用的能力，不是另一套服务。
+后端是同一 FastAPI 应用里的应用层：聊天 HTTP 只做会话与「生成 / 审批」；Documents HTTP 直写笔记并同步向量；认知循环在 Agent；笔记与检索不是另一套服务。
 
 #### 5.2.1 HTTP 路由
 
-**职责。** 把浏览器操作变成会话读写和「生成 / 审批」。路由里不调用 LLM，不直接 `open()` 笔记。
+**职责。** 把浏览器操作变成会话读写、「生成 / 审批」，以及 Documents 对笔记文件的读写。聊天路由不调用 LLM；笔记路由不经过 Agent。
 
-**结构与协作。** [`chat/router.py`](../../src/noteagent/chat/router.py) 由 `create_app` `include_router`。依赖从 `request.app.state.container` 取 `history` 与 `chat_agent`。请求体在 [`chat/schemas.py`](../../src/noteagent/chat/schemas.py)。
+**结构与协作。** [`chat/router.py`](../../src/noteagent/chat/router.py) 与 [`notes/router.py`](../../src/noteagent/notes/router.py) 由 `create_app` `include_router`。聊天依赖从 container 取 `history` 与 `chat_agent`；笔记取 `notes` 与 `retrieval`。
 
 `POST /chat` 在流式开始前跑 Depends `resolve_conversation`：未知 id 则 **SSE 之前** 404；无 id 则 `history.create`，标题来自首句截断。然后 `start_turn()`、`append_message(user)`，进入 `agent.stream`。SSE：`conversation` 的 data 为 `{id, title}`；`token` 为字符串增量；`draft` 为 pending JSON。内部事件 `assistant_final` 只给路由写库，不推前端。空 data 不 yield。
 
 | 方法 | 路径 | 谁调用谁 |
 |------|------|----------|
-| GET | `/` | 下发 home.html |
+| GET | `/` | 下发 home.html（Chat） |
+| GET | `/documents` | 同一模板，前端切 Documents |
 | GET | `/conversations` | `history.list_conversations`，侧栏按 `updated_at` 倒序 |
 | GET | `/conversations/{id}/messages` | `history.list_messages`（仅 user/assistant）；缺会话 404 |
 | PATCH | `/conversations/{id}` | `history.rename`；空标题或过长 400；不改 `updated_at` |
 | DELETE | `/conversations/{id}` | `history.delete`，消息 CASCADE；204 |
 | POST | `/chat` | 落库 user → `chat_agent.stream` → 落库最终 assistant |
 | POST | `/chat/review` | `chat_agent.review` → `commit_review` |
+| GET | `/notes` | 列表：相对路径、文件夹、mtime、是否已索引 |
+| GET | `/notes/{file_name}` | 读 Markdown |
+| POST | `/notes` | 新建笔记后 `index_note` |
+| PUT | `/notes/{file_name}` | 覆盖正文后 `index_note` |
+| DELETE | `/notes/{file_name}` | 删文件后 `delete_note` |
+| POST | `/notes/{file_name}/index` | 只重建向量，不改文件 |
+| POST | `/notes/folders` | 建一层空目录 |
+| POST | `/notes/folders/rename` | 改目录名；每篇删旧向量再索引新路径 |
+| DELETE | `/notes/folders/{name}` | 删该目录全部 `.md` 和向量（须写在 `DELETE /notes/{path}` 之前） |
+| POST | `/notes/move` | 搬家：删旧向量、索引新路径 |
 
-**为什么。** 未知会话若在 SSE 已经开始后再 404，浏览器会卡在半开的流上。路由不调模型，HTTP 层可测、模型循环集中在 Agent。重命名不碰 `updated_at`，避免改标题就把会话顶到侧栏最前。
+**为什么。** 未知会话若在 SSE 已经开始后再 404，浏览器会卡在半开的流上。聊天路由不调模型；Documents 路由直写 `notes/` 后同步 Chroma。重命名不碰 `updated_at`，避免改标题就把会话顶到侧栏最前。
 
-**代码落点。** [`chat/router.py`](../../src/noteagent/chat/router.py)、[`chat/schemas.py`](../../src/noteagent/chat/schemas.py)。
+**代码落点。** [`chat/router.py`](../../src/noteagent/chat/router.py)、[`chat/schemas.py`](../../src/noteagent/chat/schemas.py)、[`notes/router.py`](../../src/noteagent/notes/router.py)。
 
 #### 5.2.2 Agent
 
@@ -287,21 +343,21 @@ flowchart TD
 
 #### 5.2.6 笔记文件
 
-**职责。** `notes/` 是正式知识的事实源。人审之后才出现或改变文件。
+**职责。** `notes/` 是正式知识的事实源。人类操作（聊天审批或 Documents HTTP）之后才出现或改变文件。
 
-**结构与协作。** [`FileNoteRepository`](../../src/noteagent/notes/repository.py) 根目录来自 Settings（默认 `notes/`）。`list_notes` / `read` / `exists` 给工具；`create` / `write` / `delete` 只给 `commit_review`。`_resolve` 拒绝空名、绝对路径、`..`、子目录。聊天记忆不写 `notes/context.md`。
+**结构与协作。** [`FileNoteRepository`](../../src/noteagent/notes/repository.py) 根目录来自 Settings（默认 `notes/`）。`list_notes` / `read` / `exists` 给工具；`create` / `write` / `delete` / `move` / `create_folder` / `rename_folder` / `delete_folder` 给 `commit_review` 或 Documents HTTP。`_resolve` 拒绝空名、绝对路径、`..`、两层以上目录；允许 `Folder/Note.md`。聊天记忆不写 `notes/context.md`。不另建笔记状态表：mtime 用 `stat`，是否可检索看 Chroma。
 
-**为什么。** Markdown 可 git、可编辑器打开、可整目录拷走。禁止嵌套路径，避免把文件名当成逃逸通道。`create` 按文件名写一级标题，append 正文从 `##` 起，避免一篇两个 `#`。
+**为什么。** Markdown 可 git、可编辑器打开、可整目录拷走。只允许一层目录做分类，仍拦住路径逃逸。根文件留在 `notes/*.md`，树上不画虚拟「未分类」文件夹。`create` 按文件 stem 写一级标题，append 正文从 `##` 起，避免一篇两个 `#`。
 
-**代码落点。** [`notes/repository.py`](../../src/noteagent/notes/repository.py)；数据目录 [`notes/`](../../notes/README.md)。
+**代码落点。** [`notes/repository.py`](../../src/noteagent/notes/repository.py)、[`notes/router.py`](../../src/noteagent/notes/router.py)；数据目录 [`notes/`](../../notes/README.md)。
 
 #### 5.2.7 检索
 
 **职责。** 把已经在磁盘上的 Markdown 切块、向量化、写入 Chroma，按查询返回片段。不改笔记文件，不改聊天状态。
 
-**结构与协作。** [`RetrievalService`](../../src/noteagent/retrieval/service.py) 组合 [`MarkdownChunker`](../../src/noteagent/retrieval/chunker.py)（chunk 500、overlap 50）、[`SentenceTransformerEmbedder`](../../src/noteagent/retrieval/embedder.py)、[`ChromaVectorStore`](../../src/noteagent/retrieval/vector_store.py)。聊天只通过 `search_relative_from_chromadb` 调 `search(..., top_k=3)`，命中为 [`SearchHit`](../../src/noteagent/retrieval/models.py)。`index_note` 先按 `file_name` 删旧点再 upsert。`commit_review` 在写盘成功后调用 `index_note` 或 `delete_note`。手动脚本 [`scripts/index_notes.py`](../../scripts/index_notes.py) 走同一条 `index_note`。点结构、同步时序与查询丢掉 metadata 的现行行为见 [retrieval.md](./retrieval.md)。
+**结构与协作。** [`RetrievalService`](../../src/noteagent/retrieval/service.py) 组合 [`MarkdownChunker`](../../src/noteagent/retrieval/chunker.py)（chunk 500、overlap 50）、[`SentenceTransformerEmbedder`](../../src/noteagent/retrieval/embedder.py)、[`ChromaVectorStore`](../../src/noteagent/retrieval/vector_store.py)。聊天只通过 `search_relative_from_chromadb` 调 `search(..., top_k=3)`，命中为 [`SearchHit`](../../src/noteagent/retrieval/models.py)。`index_note` 先按 `file_name` 删旧点再 upsert。`commit_review` 与 Documents `notes/router` 在写盘成功后都调用 `index_note` 或 `delete_note`；点「未索引」只调 `index_note`。手动脚本 [`scripts/index_notes.py`](../../scripts/index_notes.py) 走同一条 `index_note`。点结构、同步时序与查询丢掉 metadata 的现行行为见 [retrieval.md](./retrieval.md)。
 
-**为什么。** 向量是派生数据，坏了可删 collection 重建，不必与人审同一事务。Agent 只拿片段文本，不操作 Chroma 内部 id。切块按字符，与扁平 `notes/*.md` 一致。
+**为什么。** 向量是派生数据，坏了可删 collection 重建，不必与人审同一事务。Agent 只拿片段文本，不操作 Chroma 内部 id。切块按字符；`file_name` metadata 是相对路径（根文件或 `Folder/Note.md`）。
 
 **代码落点。** [`src/noteagent/retrieval/`](../../src/noteagent/retrieval/README.md)、[`scripts/index_notes.py`](../../scripts/index_notes.py)；细则 [retrieval.md](./retrieval.md)。
 
@@ -353,7 +409,7 @@ ORM：[`db/models.py`](../../src/noteagent/db/models.py)。连接：[`db/engine.
 | 正式笔记 | `notes/*.md` | 人审后的事实源 |
 | 检索向量 | Chroma | 由已批准 Markdown 派生；写盘成功后按文件重建，可删重建 |
 
-信息流：用户句 → PG user 行 → Agent pack →（工具全文仅 Runtime，stub 进 PG）→ SSE → PG assistant 行；提案全文走 DraftStore → 人审 → `notes/` → 该文件 Chroma 点。
+信息流：用户句 → PG user 行 → Agent pack →（工具全文仅 Runtime，stub 进 PG）→ SSE → PG assistant 行；提案全文走 DraftStore → 人审 → `notes/` → 该文件 Chroma 点。Documents 直接改 `notes/` 再同步同一套 Chroma，不经过 DraftStore。
 
 ---
 

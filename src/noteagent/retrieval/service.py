@@ -77,6 +77,10 @@ class RetrievalService:
         self._trace.done(file_name, len(chunks), _elapsed_ms(started))
         return len(chunks)
 
+    def is_indexed(self, file_name: str) -> bool:
+        """True if Chroma has at least one chunk for this relative path."""
+        return self._store.has_file_name(file_name)
+
     def search(self, query: str, top_k: int = 3) -> list[SearchHit]:
         """Return the top_k nearest note chunks for the query."""
         embedding = self._embedder.embed_query(query)

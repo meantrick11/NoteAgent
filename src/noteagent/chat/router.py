@@ -32,6 +32,12 @@ async def home() -> str:
     """Serve the single-page chat UI."""
     return read_home_html()
 
+
+@router.get("/documents", response_class=HTMLResponse)
+async def documents_home() -> str:
+    """Same SPA; frontend switches to the Documents view."""
+    return read_home_html()
+
 #在初始路由之后，直接尝试加载对应的历史对话
 @router.get("/conversations")
 async def list_conversations(request: Request) -> list[ConversationOut]:

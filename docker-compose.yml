@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: noteagent
+      POSTGRES_PASSWORD: noteagent
+      POSTGRES_DB: noteagent
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U noteagent -d noteagent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      HOST: "0.0.0.0"
+      DATABASE_URL: postgresql+psycopg://noteagent:noteagent@db:5432/noteagent
+      NOTES_DIR: notes
+      CHROMA_DIR: chromadb_persist
+      EMBEDDING_CACHE_DIR: var/models
+      EMBEDDING_LOCAL_FILES_ONLY: "true"
+      LOG_DIR: var/logs
+    volumes:
+      - ./notes:/app/notes
+      - chroma_data:/app/chromadb_persist
+      - app_logs:/app/var/logs
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  chroma_data:
+  app_logs:

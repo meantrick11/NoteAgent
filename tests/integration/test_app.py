@@ -71,6 +71,17 @@ def test_home_serves_template(tmp_path: Path):
     assert response.status_code == 200
     assert "NoteAgent" in response.text
     assert "conversationList" in response.text
+    assert "Documents" in response.text
+    assert "btnNewNote" in response.text
+    assert "移动到所选" not in response.text
+    assert read_home_html() == response.text
+
+
+def test_documents_route_serves_same_template(tmp_path: Path):
+    client, _ = _client(tmp_path)
+    response = client.get("/documents")
+    assert response.status_code == 200
+    assert "Documents" in response.text
     assert read_home_html() == response.text
 
 

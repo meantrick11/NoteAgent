@@ -5,7 +5,7 @@
 | 项 | 内容 |
 |---|---|
 | 事实源 | 人审后的 `notes/*.md`。Chroma 是派生索引，可删光按文件重建 |
-| 触发 | `commit_review` 写盘成功后同步该 `file_name`；`reject` 不碰向量 |
+| 触发 | 聊天 `commit_review` 写盘成功后同步该 `file_name`；Documents `/notes*` 写盘或点芯片同样走 `index_note` / `delete_note`；`reject` 不碰向量 |
 | 切块 / 模型 | `MarkdownChunker` 500/50；默认 `all-MiniLM-L6-v2`。换模型只改环境变量 |
 | 不是 | 用户勾选入库、PDF 直接 embed、出处 SSE、标题感知切块 |
 
@@ -28,11 +28,12 @@
 | 来源 | 进 Chroma？ |
 |------|-------------|
 | 人审写入或改过的 `notes/*.md` | 是。按文件整篇重建 |
-| 人审删除的文件 | 否。只删该 `file_name` 的点 |
+| Documents 新建 / 保存 / 移动 / 点「未索引」 | 是。同一条 `index_note` |
+| 人审或 Documents 删除的文件 | 否。只删该 `file_name` 的点 |
 | `DraftStore`、PG 消息、`context.md` | 否 |
 | 用户 PDF / 图片 / 网页正文 | 否（现行无此路径） |
 
-进程启动**不会**扫描 `notes/` 全量索引。盘上已有、从未经过这次同步的文件，要搜到仍须对该篇跑 [`scripts/index_notes.py`](../../scripts/index_notes.py)，或再批准一次写盘。
+进程启动**不会**扫描 `notes/` 全量索引。盘上已有、从未经过这次同步的文件，要搜到仍须对该篇跑 [`scripts/index_notes.py`](../../scripts/index_notes.py)，或在 Documents 点「未索引」，或再批准一次写盘。
 
 ---
 
@@ -44,6 +45,10 @@ POST /chat/review
   → _sync_index
        delete     → RetrievalService.delete_note(file_name)
        create / append / replace → index_note(file_name)
+
+PUT / POST / DELETE /notes* 、POST /notes/{path}/index
+  → notes/router 改磁盘（index 接口不改文件）
+  → _try_index / _try_delete_index（同一套 index_note / delete_note）
 ```
 
 `index_note`：

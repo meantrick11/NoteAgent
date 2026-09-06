@@ -11,6 +11,7 @@ from noteagent.chat.context_budget import budget_from_settings
 from noteagent.chat.drafts import DraftStore    #
 from noteagent.chat.history import ConversationStore
 from noteagent.chat.router import router as chat_router
+from noteagent.notes.router import router as notes_router
 from noteagent.chat.tools import build_chat_tools
 from noteagent.db import create_engine_from_url, create_session_factory
 from noteagent.llm.factory import create_chat_model
@@ -96,4 +97,5 @@ def create_app(container: AppContainer) -> FastAPI:
     app = FastAPI(lifespan=lifespan)
     app.state.container = container   #将容器(包括所有的chat_agent,db,history等的一个container容器类)attach到应用状态
     app.include_router(chat_router)   #注册聊天路由
+    app.include_router(notes_router)
     return app   #返回FastAPI应用

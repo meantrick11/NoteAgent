@@ -9,9 +9,9 @@
 | `test_import.py` | 包从 `src/noteagent` 导入 |
 | `test_settings.py` | 路径解析、密钥不出现在 repr、env 覆盖 |
 | `test_app_container.py` | `build_container` 要求 `DATABASE_URL` |
-| `test_note_repository.py` | 创建/读写/删除、路径逃逸 |
+| `test_note_repository.py` | 创建/读写/删除、一层目录、路径逃逸 |
 | `test_chunker.py` | 短文不拆、长文拆开 |
-| `test_chat_tools.py` | 工具列表无写盘；`propose_note` 四动作不落盘；`ProposeNoteInput` schema |
+| `test_chat_tools.py` | 工具列表无写盘；`propose_note` 四动作不落盘；一层路径；`ProposeNoteInput` schema |
 | `test_drafts.py` | 同意追加/新建/覆盖/删除、override、拒绝；可选 retrieval 同步 |
 | `test_chat_history.py` | 标题归一化；create/get/list/append；级联删除；重命名/删除 |
 | `test_context_budget.py` | Settings → `ContextBudget` |

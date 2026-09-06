@@ -5,6 +5,7 @@
 | 文档 | 主题 |
 |------|------|
 | [../architecture/architecture.md](../architecture/architecture.md) | 项目架构书 |
+| [../architecture/frontend.md](../architecture/frontend.md) | Chat / Documents 界面 |
 | [../architecture/chat-tools.md](../architecture/chat-tools.md) | 聊天工具 |
 | [../architecture/context-management.md](../architecture/context-management.md) | 上下文装配细则 |
 | [../architecture/database.md](../architecture/database.md) | PostgreSQL 会话表 |

@@ -2,7 +2,7 @@
 
 运行时只读上一级 [`system.txt`](../system.txt)。本目录是归档，**不要**改 `ChatAgent` 去加载这里的文件。
 
-从 `system.txt` 入库到现在一共 **7 版**。
+从 `system.txt` 入库到现在一共 **8 版**。
 
 | 版 | 日期 | 来源 | 文件 | 改了什么 |
 |----|------|------|------|----------|
@@ -12,6 +12,7 @@
 | v4 | 2026-09-01 | 标题树 | [v4-2026-09-01-heading-tree.txt](./v4-2026-09-01-heading-tree.txt) | 原标题含编号照抄并映射 `##`/`###`/`####`；禁止合并/自拟标题 |
 | v5 | 2026-09-01 | 五要素+六条 | [v5-2026-09-01-five-elements.txt](./v5-2026-09-01-five-elements.txt) | Role/Context/Task/Constraint/Example；Constraint 写入忠实/完整/结构/流畅/形态/可检索 |
 | v6 | 2026-09-01 | Markdown 写法 | [v6-2026-09-01-md-syntax.txt](./v6-2026-09-01-md-syntax.txt) | 形态合适：围栏代码、行内 code、`>` 引用、块间空行。与当时 `system.txt` 相同 |
-| v7 | 2026-09-01 | 写模式 | [v7-2026-09-01-replace-delete.txt](./v7-2026-09-01-replace-delete.txt) | `propose_note` 增加 replace（整文件覆盖）与 delete；模型先判断 append/create/replace/delete。与现行 `system.txt` 相同 |
+| v7 | 2026-09-01 | 写模式 | [v7-2026-09-01-replace-delete.txt](./v7-2026-09-01-replace-delete.txt) | `propose_note` 增加 replace（整文件覆盖）与 delete；模型先判断 append/create/replace/delete |
+| v8 | 2026-09-05 | 一层目录 | [v8-2026-09-05-one-level-folders.txt](./v8-2026-09-05-one-level-folders.txt) | `file_name` 可为 `Folder/Note.md`；list_files 带文件夹；禁止擅自 mkdir。与现行 `system.txt` 相同 |
 
 加新版时：复制当时的 `system.txt` 为 `vN-日期-短名.txt`，在本表追加一行，不要改旧档。人工回归见 [evals/prompt/](../../../../../evals/prompt/README.md)。

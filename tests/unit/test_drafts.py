@@ -62,6 +62,25 @@ def test_approve_creates_new_file(tmp_path: Path):
     assert "## 控制流" in text
 
 
+def test_approve_creates_file_in_folder_uses_stem_title(tmp_path: Path):
+    notes = FileNoteRepository(tmp_path)
+    notes.create_folder("Python")
+    store = _store_with(NoteDraft(
+        action="create",
+        file_name="Python/GIL.md",
+        content="## 锁\n\n解释器锁。\n\n",
+    ))
+    result = commit_review(notes, store, "t1", "approve")
+    assert result == {
+        "status": "written",
+        "action": "create",
+        "file_name": "Python/GIL.md",
+    }
+    text = notes.read("Python/GIL.md")
+    assert text.startswith("# GIL")
+    assert "## 锁" in text
+
+
 def test_override_appends_to_other_file(tmp_path: Path):
     notes = FileNoteRepository(tmp_path)
     notes.create("A.md", "A")

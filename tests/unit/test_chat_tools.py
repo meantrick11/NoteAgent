@@ -133,3 +133,30 @@ def test_propose_note_uses_input_schema(tmp_path: Path):
     field = schema.model_fields["content"]
     assert "禁止自拟" in (field.description or "")
     assert "围栏" in (field.description or "")
+
+
+def test_list_files_includes_one_level_path(tmp_path: Path):
+    repo = FileNoteRepository(tmp_path)
+    repo.create_folder("Python")
+    repo.create("Python/GIL.md", "GIL")
+    tools = _tool_map(repo)
+    result = tools["list_files"].invoke({})
+    assert result["files"] == ["Python/GIL.md"]
+    assert result["folders"] == ["Python"]
+
+
+def test_propose_create_accepts_folder_path(tmp_path: Path):
+    repo = FileNoteRepository(tmp_path)
+    repo.create_folder("Python")
+    drafts = DraftStore()
+    tools = _tool_map(repo, drafts)
+    result = _propose(
+        tools,
+        action="create",
+        file_name="Python/GIL.md",
+        content="## GIL\n\n全局解释器锁。\n\n",
+    )
+    assert result["status"] == "pending_review"
+    assert result["file_name"] == "Python/GIL.md"
+    assert drafts.get("t1").file_name == "Python/GIL.md"
+    assert not repo.exists("Python/GIL.md")

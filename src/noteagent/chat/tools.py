@@ -20,16 +20,16 @@ def build_chat_tools(
 ) -> list[BaseTool]:
     """Build list/read/search/propose tools. Disk writes happen only after review."""
     #列处所有文件的工具
-    @tool("list_files", description="列出 notes/ 下已有笔记文件名。提案前必须先调用。")
+    @tool("list_files", description="列出 notes/ 下已有笔记相对路径（含 Folder/Note.md）和一层文件夹名。提案前必须先调用。")
     def list_files() -> dict:
         try:
-            return {"files": notes.list_notes()}
+            return {"files": notes.list_notes(), "folders": notes.list_folders()}
         except Exception as exc:
             return {"error": str(exc)}
     #读取文件内容的工具
     @tool(
         "read_file",
-        description="读取已存在的笔记。file_name 为文件名如 Agent.md。不能创建或修改文件。",
+        description="读取已存在的笔记。file_name 为相对路径，如 Agent.md 或 Python/GIL.md。不能创建或修改文件。",
     )
     def read_file(file_name: str) -> dict:
         if not file_name:
@@ -57,7 +57,7 @@ def build_chat_tools(
             "提交笔记草稿供用户审批，不会写入磁盘。"
             "action：append 追加；create 新建；replace 覆盖已有全文；delete 删除文件。"
             "新内容默认 append 或 create。更正过时正文才 replace；明确删文件才 delete。"
-            "file_name 如 Backtracking.md。"
+            "file_name 如 Backtracking.md 或 Python/GIL.md。"
             "content 为 Markdown。create/append 不要写一级标题；"
             "replace 须为读到的完整文件（含原有一级标题）；delete 可空。"
             "reason 一句话说明分类理由；similar 为逗号分隔的相近已有文件名。"

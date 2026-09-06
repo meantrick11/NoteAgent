@@ -1,16 +1,17 @@
 # architecture
 
-[`architecture.md`](./architecture.md) 统领现行全局架构。下面四份是附件（参数、公式、表列、检索点），不替代架构书。
+[`architecture.md`](./architecture.md) 统领现行全局架构。下面是附件（参数、公式、表列、检索点、界面），不替代架构书。
 
 ## 现行
 
 | 文件 | 内容 |
 |------|------|
 | [architecture.md](./architecture.md) | **架构说明书**（简介、背景、总体架构、模块设计、数据架构） |
+| [frontend.md](./frontend.md) | 单页 Chat / Documents 布局、树、拖拽、芯片、弹窗 |
 | [chat-tools.md](./chat-tools.md) | Agent 四工具：工作流、参数、人审落盘 |
 | [context-management.md](./context-management.md) | 上下文装配与压缩细则 |
 | [database.md](./database.md) | PostgreSQL 两表、Store、实例 |
-| [retrieval.md](./retrieval.md) | 切块、Chroma 点、审批后同步、查询路径 |
+| [retrieval.md](./retrieval.md) | 切块、Chroma 点、人写盘后同步、查询路径 |
 
 评测数据不在本目录：仓库根 [`evals/`](../../evals/README.md)。
 

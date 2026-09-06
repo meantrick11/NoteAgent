@@ -22,7 +22,7 @@
 - 磁盘只在用户审批后的 `commit_review` → `_write_draft`：`FileNoteRepository.create` / `write` / `delete`。
 - 审批写盘成功后同步该文件的 Chroma 点（先删旧再索引；`delete` 只删向量）。失败不回滚 Markdown。手动 [`scripts/index_notes.py`](../../scripts/index_notes.py) 仍可用。
 
-路径规则在 [`FileNoteRepository._resolve`](../../src/noteagent/notes/repository.py)：拒绝空名、绝对路径、`..`、子目录。工具侧把异常收成 `{error: str}`。
+路径规则在 [`FileNoteRepository._resolve`](../../src/noteagent/notes/repository.py)：拒绝空名、绝对路径、`..`、两层以上目录；允许一层 `Folder/Note.md`。工具侧把异常收成 `{error: str}`。
 
 ---
 
@@ -89,9 +89,9 @@ flowchart TD
 
 | | |
 |--|--|
-| 描述（schema） | 列出 `notes/` 下已有笔记文件名。提案前必须先调用。 |
+| 描述（schema） | 列出 `notes/` 下已有笔记相对路径和一层文件夹。提案前必须先调用。 |
 | 参数 | 无 |
-| 成功 | `{files: list[str]}` — `notes.list_notes()`（排序后的文件名） |
+| 成功 | `{files: list[str], folders: list[str]}` — `list_notes()` 与 `list_folders()` |
 | 失败 | `{error}` |
 | 副作用 | 无写盘 |
 
@@ -99,7 +99,7 @@ flowchart TD
 
 | | |
 |--|--|
-| 描述 | 读取已存在的笔记。`file_name` 如 `Agent.md`。不能创建或修改文件。 |
+| 描述 | 读取已存在的笔记。`file_name` 如 `Agent.md` 或 `Python/GIL.md`。不能创建或修改文件。 |
 | 参数 | `file_name: str` |
 | 成功 | `{file_content: str}` — `notes.read` |
 | 失败 | 空名 `{error: "no target file given"}`；缺失 / 路径非法 `{error}` |

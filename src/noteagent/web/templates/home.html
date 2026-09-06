@@ -28,6 +28,245 @@
     color: var(--text);
     height: 100vh;
     display: flex;
+    flex-direction: column;
+  }
+  .app-nav {
+    height: var(--header-height);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .app-nav .brand { font-weight: 700; font-size: 15px; margin-right: 16px; }
+  .app-nav a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 14px;
+    padding: 6px 12px;
+    border-radius: 8px;
+  }
+  .app-nav a.active { color: var(--text); background: var(--bg); font-weight: 600; }
+  .app-shell {
+    flex: 1;
+    display: none;
+    min-height: 0;
+  }
+  .app-shell.active { display: flex; }
+  .docs-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .docs-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-wrap: wrap;
+  }
+  .docs-toolbar select, .docs-toolbar input {
+    font-size: 13px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: inherit;
+  }
+  .docs-toolbar button {
+    font-size: 13px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    cursor: pointer;
+  }
+  .docs-toolbar button.primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .docs-toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .docs-editor {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+  .docs-editor textarea {
+    flex: 1;
+    border: none;
+    resize: none;
+    padding: 16px;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    outline: none;
+    background: var(--surface);
+  }
+  .docs-preview {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    border-left: 1px solid var(--border);
+    font-size: 14px;
+    line-height: 1.7;
+    background: var(--bg);
+  }
+  .docs-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .docs-file:hover { background: var(--bg); }
+  .docs-file.active { background: var(--bg); }
+  .docs-folder-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 8px 10px 4px;
+    font-weight: 600;
+  }
+  .status-chip {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--border);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+  .status-chip.on { background: #dcfce7; color: #166534; }
+  .status-chip.clickable { cursor: pointer; }
+  .status-chip.busy { cursor: wait; opacity: 0.7; pointer-events: none; }
+
+  #viewDocs .sidebar { width: 300px; }
+  #viewDocs .sidebar-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .docs-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    position: relative;
+    border-left: 3px solid transparent;
+    user-select: none;
+  }
+  #docsTree.drop-target { background: #e5e7eb; }
+  .docs-row:hover { background: var(--bg); }
+  .docs-row.active { background: var(--bg); border-left-color: var(--accent); }
+  .docs-row.selected { background: var(--bg); }
+  .docs-row.child { padding-left: 28px; }
+  .docs-row.drop-target { background: #e5e7eb; }
+  .docs-folder-group { border-radius: 8px; }
+  .docs-folder-group.drop-target { background: #e5e7eb; }
+  .docs-folder-group.drop-target .docs-row,
+  .docs-folder-group.drop-target .docs-row:hover {
+    background: transparent;
+  }
+  .docs-row .docs-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .docs-icon, .docs-chevron {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--text-secondary);
+  }
+  .docs-chevron { transition: transform 0.15s; }
+  .docs-chevron.collapsed { transform: rotate(-90deg); }
+  .docs-count {
+    font-size: 11px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+  .docs-more {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .docs-more:hover { background: var(--border); color: var(--text); }
+  .docs-tree-menu {
+    position: fixed;
+    display: none;
+    min-width: 120px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    z-index: 100;
+  }
+  .docs-header-inner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    width: 100%;
+  }
+  #docsHeader.main-header {
+    height: auto;
+    min-height: var(--header-height);
+    padding: 8px 24px;
+  }
+  .docs-title {
+    font-size: 16px;
+    font-weight: 650;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .docs-dirty-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+  .docs-mtime {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .docs-editor textarea { overflow-y: auto; }
+  .modal-input {
+    display: block;
+    width: 100%;
+    font-size: 14px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: inherit;
+    margin-bottom: 16px;
+  }
+  .modal-input[hidden] { display: none; }
+  .modal-btn.confirm.ok:hover {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
   }
 
   /* ====== Sidebar ====== */
@@ -455,12 +694,16 @@
 </style>
 </head>
 <body>
+<nav class="app-nav">
+  <span class="brand">📒 NoteAgent</span>
+  <a href="/" id="navChat" class="active">Chat</a>
+  <a href="/documents" id="navDocs">Documents</a>
+</nav>
 
+<div id="viewChat" class="app-shell active">
 <!-- Sidebar -->
 <aside class="sidebar">
-  <div class="sidebar-header">
-    <span class="logo">📒</span> NoteAgent
-  </div>
+  <div class="sidebar-header">会话</div>
   <div class="sidebar-body">
     <div id="conversationList"></div>
     <p class="placeholder" id="historyEmpty">暂无对话</p>
@@ -498,6 +741,48 @@
     </div>
   </div>
 </div>
+</div>
+
+<div id="viewDocs" class="app-shell">
+  <aside class="sidebar">
+    <div class="sidebar-header">笔记</div>
+    <div class="sidebar-body" id="docsTree"></div>
+    <div class="sidebar-footer">
+      <button class="btn-new-chat" type="button" id="btnNewNote">＋ 新建笔记</button>
+      <button class="btn-new-chat" type="button" id="btnNewFolder">＋ 新建文件夹</button>
+    </div>
+  </aside>
+  <div class="docs-main">
+    <div class="main-header" id="docsHeader">
+      <div class="docs-header-inner">
+        <span class="docs-title" id="docsTitle">选择一篇笔记</span>
+        <span class="docs-dirty-dot" id="docsDirtyDot" hidden></span>
+        <span class="status-chip" id="docsIndexChip" hidden></span>
+        <span class="docs-mtime" id="docsMtime"></span>
+      </div>
+    </div>
+    <div class="docs-toolbar">
+      <button type="button" class="primary" id="btnSaveDoc" disabled>保存</button>
+      <button type="button" id="btnDeleteDoc" disabled>删除</button>
+    </div>
+    <div class="docs-editor">
+      <textarea id="docsText" placeholder="打开左侧笔记后可在此编辑 Markdown" disabled></textarea>
+      <div class="docs-preview" id="docsPreview"></div>
+    </div>
+  </div>
+</div>
+
+<div id="docsOverlay" class="modal-overlay">
+  <div class="modal">
+    <h3 class="modal-title" id="docsModalTitle"></h3>
+    <p class="modal-body" id="docsModalBody"></p>
+    <input class="modal-input" id="docsModalInput" hidden>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn cancel" id="docsModalCancel">取消</button>
+      <button type="button" class="modal-btn confirm" id="docsModalOk">确认</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // ========== 状态 ==========
@@ -508,6 +793,680 @@ const chatInner = document.getElementById("chatInner");
 const chatContainer = document.getElementById("chatContainer");
 const textarea = document.getElementById("question");
 const btnSend = document.getElementById("btnSend");
+
+let docsCatalog = { files: [], folders: [] };
+let docsCurrent = null;
+let docsDirty = false;
+let docsAnchor = null;
+let docsCollapsed = new Set();
+let docsModalResolve = null;
+let docsMenuKind = "";
+let docsMenuId = "";
+let docsSuppressClick = false;
+let docsDrag = null;
+let docsScrollLock = false;
+let docsIndexing = new Set();
+
+const docsTreeMenu = document.createElement("div");
+docsTreeMenu.className = "docs-tree-menu";
+docsTreeMenu.innerHTML = `
+  <button type="button" class="conversation-menu-item" data-docs-menu="rename">重命名</button>
+  <button type="button" class="conversation-menu-item" data-docs-menu="delete">删除</button>
+`;
+document.body.appendChild(docsTreeMenu);
+
+function noteUrl(fileName) {
+  return "/notes/" + fileName.split("/").map(encodeURIComponent).join("/");
+}
+
+function docsBasename(path) {
+  return path.includes("/") ? path.split("/").pop() : path;
+}
+
+function docsParent(path) {
+  return path.includes("/") ? path.split("/")[0] : "";
+}
+
+function docsTargetFolder() {
+  if (docsAnchor && docsAnchor.kind === "folder") return docsAnchor.id;
+  if (docsCurrent && docsCurrent.includes("/")) return docsParent(docsCurrent);
+  return "";
+}
+
+function formatMtime(ts) {
+  if (!ts) return "";
+  return new Date(ts * 1000).toLocaleString();
+}
+
+function isDocumentsPath() {
+  return location.pathname.replace(/\/$/, "") === "/documents";
+}
+
+async function showView(name, push) {
+  const docs = name === "documents";
+  if (!docs && isDocumentsPath() && docsDirty) {
+    const ok = await docsConfirm({
+      title: "未保存修改",
+      body: "有未保存修改，确定离开？",
+      danger: false,
+    });
+    if (!ok) return;
+  }
+  document.getElementById("viewChat").classList.toggle("active", !docs);
+  document.getElementById("viewDocs").classList.toggle("active", docs);
+  document.getElementById("navChat").classList.toggle("active", !docs);
+  document.getElementById("navDocs").classList.toggle("active", docs);
+  const path = docs ? "/documents" : "/";
+  if (push && location.pathname !== path) {
+    history.pushState({ view: name }, "", path);
+  }
+  if (docs) loadDocuments();
+}
+
+document.getElementById("navChat").addEventListener("click", (e) => {
+  e.preventDefault();
+  showView("chat", true);
+});
+document.getElementById("navDocs").addEventListener("click", (e) => {
+  e.preventDefault();
+  showView("documents", true);
+});
+window.addEventListener("popstate", () => {
+  showView(isDocumentsPath() ? "documents" : "chat", false);
+});
+window.addEventListener("beforeunload", (e) => {
+  if (docsDirty) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
+
+function closeDocsModal(result) {
+  document.getElementById("docsOverlay").style.display = "none";
+  const resolve = docsModalResolve;
+  docsModalResolve = null;
+  if (resolve) resolve(result);
+}
+
+function openDocsModal({ title, body, value, input, danger, confirmText, alert }) {
+  if (docsModalResolve) closeDocsModal(null);
+  return new Promise((resolve) => {
+    docsModalResolve = resolve;
+    document.getElementById("docsModalTitle").textContent = title;
+    const bodyEl = document.getElementById("docsModalBody");
+    bodyEl.textContent = body || "";
+    bodyEl.hidden = !body;
+    const field = document.getElementById("docsModalInput");
+    field.hidden = !input;
+    field.value = input ? (value || "") : "";
+    document.getElementById("docsModalCancel").hidden = !!alert;
+    const ok = document.getElementById("docsModalOk");
+    ok.textContent = confirmText || "确认";
+    ok.classList.toggle("ok", !danger);
+    document.getElementById("docsOverlay").style.display = "flex";
+    if (input) {
+      field.focus();
+      field.select();
+    } else {
+      ok.focus();
+    }
+  });
+}
+
+function docsConfirm({ title, body, danger = true }) {
+  return openDocsModal({ title, body, danger, input: false });
+}
+
+function docsPrompt({ title, body, value }) {
+  return openDocsModal({ title, body, value, input: true, danger: false });
+}
+
+function docsAlert(title, body) {
+  return openDocsModal({ title, body, danger: false, input: false, alert: true }).then(() => {});
+}
+
+document.getElementById("docsModalCancel").addEventListener("click", () => closeDocsModal(null));
+document.getElementById("docsModalOk").addEventListener("click", () => {
+  const field = document.getElementById("docsModalInput");
+  if (!field.hidden) closeDocsModal(field.value);
+  else closeDocsModal(true);
+});
+document.getElementById("docsOverlay").addEventListener("click", (e) => {
+  if (e.target.id === "docsOverlay") closeDocsModal(null);
+});
+document.getElementById("docsModalInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    closeDocsModal(e.target.value);
+  }
+});
+
+function setDocsEnabled(on) {
+  document.getElementById("docsText").disabled = !on;
+  document.getElementById("btnSaveDoc").disabled = !on;
+  document.getElementById("btnDeleteDoc").disabled = !on;
+}
+
+function renderDocsPreview() {
+  const text = document.getElementById("docsText").value || "";
+  document.getElementById("docsPreview").innerHTML = text
+    ? marked.parse(text)
+    : "";
+}
+
+function setIndexChip(chip, indexed, fileName) {
+  chip.hidden = false;
+  const busy = docsIndexing.has(fileName);
+  chip.className = "status-chip" + (indexed ? " on" : " clickable") + (busy ? " busy" : "");
+  chip.textContent = indexed ? "已索引" : (busy ? "入库中…" : "未索引");
+  chip.onclick = indexed ? null : (e) => {
+    e.stopPropagation();
+    indexDocument(fileName, chip);
+  };
+}
+
+function renderDocsHeader() {
+  const title = document.getElementById("docsTitle");
+  const dot = document.getElementById("docsDirtyDot");
+  const chip = document.getElementById("docsIndexChip");
+  const mtime = document.getElementById("docsMtime");
+  if (!docsCurrent) {
+    title.textContent = "选择一篇笔记";
+    title.removeAttribute("title");
+    dot.hidden = true;
+    chip.hidden = true;
+    chip.onclick = null;
+    mtime.textContent = "";
+    return;
+  }
+  title.textContent = docsBasename(docsCurrent);
+  title.title = docsCurrent;
+  dot.hidden = !docsDirty;
+  const meta = (docsCatalog.files || []).find((f) => f.file_name === docsCurrent);
+  setIndexChip(chip, !!(meta && meta.indexed), docsCurrent);
+  mtime.textContent = meta ? formatMtime(meta.mtime) : "";
+}
+
+function iconSvg(kind) {
+  const wrap = document.createElement("span");
+  wrap.className = kind === "folder" ? "docs-icon" : "docs-icon";
+  wrap.innerHTML = kind === "folder"
+    ? '<svg class="docs-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h6l2 2h10v10H3z"/></svg>'
+    : '<svg class="docs-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/></svg>';
+  return wrap;
+}
+
+function closeDocsMenu() {
+  docsTreeMenu.style.display = "none";
+  docsMenuKind = "";
+  docsMenuId = "";
+}
+
+function openDocsMenu(kind, id, button) {
+  if (docsMenuKind === kind && docsMenuId === id && docsTreeMenu.style.display === "block") {
+    closeDocsMenu();
+    return;
+  }
+  docsMenuKind = kind;
+  docsMenuId = id;
+  docsTreeMenu.style.display = "block";
+  const rect = button.getBoundingClientRect();
+  const menuW = docsTreeMenu.offsetWidth;
+  const menuH = docsTreeMenu.offsetHeight;
+  let left = rect.right - menuW;
+  left = Math.max(8, Math.min(left, window.innerWidth - menuW - 8));
+  let top = rect.bottom + 4;
+  if (top + menuH > window.innerHeight - 4) top = rect.top - menuH - 4;
+  docsTreeMenu.style.left = left + "px";
+  docsTreeMenu.style.top = top + "px";
+}
+
+function makeMoreButton(kind, id) {
+  const more = document.createElement("button");
+  more.type = "button";
+  more.className = "docs-more";
+  more.setAttribute("aria-label", "更多");
+  more.textContent = "…";
+  more.addEventListener("mousedown", (e) => e.stopPropagation());
+  more.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openDocsMenu(kind, id, more);
+  });
+  return more;
+}
+
+function clearDropTargets() {
+  document.querySelectorAll("#docsTree .drop-target").forEach((el) => el.classList.remove("drop-target"));
+  document.getElementById("docsTree").classList.remove("drop-target");
+}
+
+function dropFolderFromPoint(x, y) {
+  const el = document.elementFromPoint(x, y);
+  if (!el) return null;
+  const group = el.closest("#docsTree .docs-folder-group");
+  if (group) return group.dataset.folder;
+  const row = el.closest("#docsTree .docs-row");
+  if (row && row.dataset.dropFolder !== undefined) return row.dataset.dropFolder;
+  if (el.closest("#docsTree")) return "";
+  return null;
+}
+
+function startNoteDrag(fileName, e) {
+  docsDrag = { fileName, x: e.clientX, y: e.clientY, active: false };
+}
+
+function onDocsDragMove(e) {
+  if (!docsDrag) return;
+  const dist = Math.hypot(e.clientX - docsDrag.x, e.clientY - docsDrag.y);
+  if (!docsDrag.active && dist > 6) {
+    docsDrag.active = true;
+    docsSuppressClick = true;
+  }
+  if (!docsDrag.active) return;
+  clearDropTargets();
+  const folder = dropFolderFromPoint(e.clientX, e.clientY);
+  if (folder === null) return;
+  const tree = document.getElementById("docsTree");
+  if (folder === "") {
+    const row = document.elementFromPoint(e.clientX, e.clientY)?.closest(".docs-row");
+    if (row && row.dataset.dropFolder === "") row.classList.add("drop-target");
+    else tree.classList.add("drop-target");
+  } else {
+    const group = Array.from(tree.querySelectorAll(".docs-folder-group"))
+      .find((el) => el.dataset.folder === folder);
+    if (group) group.classList.add("drop-target");
+  }
+}
+
+async function onDocsDragEnd(e) {
+  const drag = docsDrag;
+  docsDrag = null;
+  clearDropTargets();
+  if (!drag || !drag.active) {
+    setTimeout(() => { docsSuppressClick = false; }, 0);
+    return;
+  }
+  const folder = dropFolderFromPoint(e.clientX, e.clientY);
+  setTimeout(() => { docsSuppressClick = false; }, 0);
+  if (folder === null) return;
+  const base = docsBasename(drag.fileName);
+  const dest = folder ? `${folder}/${base}` : base;
+  if (dest === drag.fileName) return;
+  const body = folder
+    ? `将「${base}」移动到「${folder}」？`
+    : `将「${base}」移回根目录？`;
+  const ok = await docsConfirm({ title: "移动笔记", body, danger: false });
+  if (!ok) return;
+  await moveNoteTo(drag.fileName, dest);
+}
+
+document.addEventListener("mousemove", onDocsDragMove);
+document.addEventListener("mouseup", onDocsDragEnd);
+
+function appendNoteRow(tree, file, child) {
+  const row = document.createElement("div");
+  const open = file.file_name === docsCurrent;
+  const selected = docsAnchor && docsAnchor.kind === "note" && docsAnchor.id === file.file_name;
+  row.className = "docs-row" + (child ? " child" : "") + (open ? " active" : "") + (selected && !open ? " selected" : "");
+  row.dataset.kind = "note";
+  row.dataset.id = file.file_name;
+  row.dataset.dropFolder = file.folder || "";
+  row.appendChild(iconSvg("file"));
+  const name = document.createElement("span");
+  name.className = "docs-name";
+  name.textContent = docsBasename(file.file_name);
+  name.title = file.file_name;
+  row.appendChild(name);
+  const chip = document.createElement("span");
+  setIndexChip(chip, file.indexed, file.file_name);
+  chip.addEventListener("mousedown", (e) => e.stopPropagation());
+  row.appendChild(chip);
+  row.appendChild(makeMoreButton("note", file.file_name));
+  row.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    startNoteDrag(file.file_name, e);
+  });
+  row.addEventListener("click", () => {
+    if (docsSuppressClick) return;
+    openDocument(file.file_name);
+  });
+  tree.appendChild(row);
+}
+
+function renderDocsTree() {
+  const tree = document.getElementById("docsTree");
+  tree.innerHTML = "";
+  const byFolder = {};
+  const rootFiles = [];
+  (docsCatalog.folders || []).forEach((folder) => { byFolder[folder] = []; });
+  (docsCatalog.files || []).forEach((file) => {
+    if (file.folder) {
+      if (!byFolder[file.folder]) byFolder[file.folder] = [];
+      byFolder[file.folder].push(file);
+    } else {
+      rootFiles.push(file);
+    }
+  });
+  (docsCatalog.folders || []).forEach((folder) => {
+    const files = byFolder[folder] || [];
+    const row = document.createElement("div");
+    const selected = docsAnchor && docsAnchor.kind === "folder" && docsAnchor.id === folder;
+    row.className = "docs-row" + (selected ? " selected" : "");
+    row.dataset.kind = "folder";
+    row.dataset.id = folder;
+    row.dataset.dropFolder = folder;
+    const chevron = document.createElement("span");
+    chevron.innerHTML = '<svg class="docs-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>';
+    const chevronSvg = chevron.firstChild;
+    if (docsCollapsed.has(folder)) chevronSvg.classList.add("collapsed");
+    row.appendChild(chevronSvg);
+    row.appendChild(iconSvg("folder"));
+    const name = document.createElement("span");
+    name.className = "docs-name";
+    name.textContent = folder;
+    name.title = folder;
+    row.appendChild(name);
+    const count = document.createElement("span");
+    count.className = "docs-count";
+    count.textContent = String(files.length);
+    row.appendChild(count);
+    row.appendChild(makeMoreButton("folder", folder));
+    chevronSvg.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (docsCollapsed.has(folder)) docsCollapsed.delete(folder);
+      else docsCollapsed.add(folder);
+      renderDocsTree();
+    });
+    row.addEventListener("click", () => {
+      docsAnchor = { kind: "folder", id: folder };
+      renderDocsTree();
+    });
+    const group = document.createElement("div");
+    group.className = "docs-folder-group";
+    group.dataset.folder = folder;
+    group.appendChild(row);
+    if (!docsCollapsed.has(folder)) {
+      files.forEach((file) => appendNoteRow(group, file, true));
+    }
+    tree.appendChild(group);
+  });
+  rootFiles.forEach((file) => appendNoteRow(tree, file, false));
+}
+
+async function loadDocuments() {
+  const res = await fetch("/notes");
+  if (!res.ok) return;
+  docsCatalog = await res.json();
+  renderDocsTree();
+  renderDocsHeader();
+}
+
+async function openDocument(fileName) {
+  if (docsDirty && docsCurrent && docsCurrent !== fileName) {
+    const ok = await docsConfirm({
+      title: "未保存修改",
+      body: "有未保存修改，确定切换？",
+      danger: false,
+    });
+    if (!ok) return;
+  }
+  const res = await fetch(noteUrl(fileName));
+  if (!res.ok) return;
+  const json = await res.json();
+  docsCurrent = json.file_name;
+  docsDirty = false;
+  docsAnchor = { kind: "note", id: docsCurrent };
+  const textarea = document.getElementById("docsText");
+  textarea.value = json.content || "";
+  setDocsEnabled(true);
+  renderDocsPreview();
+  renderDocsTree();
+  renderDocsHeader();
+}
+
+async function saveDocument() {
+  if (!docsCurrent) return;
+  const res = await fetch(noteUrl(docsCurrent), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: document.getElementById("docsText").value }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    await docsAlert("保存失败", String(json.detail || res.status));
+    return;
+  }
+  docsDirty = false;
+  await loadDocuments();
+  renderDocsHeader();
+}
+
+async function deleteCurrentNote() {
+  if (!docsCurrent) return;
+  await deleteNoteByName(docsCurrent);
+}
+
+async function deleteNoteByName(fileName) {
+  const ok = await docsConfirm({
+    title: "删除笔记",
+    body: `确定删除「${docsBasename(fileName)}」？删除后无法恢复。`,
+  });
+  if (!ok) return;
+  const res = await fetch(noteUrl(fileName), { method: "DELETE" });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    await docsAlert("删除失败", String(json.detail || res.status));
+    return;
+  }
+  if (docsCurrent === fileName) {
+    docsCurrent = null;
+    docsDirty = false;
+    document.getElementById("docsText").value = "";
+    setDocsEnabled(false);
+    renderDocsPreview();
+  }
+  await loadDocuments();
+}
+
+async function moveNoteTo(fromPath, toPath) {
+  const res = await fetch("/notes/move", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from: fromPath, to: toPath }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    await docsAlert("移动失败", String(json.detail || res.status));
+    return;
+  }
+  if (docsCurrent === fromPath) docsCurrent = json.file_name;
+  docsAnchor = { kind: "note", id: json.file_name };
+  await loadDocuments();
+  if (docsCurrent === json.file_name && !docsDirty) await openDocument(docsCurrent);
+}
+
+async function indexDocument(fileName, chipEl) {
+  if (docsIndexing.has(fileName)) return;
+  docsIndexing.add(fileName);
+  if (chipEl) {
+    chipEl.textContent = "入库中…";
+    chipEl.classList.add("busy");
+  }
+  renderDocsHeader();
+  const res = await fetch(noteUrl(fileName) + "/index", { method: "POST" });
+  const json = await res.json().catch(() => ({}));
+  docsIndexing.delete(fileName);
+  if (!res.ok) {
+    await docsAlert("入库失败", String(json.detail || res.status));
+    await loadDocuments();
+    return;
+  }
+  await loadDocuments();
+}
+
+async function renameNote(fileName) {
+  const current = docsBasename(fileName).replace(/\.md$/i, "");
+  const value = await docsPrompt({
+    title: "重命名笔记",
+    body: "输入新的文件名（可省略 .md）",
+    value: current,
+  });
+  if (value === null || !String(value).trim()) return;
+  const folder = docsParent(fileName);
+  const dest = folder ? `${folder}/${value.trim()}` : value.trim();
+  await moveNoteTo(fileName, dest);
+}
+
+async function renameFolder(name) {
+  const value = await docsPrompt({
+    title: "重命名文件夹",
+    body: "输入新的文件夹名（仅一层）",
+    value: name,
+  });
+  if (value === null || !String(value).trim() || value.trim() === name) return;
+  const res = await fetch("/notes/folders/rename", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from: name, to: value.trim() }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    await docsAlert("重命名失败", String(json.detail || res.status));
+    return;
+  }
+  if (docsCurrent && docsParent(docsCurrent) === name) {
+    docsCurrent = json.to_name + "/" + docsBasename(docsCurrent);
+  }
+  if (docsAnchor && docsAnchor.kind === "folder" && docsAnchor.id === name) {
+    docsAnchor = { kind: "folder", id: json.to_name };
+  }
+  if (docsCollapsed.has(name)) {
+    docsCollapsed.delete(name);
+    docsCollapsed.add(json.to_name);
+  }
+  await loadDocuments();
+}
+
+async function deleteFolder(name) {
+  const count = (docsCatalog.files || []).filter((f) => f.folder === name).length;
+  const ok = await docsConfirm({
+    title: "删除文件夹",
+    body: `确定删除文件夹「${name}」及其内 ${count} 篇笔记？笔记和对应向量都会删除，无法恢复。`,
+  });
+  if (!ok) return;
+  const res = await fetch("/notes/folders/" + encodeURIComponent(name), { method: "DELETE" });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    await docsAlert("删除失败", String(json.detail || res.status));
+    return;
+  }
+  if (docsCurrent && docsParent(docsCurrent) === name) {
+    docsCurrent = null;
+    docsDirty = false;
+    document.getElementById("docsText").value = "";
+    setDocsEnabled(false);
+    renderDocsPreview();
+  }
+  if (docsAnchor && docsAnchor.kind === "folder" && docsAnchor.id === name) docsAnchor = null;
+  await loadDocuments();
+}
+
+async function createFolder() {
+  const name = await docsPrompt({
+    title: "新建文件夹",
+    body: "文件夹名称（仅一层）",
+    value: "",
+  });
+  if (name === null || !String(name).trim()) return;
+  const res = await fetch("/notes/folders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: String(name).trim() }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    await docsAlert("创建失败", String(json.detail || res.status));
+    return;
+  }
+  docsAnchor = { kind: "folder", id: json.name };
+  await loadDocuments();
+}
+
+async function createNote() {
+  const folder = docsTargetFolder();
+  const value = await docsPrompt({
+    title: "新建笔记",
+    body: folder ? `将创建在「${folder}」下` : "将创建在根目录",
+    value: "",
+  });
+  if (value === null || !String(value).trim()) return;
+  const fileName = folder ? `${folder}/${value.trim()}` : value.trim();
+  const res = await fetch("/notes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file_name: fileName }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    await docsAlert("创建失败", String(json.detail || res.status));
+    return;
+  }
+  await loadDocuments();
+  await openDocument(json.file_name);
+}
+
+function syncDocsScroll(from, to) {
+  if (docsScrollLock) return;
+  const fromMax = from.scrollHeight - from.clientHeight;
+  const toMax = to.scrollHeight - to.clientHeight;
+  if (fromMax <= 0 || toMax <= 0) return;
+  docsScrollLock = true;
+  to.scrollTop = (from.scrollTop / fromMax) * toMax;
+  requestAnimationFrame(() => { docsScrollLock = false; });
+}
+
+document.getElementById("docsText").addEventListener("input", () => {
+  docsDirty = true;
+  renderDocsPreview();
+  renderDocsHeader();
+});
+document.getElementById("docsText").addEventListener("scroll", () => {
+  syncDocsScroll(document.getElementById("docsText"), document.getElementById("docsPreview"));
+});
+document.getElementById("docsPreview").addEventListener("scroll", () => {
+  syncDocsScroll(document.getElementById("docsPreview"), document.getElementById("docsText"));
+});
+document.getElementById("btnSaveDoc").addEventListener("click", saveDocument);
+document.getElementById("btnDeleteDoc").addEventListener("click", deleteCurrentNote);
+document.getElementById("btnNewFolder").addEventListener("click", createFolder);
+document.getElementById("btnNewNote").addEventListener("click", createNote);
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && isDocumentsPath()) {
+    e.preventDefault();
+    if (!docsModalResolve) saveDocument();
+  }
+  if (e.key === "Escape") {
+    closeDocsMenu();
+    if (docsModalResolve) closeDocsModal(null);
+  }
+});
+document.addEventListener("click", (e) => {
+  if (!docsTreeMenu.contains(e.target)) closeDocsMenu();
+});
+docsTreeMenu.querySelector('[data-docs-menu="rename"]').addEventListener("click", () => {
+  const kind = docsMenuKind;
+  const id = docsMenuId;
+  closeDocsMenu();
+  if (kind === "note") renameNote(id);
+  if (kind === "folder") renameFolder(id);
+});
+docsTreeMenu.querySelector('[data-docs-menu="delete"]').addEventListener("click", () => {
+  const kind = docsMenuKind;
+  const id = docsMenuId;
+  closeDocsMenu();
+  if (kind === "note") deleteNoteByName(id);
+  if (kind === "folder") deleteFolder(id);
+});
 
 // ========== 输入处理 ==========
 textarea.addEventListener("input", () => {
@@ -977,8 +1936,9 @@ async function sendReview(body) {
 
 // ========== 页面加载：载入历史 ==========
 document.addEventListener("DOMContentLoaded", async () => {
+  showView(isDocumentsPath() ? "documents" : "chat", false);
   const list = await loadConversations();
-  if (list.length) openConversation(list[0].id);
+  if (list.length && !isDocumentsPath()) openConversation(list[0].id);
 });
 
 </script>
