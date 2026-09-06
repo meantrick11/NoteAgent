@@ -7,7 +7,7 @@ HTTP 聊天、`bind_tools` Agent、工具、**人审之后才写盘**。不直�
 | 文件 | 模块 | 作用 |
 |------|------|------|
 | `router.py` | `router` | `GET /`、`GET /documents`、会话 CRUD、`POST /chat`、`POST /chat/review` |
-| `agent.py` | `ChatAgent` | `bind_tools` 循环；SSE token / 内部 `assistant_final` / draft；每步写 tool stub；hop 上限来自 budget |
+| `agent.py` | `ChatAgent` | `bind_tools` 循环；SSE token / 内部 `assistant_final` / draft；每步写 tool stub；hop 上限来自 budget；可选 `prompt_path`（默认 `prompts/system.txt`） |
 | `history.py` | `ConversationStore` | 会话/消息唯一写入口；`start_turn`、`append_tool_stub`、`apply_compact`、`list_persistent_after_watermark` |
 | `context_budget.py` | `ContextBudget`、`budget_from_settings` | 窗口 W、压缩比例、stub 截断、`max_tool_hops` |
 | `context_tokens.py` | `estimate_tokens`、`prefix_until_tokens` | 字符/4 估算，无 tiktoken |
@@ -59,7 +59,7 @@ HTTP：
 
 契约全文：[docs/architecture/context-management.md](../../../docs/architecture/context-management.md) §7.1。
 
-记笔记质量与意图门的人工集：[evals/](../../../evals/README.md)（不要放进 `tests/`）。
+记笔记质量与意图门：[evals/](../../../evals/README.md)。准则：[docs/evaluations/](../../../docs/evaluations/README.md)。离线跑分：`python scripts/eval_notes.py --ids b06,n05`。
 
 ```bash
 uv run pytest tests/unit/test_chat_agent_context.py tests/unit/test_context_store.py tests/unit/test_context_pack.py tests/integration/test_app.py -q

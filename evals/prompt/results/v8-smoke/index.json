@@ -1,0 +1,35 @@
+{
+  "sort": "worst_first",
+  "cases": [
+    {
+      "file": "01.md",
+      "id": "b06",
+      "kind": "behavior",
+      "behavior_pass": true,
+      "total": 89.35,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 70.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 100.0,
+        "retrievable": 80.0
+      }
+    },
+    {
+      "file": "02.md",
+      "id": "n05",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 97.99,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 76.92,
+        "retrievable": 100.0
+      }
+    }
+  ]
+}

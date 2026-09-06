@@ -12,4 +12,6 @@
 | [2026-09-02-auto-index-on-approve.md](./2026-09-02-auto-index-on-approve.md) | 人审写盘后按文件重建 Chroma（已做） |
 | [2026-09-05-documents-panel.md](./2026-09-05-documents-panel.md) | Chat \| Documents；一层目录分类；保存后按路径重索引 |
 | [2026-09-06-readme-tutorials.md](./2026-09-06-readme-tutorials.md) | 根 README 首页 + `docs/tutorials/`（按层级 × 语言）（已做） |
+| [2026-09-06-readme-homepage.md](./2026-09-06-readme-homepage.md) | 根 README 按 Adventure 结构写清功能与起步（已做） |
+| [2026-09-06-prompt-eval.md](./2026-09-06-prompt-eval.md) | 离线提示词评测：黄金集、L1 打分、一键脚本、`n05.md` 结果（已做） |
 | [draft-generation.md](./draft-generation.md) | 入库 Job / URL 源 / 自动索引设想，不是现行架构 |

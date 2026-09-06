@@ -93,7 +93,8 @@ uv run python scripts/index_notes.py Agent.md
 | [`notes/`](../../../notes/README.md) | 正式 Markdown 数据 |
 | [`scripts/`](../../../scripts/README.md) | 索引、API 冒烟 |
 | [`tests/`](../../../tests/README.md) | 单测 / 集成测（无真实 LLM） |
-| [`evals/`](../../../evals/README.md) | 提示词/Agent/RAG 黄金集；人工打分，不进默认 CI |
+| [`evals/`](../../../evals/README.md) | 黄金集；不进默认 CI |
+| [`docs/evaluations/`](../../evaluations/README.md) | 评测准则 |
 | [`docs/`](../../README.md) | 架构、教程、参考 |
 | [`var/`](../../../var/README.md) | 日志等运行时数据（不入库） |
 

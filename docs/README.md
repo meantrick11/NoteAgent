@@ -8,17 +8,18 @@
 
 ## 阅读顺序
 
-1. **[architecture/architecture.md](architecture/architecture.md)** — **架构说明书**：简介、背景、总体架构、数据流、前端/后端（含 Agent 与上下文）/数据库模块设计。
+1. **[architecture/architecture.md](architecture/architecture.md)** — **架构说明书**：简介、背景、总体架构、数据流、前端/后端（含 Agent 与上下文）/数据库模块设计、评测、数据架构。
 2. **[architecture/frontend.md](architecture/frontend.md)** — 单页布局：Chat 与 Documents 树、编辑预览、拖拽、芯片入库。
 3. **[architecture/chat-tools.md](architecture/chat-tools.md)** — 四工具参数、人审动作。
 4. **[architecture/context-management.md](architecture/context-management.md)** — 上下文装配公式、压缩、stub。
 5. **[architecture/database.md](architecture/database.md)** — PostgreSQL 两表列与实例。
-6. **[architecture/retrieval.md](architecture/retrieval.md)** — 切块、Chroma 点、人写盘后同步、查询。
-7. **[roadmap/versions.md](roadmap/versions.md)** — V1–V3 版本目标、小版本功能和验收要求。
-8. **`src/noteagent/**/README.md`** — 与代码同步的包说明。
-9. **[evals/](../evals/README.md)** — 提示词黄金集与人工评分（不进 pytest）。
-10. **[plans/](plans/README.md)** — 已做过的实现切片；另含未写入代码的入库 Job 设想。
-11. **[architecture/DESIGN.md](architecture/DESIGN.md)** — 屏幕/音频采集旧稿。不要按它写代码。
+6. **[evaluations/README.md](evaluations/README.md)** — 评测准则与账本划分（笔记正文 v0.1；工具 / RAG 以后）。数据不在这里。
+7. **[architecture/retrieval.md](architecture/retrieval.md)** — 切块、Chroma 点、人写盘后同步、查询。
+8. **[roadmap/versions.md](roadmap/versions.md)** — V1–V3 版本目标、小版本功能和验收要求。
+9. **`src/noteagent/**/README.md`** — 与代码同步的包说明。
+10. **[evals/](../evals/README.md)** — 黄金集（考题）；跑分结果在 [evals/prompt/results/](../evals/prompt/results/README.md)，不进 pytest。
+11. **[plans/](plans/README.md)** — 已做过的实现切片；另含未写入代码的入库 Job 设想。
+12. **[architecture/DESIGN.md](architecture/DESIGN.md)** — 屏幕/音频采集旧稿。不要按它写代码。
 
 ## 目录
 
@@ -30,5 +31,5 @@
 | [design/](design/README.md) | 子系统设计文档索引 |
 | [plans/](plans/README.md) | 实现规格与入库设想 |
 | [decisions/](decisions/README.md) | ADR，目前可空 |
-| [evaluations/](evaluations/README.md) | 指针：黄金集在仓库根 [evals/](../evals/README.md) |
+| [evaluations/](evaluations/README.md) | 评测准则（笔记正文 v0.1；工具 / RAG 以后）；黄金集在 [evals/](../evals/README.md) |
 | [references/](references/README.md) | 外部摘录，不是契约 |

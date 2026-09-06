@@ -11,8 +11,9 @@
 | [context-management.md](./context-management.md) | 上下文 pack、K=T−F、stub 截断 |
 | [database.md](./database.md) | `conversations` / `messages` 列、索引、实例行 |
 | [retrieval.md](./retrieval.md) | 切块、Chroma 点、人写盘后同步、查询路径 |
+| [../evaluations/README.md](../evaluations/README.md) | 评测准则（笔记正文 v0.1）；黄金集在 evals/ |
 
-读者：实现与维护本仓库的开发者。范围：`src/noteagent/`、`notes/`、`scripts/index_notes.py`、PostgreSQL 会话库、Chroma 派生索引。
+读者：实现与维护本仓库的开发者。范围：`src/noteagent/`、`notes/`、`scripts/index_notes.py`、PostgreSQL 会话库、Chroma 派生索引。评测不在请求路径上。
 
 ---
 
@@ -44,7 +45,7 @@ NoteAgent 是个人学习笔记助手：在浏览器里对话，把值得保留�
 
 ### 1.5 文档目的
 
-打开本文应能回答：项目做什么、分成哪些模块、一次发消息数据怎么走、笔记为何不能由工具写盘、Documents 与聊天审批如何并列写盘、上下文为何分四层、已落地笔记如何进向量库、每个模块的代码在哪。界面布局见 [frontend.md](./frontend.md)。
+打开本文应能回答：项目做什么、分成哪些模块、一次发消息数据怎么走、笔记为何不能由工具写盘、Documents 与聊天审批如何并列写盘、上下文为何分四层、已落地笔记如何进向量库、评测准则与生成链路如何隔离、每个模块的代码在哪。界面布局见 [frontend.md](./frontend.md)。评测细则见 [docs/evaluations/](../evaluations/README.md)。
 
 ---
 
@@ -397,7 +398,26 @@ ORM：[`db/models.py`](../../src/noteagent/db/models.py)。连接：[`db/engine.
 
 ---
 
-## 6. 数据架构
+## 6. 评测
+
+评测不是运行时模块，不在 `POST /chat` 路径上。模型提案仍只经人审写入 `notes/`。准则、考题、跑分结果分开放：
+
+| 内容 | 位置 |
+|------|------|
+| 准则与账本划分 | [docs/evaluations/](../evaluations/README.md) |
+| 笔记正文尺子 v0.1 | [docs/evaluations/note-quality.md](../evaluations/note-quality.md) |
+| 黄金集 | 仓库根 [evals/](../../evals/README.md) |
+| 离线跑分产物 | [evals/prompt/results/](../../evals/prompt/results/README.md) |
+
+三本账互不合成一个 Agent 总分：笔记正文（v0.1 已写准则）、工具轨迹（以后）、RAG（以后）。v0.1 只服务离线迭代 [`system.txt`](../../src/noteagent/chat/prompts/system.txt)，不拦截草稿、不按分数自动再生成。
+
+**为什么。** 改提示词需要固定考题和可重复的尺子。若把打分接进 Agent，会变成「生成 → 打分 → 再生成」，与「LLM 只出提案、磁盘只走人类操作」冲突。
+
+**代码落点。** [`prompt_eval/`](../../src/noteagent/prompt_eval/README.md)、[`scripts/eval_notes.py`](../../scripts/eval_notes.py)。考题：[`evals/prompt/cases.jsonl`](../../evals/prompt/cases.jsonl)。`chat` 不得 import `prompt_eval`。
+
+---
+
+## 7. 数据架构
 
 四种数据放在四个地方，不要混成一种 history：
 
@@ -413,7 +433,7 @@ ORM：[`db/models.py`](../../src/noteagent/db/models.py)。连接：[`db/engine.
 
 ---
 
-## 7. 运行与配置
+## 8. 运行与配置
 
 本机启动 PostgreSQL，设置 `DATABASE_URL`（`postgresql+psycopg://...`），`uv run alembic upgrade head`，再 `uv run python main.py`。浏览器访问监听地址（默认见 Settings 的 HOST/PORT）。
 

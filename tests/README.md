@@ -2,7 +2,7 @@
 
 锁定当前行为：路径安全、切块、工具不写盘、审批落盘、会话历史、上下文压缩、HTTP/SSE 冒烟。不要把真实 API key 写进用例。默认不加载真实 embedding / LLM。
 
-提示词与笔记质量的黄金集在 [`evals/`](../evals/README.md)，**不是**本目录；不要把要调真实聊天模型的用例放进 pytest。
+提示词与笔记质量的黄金集在 [`evals/`](../evals/README.md)，准则在 [`docs/evaluations/`](../docs/evaluations/README.md)，**都不是**本目录；不要把要调真实聊天模型的用例放进 pytest。
 
 ## 包含模块
 

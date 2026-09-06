@@ -57,6 +57,7 @@ class ChatAgent:
         budget: ContextBudget,
         summarize_dropped: Callable[[str | None, str], str] | None = None,
         retrieval: RetrievalService | None = None,
+        prompt_path: Path | None = None,
     ) -> None:
         self._model = model
         self._tools = tools
@@ -66,7 +67,7 @@ class ChatAgent:
         self._budget = budget
         self._summarize_dropped = summarize_dropped or self._default_summarize
         self._retrieval = retrieval
-        self._prompt_path = Path(__file__).resolve().parent / "prompts" / "system.txt"
+        self._prompt_path = prompt_path or Path(__file__).resolve().parent / "prompts" / "system.txt"
 
     def _default_summarize(self, old: str | None, dropped: str) -> str:
         """Summarize only the dropped turns into a fresh chunk; never rewrite old."""

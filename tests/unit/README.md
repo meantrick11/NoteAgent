@@ -20,6 +20,8 @@
 | `test_context_pack.py` | pack 装配；从用户句抽取编号/`##` 标题树 |
 | `test_context_store.py` | turn_id、stub、watermark、UI 过滤 tool |
 | `test_chat_agent_context.py` | stub 入库、跨 Turn 无全文工具、hop 上限、压缩 |
+| `test_prompt_eval_score.py` | v0.1 L1：标题树、发明标题、锚点、create 正文 H1 |
+| `test_prompt_eval_run.py` | 脚本化 Agent、seed_files、`n00.md` / `index.json` 布局 |
 
 ## 基础使用
 

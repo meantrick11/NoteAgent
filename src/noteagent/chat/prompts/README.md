@@ -17,4 +17,8 @@
 
 改 `system.txt` 后**重启进程**（每次 `stream()` 会重新读该文件）。不要改 `ChatAgent` 去加载 `iterations/`。
 
-人工黄金集（不进 pytest）：[evals/](../../../../evals/README.md)。改完提示词用 [`evals/prompt/cases.jsonl`](../../../../evals/prompt/cases.jsonl) 人工回归。
+人工黄金集（不进 pytest）：[evals/](../../../../evals/README.md)。准则：[docs/evaluations/note-quality.md](../../../../docs/evaluations/note-quality.md)。改完提示词：
+
+```bash
+python scripts/eval_notes.py --name v9 --prompt src/noteagent/chat/prompts/system.txt
+```

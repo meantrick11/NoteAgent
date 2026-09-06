@@ -14,10 +14,11 @@
 | [`retrieval/`](retrieval/README.md) | 切块、向量、Chroma 检索 |
 | [`observability/`](observability/README.md) | 进程日志、LLM/工具追踪、索引步骤 |
 | [`web/`](web/README.md) | HTML 模板（Chat / Documents，见 [frontend.md](../../docs/architecture/frontend.md)） |
+| [`prompt_eval/`](prompt_eval/README.md) | 离线提示词评测（chat 不得 import） |
 
-依赖方向：`chat` 可以调 `notes`、`retrieval`、`llm`、`observability`、`db`。`retrieval` 可调 `observability`（`IndexTrace`）。`notes`、`retrieval` 与 `db` 不得 import `chat`。
+依赖方向：`chat` 可以调 `notes`、`retrieval`、`llm`、`observability`、`db`。`retrieval` 可调 `observability`（`IndexTrace`）。`notes`、`retrieval` 与 `db` 不得 import `chat`。`prompt_eval` 可以调 `chat`；`chat` 不得 import `prompt_eval`。
 
-系统提示在 [`chat/prompts/`](chat/prompts/README.md)。记笔记人工评测在仓库根 [`evals/`](../../evals/README.md)，不在本包内。
+系统提示在 [`chat/prompts/`](chat/prompts/README.md)。记笔记评测准则在 [`docs/evaluations/`](../../docs/evaluations/README.md)，黄金集与跑分结果在仓库根 [`evals/`](../../evals/README.md)。
 
 ## 基础使用
 

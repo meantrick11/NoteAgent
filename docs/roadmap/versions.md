@@ -3,7 +3,7 @@
 本文规定 NoteAgent V1–V3 的产品目标、阶段问题、功能范围和验收要求。它回答“每一代要解决什么”，不替代现行架构说明和具体实现计划。
 
 - 当前系统结构：[architecture.md](../architecture/architecture.md)
-- 生成、Agent 与 RAG 评测：[evals/](../../evals/README.md)
+- 生成、Agent 与 RAG 评测：准则 [docs/evaluations/](../evaluations/README.md)；黄金集 [evals/](../../evals/README.md)
 - 具体实现任务：[plans/](../plans/README.md)
 
 ---
@@ -239,7 +239,7 @@ V2 是对整条 V1 链路的质量加固，不是单纯“继续改 prompt”。
 - 填充 RAG 查询集，标注正确文件、章节和可接受片段。
 - 增加 Agent 轨迹评测：是否先 list/read，再 propose。
 - 记录版本、模型、Prompt、embedding、chunk 配置和结果。
-- 生成报告写入 `var/eval/`，不把私人笔记全文提交到仓库。
+- 生成报告写入 [`evals/prompt/results/`](../../evals/prompt/results/README.md)，不把私人笔记全文提交到仓库。
 
 #### 指标
 

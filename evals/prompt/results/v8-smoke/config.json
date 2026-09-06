@@ -1,0 +1,12 @@
+{
+  "rubric_version": "v0.1",
+  "chat_model": "deepseek-v4-flash",
+  "prompt_sha256": "f001a27db44fb81a042bb2339275b2b6116835d84bd5c4b8c55d94df2e494513",
+  "prompt_path": "src/noteagent/chat/prompts/system.txt",
+  "started_at": "2026-09-06T11:24:03.319535+00:00",
+  "finished_at": "2026-09-06T11:24:14.669695+00:00",
+  "case_ids": {
+    "b06": "01.md",
+    "n05": "02.md"
+  }
+}
