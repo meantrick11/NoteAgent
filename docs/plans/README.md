@@ -14,4 +14,6 @@
 | [2026-09-06-readme-tutorials.md](./2026-09-06-readme-tutorials.md) | 根 README 首页 + `docs/tutorials/`（按层级 × 语言）（已做） |
 | [2026-09-06-readme-homepage.md](./2026-09-06-readme-homepage.md) | 根 README 按 Adventure 结构写清功能与起步（已做） |
 | [2026-09-06-prompt-eval.md](./2026-09-06-prompt-eval.md) | 离线提示词评测：黄金集、L1 打分、一键脚本、`n05.md` 结果（已做） |
+| [2026-09-07-chat-citations.md](./2026-09-07-chat-citations.md) | 聊天出处：`[[cite:N]]` → ①；`messages.citations` JSON；右侧笔记预览 |
+| [2026-09-07-chat-cite-edit.md](./2026-09-07-chat-cite-edit.md) | Chat 气泡同栏对齐；出处侧栏可保存（`PUT /notes`），无预览无删除 |
 | [draft-generation.md](./draft-generation.md) | 入库 Job / URL 源 / 自动索引设想，不是现行架构 |

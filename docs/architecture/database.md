@@ -19,7 +19,7 @@ PostgreSQL 只存会话与消息。笔记正文在 `notes/`；向量在 Chroma�
 | [`src/noteagent/db/models.py`](../../src/noteagent/db/models.py) | ORM：`Base`、`Conversation`、`Message` |
 | [`src/noteagent/db/engine.py`](../../src/noteagent/db/engine.py) | `create_engine_from_url`、`create_session_factory` |
 | [`src/noteagent/chat/history.py`](../../src/noteagent/chat/history.py) | 唯一业务写入口 `ConversationStore` |
-| [`alembic/versions/`](../../alembic/versions/) | 迁移。现行 head：`3d1c2b8a9e4f` |
+| [`alembic/versions/`](../../alembic/versions/) | 迁移。现行 head：`8c2e1a4b7d90` |
 | [`src/noteagent/bootstrap/app.py`](../../src/noteagent/bootstrap/app.py) | 无 `DATABASE_URL` 则 `build_container` 失败；shutdown `engine.dispose` |
 
 依赖：`chat` 可 import `db`；`db` 不得 import `chat`。路由只调 `ConversationStore`，不 `session.add`。
@@ -71,6 +71,7 @@ conversations 1 ──< messages
 | `output_preview` | Text | 是 | 工具输出前 N token（N 来自环境） |
 | `truncated` | Boolean | 否，默认 false | 输出是否被截成 preview |
 | `status` | Text | 是 | `ok` / `error` |
+| `citations` | JSON | 是 | 仅 assistant：本轮实际引用 `[{index, file_name, chunk_index, quote}]` |
 
 索引：`ix_messages_conversation_created`（`conversation_id`, `created_at`）；`ix_messages_conversation_turn`（`conversation_id`, `turn_id`）。
 
@@ -137,4 +138,4 @@ tool 行不存工具全文、不存 Agent 自我输出。截断规则见 [contex
 uv run alembic upgrade head
 ```
 
-现行 head `3d1c2b8a9e4f`（`down_revision = f16dee6e3c97`）。旧 `messages.turn_id` 可空，升级时按「遇到 user 开新 turn」回填。
+现行 head `8c2e1a4b7d90`（`down_revision = 3d1c2b8a9e4f`）。`messages.citations` 可空 JSON，仅 assistant 最终消息写入实际引用。旧 `messages.turn_id` 可空，升级时按「遇到 user 开新 turn」回填。

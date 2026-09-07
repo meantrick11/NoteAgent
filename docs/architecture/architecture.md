@@ -233,7 +233,7 @@ flowchart TD
 
 **职责。** 单页：顶栏切 Chat / Documents。Chat 侧栏管会话，主栏画气泡，底栏发消息，草稿以卡片出现。Documents 用一层目录树管已落地的 Markdown：打开即编辑+预览，保存/移动/删除/点芯片同步向量。不实现独立前端工程，不渲染工具过程。
 
-**结构与协作。** `GET /` 与 `GET /documents` 下发同一 [`web/templates/home.html`](../../src/noteagent/web/templates/home.html)，默认 Chat。Chat：`GET /conversations`、点会话再取消息、`POST /chat` 读 SSE、`POST /chat/review` 审草稿；会话三点走 `PATCH`/`DELETE /conversations/{id}`。Documents：文件夹与根 `.md` 同级；拖到文件夹组确认后 `POST /notes/move`；芯片 `POST /notes/{path}/index`。树、弹窗、同步滚动、两条写盘路径的界面约定见 [frontend.md](./frontend.md)。`isStreaming` 为真时不能连发。
+**结构与协作。** `GET /` 与 `GET /documents` 下发同一 [`web/templates/home.html`](../../src/noteagent/web/templates/home.html)，默认 Chat。Chat：`GET /conversations`、点会话再取消息、`POST /chat` 读 SSE、`POST /chat/review` 审草稿；点 ① 打开出处侧栏，保存走 `PUT /notes/{path}`；会话三点走 `PATCH`/`DELETE /conversations/{id}`。Documents：文件夹与根 `.md` 同级；拖到文件夹组确认后 `POST /notes/move`；芯片 `POST /notes/{path}/index`。树、弹窗、同步滚动、两条写盘路径的界面约定见 [frontend.md](./frontend.md)。`isStreaming` 为真时不能连发。
 
 **为什么。** Chat 仍是「对话 + 对人审草稿说是或否」。Documents 让人直接管磁盘上的笔记，保存即人写盘，不另建笔记表、不经过 Agent。两套 overlay 分开，避免聊天删会话和笔记确认抢同一个 DOM。工具 hop 仍不画在气泡里。
 
@@ -251,7 +251,7 @@ flowchart TD
 
 **结构与协作。** [`chat/router.py`](../../src/noteagent/chat/router.py) 与 [`notes/router.py`](../../src/noteagent/notes/router.py) 由 `create_app` `include_router`。聊天依赖从 container 取 `history` 与 `chat_agent`；笔记取 `notes` 与 `retrieval`。
 
-`POST /chat` 在流式开始前跑 Depends `resolve_conversation`：未知 id 则 **SSE 之前** 404；无 id 则 `history.create`，标题来自首句截断。然后 `start_turn()`、`append_message(user)`，进入 `agent.stream`。SSE：`conversation` 的 data 为 `{id, title}`；`token` 为字符串增量；`draft` 为 pending JSON。内部事件 `assistant_final` 只给路由写库，不推前端。空 data 不 yield。
+`POST /chat` 在流式开始前跑 Depends `resolve_conversation`：未知 id 则 **SSE 之前** 404；无 id 则 `history.create`，标题来自首句截断。然后 `start_turn()`、`append_message(user)`，进入 `agent.stream`。SSE：`conversation` 的 data 为 `{id, title}`；`sources` 为本轮实际引用列表；`token` 为净化后的最终正文；`draft` 为 pending JSON。内部事件 `assistant_final` 只给路由写库，不推前端。空 data 不 yield。
 
 | 方法 | 路径 | 谁调用谁 |
 |------|------|----------|
@@ -390,7 +390,7 @@ flowchart TD
 
 **结构与协作。** 两张表：`conversations` 1 — N `messages`，删会话 CASCADE。业务写入口只有 [`ConversationStore`](../../src/noteagent/chat/history.py)。`append_message` 只接受 `user` / `assistant`。`append_tool_stub` 写 `role=tool` 的预览行，不刷新 `updated_at`。前端 `list_messages` 过滤 tool 行。模型装配走 watermark 之后的全部 role。列、索引、实例见 [database.md](./database.md)。
 
-ORM：[`db/models.py`](../../src/noteagent/db/models.py)。连接：[`db/engine.py`](../../src/noteagent/db/engine.py)。迁移：[`alembic/versions/`](../../alembic/versions/)，head `3d1c2b8a9e4f`。
+ORM：[`db/models.py`](../../src/noteagent/db/models.py)。连接：[`db/engine.py`](../../src/noteagent/db/engine.py)。迁移：[`alembic/versions/`](../../alembic/versions/)，head `8c2e1a4b7d90`。
 
 **为什么。** 聊天要可切换、可重启恢复，所以进库。笔记要可读可搬家，所以不进这两张表。压缩改摘要和 watermark、不删行，早期气泡仍能画出来。stub 不顶 `updated_at`，避免一次 `list_files` 被当成「有新聊天」。`db` 不 import `chat`，表与 Agent 循环解耦。
 

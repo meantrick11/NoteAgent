@@ -15,6 +15,11 @@ from noteagent.chat.context_compact import (
     should_compact,
 )
 from noteagent.chat.context_pack import PackResult, build_pack, draft_workspace_line
+from noteagent.chat.citations import (
+    CitationRegistry,
+    current_citations,
+    sanitize_answer,
+)
 from noteagent.chat.drafts import (
     DraftStore,
     commit_review,
@@ -88,6 +93,8 @@ class ChatAgent:
         )
         token = current_thread_id.set(thread_id)
         token2 = current_turn_id.set(turn_id)
+        registry = CitationRegistry()
+        token3 = current_citations.set(registry)
         try:
             runtime: list = []
             tool_map = {t.name: t for t in self._tools}
@@ -183,9 +190,10 @@ class ChatAgent:
                 ai = assembled_ai
                 if ai is None or not getattr(ai, "tool_calls", None):
                     final_text = "".join(hop_tokens)
-                    for piece in hop_tokens:
-                        yield {"event": "token", "data": piece}
+                    final_text, used = sanitize_answer(final_text, registry)
+                    yield {"event": "sources", "data": used}
                     if final_text:
+                        yield {"event": "token", "data": final_text}
                         yield {"event": "assistant_final", "data": final_text}
                     break
                 if tool_rounds >= self._budget.max_tool_hops:
@@ -222,6 +230,7 @@ class ChatAgent:
         finally:
             current_thread_id.reset(token)
             current_turn_id.reset(token2)
+            current_citations.reset(token3)
 
     #用户检查的函数
     def review(

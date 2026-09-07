@@ -462,9 +462,95 @@
     padding: 24px 0;
   }
   .chat-inner {
-    max-width: 768px;
+    max-width: calc((100% + 768px) / 2);
     margin: 0 auto;
     padding: 0 24px;
+  }
+  .main-stage {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+  .cite-pane {
+    width: 42%;
+    min-width: 260px;
+    max-width: 520px;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+  }
+  .cite-pane[hidden] { display: none; }
+  .cite-pane-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .cite-pane-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cite-pane-close {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .cite-pane-save {
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: #fff;
+    border-radius: 8px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .cite-pane-save:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .cite-pane-hint {
+    margin: 0;
+    padding: 8px 12px 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .cite-pane-text {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    border: none;
+    resize: none;
+    padding: 12px 16px 24px;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    outline: none;
+    background: var(--surface);
+    color: var(--text);
+  }
+  .cite-pane-text::selection,
+  .cite-hit {
+    background: #e5e7eb;
+  }
+  .cite-ref {
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 0.72em;
+    font-weight: 700;
+    margin-left: 1px;
+    vertical-align: super;
+    text-decoration: none;
   }
 
   /* Welcome */
@@ -479,10 +565,12 @@
   .msg-row {
     display: flex;
     margin-bottom: 20px;
+    align-items: flex-start;
+    width: 100%;
   }
-  .msg-row.user { justify-content: flex-end; }
   .msg-bubble {
-    max-width: 85%;
+    flex: 1;
+    min-width: 0;
     padding: 12px 16px;
     border-radius: var(--radius);
     font-size: 14px;
@@ -582,7 +670,7 @@
     padding: 16px 24px;
   }
   .input-inner {
-    max-width: 768px;
+    max-width: calc((100% + 768px) / 2);
     margin: 0 auto;
     display: flex;
     gap: 10px;
@@ -719,6 +807,7 @@
 <div class="main">
   <div class="main-header">学习笔记助手</div>
 
+  <div class="main-stage" id="chatStage">
   <div class="chat-container" id="chatContainer">
     <div class="chat-inner" id="chatInner">
       <div class="welcome" id="welcome">
@@ -726,6 +815,16 @@
         <p>告诉我你的学习内容，我帮你整理成结构化笔记</p>
       </div>
     </div>
+  </div>
+  <aside class="cite-pane" id="citePane" hidden>
+    <div class="cite-pane-head">
+      <span class="cite-pane-title" id="citePaneTitle"></span>
+      <button type="button" class="cite-pane-save" id="citePaneSave" disabled>保存</button>
+      <button type="button" class="cite-pane-close" id="citePaneClose">关闭</button>
+    </div>
+    <p class="cite-pane-hint" id="citePaneHint" hidden></p>
+    <textarea class="cite-pane-text" id="citePaneText" disabled></textarea>
+  </aside>
   </div>
 
   <div class="input-area">
@@ -792,6 +891,185 @@ let isStreaming = false;
 const chatInner = document.getElementById("chatInner");
 const chatContainer = document.getElementById("chatContainer");
 const textarea = document.getElementById("question");
+const citePane = document.getElementById("citePane");
+const citePaneTitle = document.getElementById("citePaneTitle");
+const citePaneHint = document.getElementById("citePaneHint");
+const citePaneText = document.getElementById("citePaneText");
+const citePaneSave = document.getElementById("citePaneSave");
+let citeFileName = null;
+let citeDirty = false;
+let citeHintLocate = "";
+
+function citeMark(n) {
+  if (n >= 1 && n <= 20) return String.fromCharCode(0x245F + n);
+  return String(n);
+}
+
+function citationMap(citations) {
+  const map = {};
+  (citations || []).forEach((item) => {
+    if (item && item.index != null) map[item.index] = item;
+  });
+  return map;
+}
+
+function renderAssistantHtml(text, citations) {
+  const map = citationMap(citations);
+  const withMarks = String(text || "").replace(/\[\[cite:(\d+)\]\]/g, (_, raw) => {
+    const n = Number(raw);
+    if (!map[n]) return "";
+    return `<sup class="cite-ref" data-cite="${n}">${citeMark(n)}</sup>`;
+  });
+  return withMarks ? marked.parse(withMarks) : "";
+}
+
+function locateQuote(haystack, quote) {
+  if (!quote) return { start: -1, length: 0 };
+  let i = haystack.indexOf(quote);
+  if (i >= 0) return { start: i, length: quote.length };
+  const trimmed = quote.trim();
+  i = haystack.indexOf(trimmed);
+  if (i >= 0) return { start: i, length: trimmed.length };
+  const compactH = haystack.replace(/\s+/g, " ");
+  const compactQ = trimmed.replace(/\s+/g, " ");
+  if (compactH.indexOf(compactQ) < 0) return { start: -1, length: 0 };
+  const seed = compactQ.slice(0, Math.min(32, compactQ.length));
+  i = haystack.indexOf(seed);
+  if (i >= 0) return { start: i, length: seed.length };
+  return { start: -1, length: 0 };
+}
+
+function setCiteHint() {
+  const parts = [];
+  if (citeDirty) parts.push("未保存");
+  if (citeHintLocate) parts.push(citeHintLocate);
+  if (!parts.length) {
+    citePaneHint.hidden = true;
+    citePaneHint.textContent = "";
+    return;
+  }
+  citePaneHint.hidden = false;
+  citePaneHint.textContent = parts.join(" · ");
+}
+
+function resetCitePane() {
+  citeFileName = null;
+  citeDirty = false;
+  citeHintLocate = "";
+  citePaneText.value = "";
+  citePaneText.disabled = true;
+  citePaneSave.disabled = true;
+  citePaneTitle.textContent = "";
+  setCiteHint();
+}
+
+async function confirmCiteDiscard() {
+  if (!citeDirty) return true;
+  return docsConfirm({
+    title: "未保存修改",
+    body: "出处笔记有未保存修改，确定放弃？",
+    danger: false,
+  });
+}
+
+async function closeCitePane() {
+  if (!(await confirmCiteDiscard())) return false;
+  citePane.hidden = true;
+  resetCitePane();
+  return true;
+}
+
+function scrollCiteTo(index) {
+  const before = citePaneText.value.slice(0, index);
+  const lines = before.split("\n").length;
+  const lh = parseFloat(getComputedStyle(citePaneText).lineHeight) || 22;
+  citePaneText.scrollTop = Math.max(0, (lines - 4) * lh);
+}
+
+async function openCitedNote(cite) {
+  if (!cite || !cite.file_name) return;
+  if (citeFileName && cite.file_name !== citeFileName && !(await confirmCiteDiscard())) {
+    return;
+  }
+  citePane.hidden = false;
+  citeFileName = cite.file_name;
+  citeDirty = false;
+  citeHintLocate = "";
+  citePaneTitle.textContent = cite.file_name;
+  citePaneText.disabled = true;
+  citePaneSave.disabled = true;
+  citePaneText.value = "";
+  setCiteHint();
+  const res = await fetch(noteUrl(cite.file_name));
+  if (!res.ok) {
+    citeHintLocate = "无法打开笔记。";
+    setCiteHint();
+    return;
+  }
+  const json = await res.json();
+  const content = json.content || "";
+  citePaneText.value = content;
+  citePaneText.disabled = false;
+  citePaneSave.disabled = false;
+  const loc = locateQuote(content, cite.quote || "");
+  if (cite.quote && loc.start >= 0) {
+    citePaneText.focus();
+    citePaneText.setSelectionRange(loc.start, loc.start + loc.length);
+    scrollCiteTo(loc.start);
+  } else if (cite.quote) {
+    citeHintLocate = "笔记已更新，原片段无法定位。";
+    setCiteHint();
+  }
+}
+
+async function saveCitedNote() {
+  if (!citeFileName || citePaneText.disabled) return;
+  const res = await fetch(noteUrl(citeFileName), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: citePaneText.value }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    await docsAlert("保存失败", String(json.detail || res.status));
+    return;
+  }
+  citeDirty = false;
+  setCiteHint();
+  if (docsCurrent === citeFileName) {
+    document.getElementById("docsText").value = citePaneText.value;
+    docsDirty = false;
+    renderDocsPreview();
+    renderDocsHeader();
+  }
+}
+
+document.getElementById("citePaneClose").addEventListener("click", () => {
+  closeCitePane();
+});
+citePaneSave.addEventListener("click", () => {
+  saveCitedNote();
+});
+citePaneText.addEventListener("input", () => {
+  if (citePaneText.disabled) return;
+  citeDirty = true;
+  setCiteHint();
+});
+chatInner.addEventListener("click", (e) => {
+  const ref = e.target.closest(".cite-ref");
+  if (!ref) return;
+  e.preventDefault();
+  const row = ref.closest(".msg-row");
+  let citations = [];
+  try {
+    citations = JSON.parse((row && row.dataset.citations) || "[]");
+  } catch {
+    citations = [];
+  }
+  const n = Number(ref.getAttribute("data-cite"));
+  const cite = citationMap(citations)[n];
+  if (cite) openCitedNote(cite);
+});
 const btnSend = document.getElementById("btnSend");
 
 let docsCatalog = { files: [], folders: [] };
@@ -844,6 +1122,17 @@ function isDocumentsPath() {
 
 async function showView(name, push) {
   const docs = name === "documents";
+  if (docs && citeDirty) {
+    const ok = await docsConfirm({
+      title: "未保存修改",
+      body: "出处笔记有未保存修改，确定离开？",
+      danger: false,
+    });
+    if (!ok) return;
+    citeDirty = false;
+    resetCitePane();
+    citePane.hidden = true;
+  }
   if (!docs && isDocumentsPath() && docsDirty) {
     const ok = await docsConfirm({
       title: "未保存修改",
@@ -875,7 +1164,7 @@ window.addEventListener("popstate", () => {
   showView(isDocumentsPath() ? "documents" : "chat", false);
 });
 window.addEventListener("beforeunload", (e) => {
-  if (docsDirty) {
+  if (docsDirty || citeDirty) {
     e.preventDefault();
     e.returnValue = "";
   }
@@ -1441,9 +1730,14 @@ document.getElementById("btnDeleteDoc").addEventListener("click", deleteCurrentN
 document.getElementById("btnNewFolder").addEventListener("click", createFolder);
 document.getElementById("btnNewNote").addEventListener("click", createNote);
 document.addEventListener("keydown", (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && isDocumentsPath()) {
-    e.preventDefault();
-    if (!docsModalResolve) saveDocument();
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+    if (isDocumentsPath()) {
+      e.preventDefault();
+      if (!docsModalResolve) saveDocument();
+    } else if (!citePane.hidden && citeFileName) {
+      e.preventDefault();
+      saveCitedNote();
+    }
   }
   if (e.key === "Escape") {
     closeDocsMenu();
@@ -1534,8 +1828,7 @@ async function openConversation(id) {
   if (!Array.isArray(messages)) return;
   chatInner.innerHTML = "";
   messages.forEach((msg) => {
-    const text = msg.role === "assistant" ? marked.parse(msg.content) : msg.content;
-    appendMessage(msg.role, text);
+    appendMessage(msg.role, msg.content, msg.citations);
   });
   document.querySelectorAll(".conversation-item").forEach((el) => {
     el.classList.toggle("active", el.dataset.id === id);
@@ -1546,6 +1839,7 @@ async function openConversation(id) {
 // ========== 新对话 ==========
 function newChat() {
   currentConversationId = null;
+  closeCitePane();
   chatInner.innerHTML = `<div class="welcome" id="welcome">
     <h2>今天想学点什么？</h2>
     <p>告诉我你的学习内容，我帮你整理成结构化笔记</p>
@@ -1707,6 +2001,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     closeConversationMenu();
     closeDeleteDialog();
+    if (!docsModalResolve && !citePane.hidden && !isDocumentsPath()) closeCitePane();
   }
 });
 document.querySelector(".sidebar-body").addEventListener("scroll", closeConversationMenu);
@@ -1749,6 +2044,7 @@ async function ask() {
     let buffer = "";
     let rawText = "";
     let eventName = "token";
+    let citations = [];
 
     while (true) {
       const { done, value } = await reader.read();
@@ -1778,9 +2074,12 @@ async function ask() {
             }
           } else if (eventName === "draft") {
             renderDraftCard(payload);
+          } else if (eventName === "sources") {
+            citations = Array.isArray(payload) ? payload : [];
+            assistEl.dataset.citations = JSON.stringify(citations);
           } else if (typeof payload === "string") {
             rawText += payload;
-            bodyEl.innerHTML = marked.parse(rawText);
+            bodyEl.innerHTML = renderAssistantHtml(rawText, citations);
           }
           continue;
         }
@@ -1790,7 +2089,8 @@ async function ask() {
       }
     }
 
-    bodyEl.innerHTML = marked.parse(rawText);
+    bodyEl.innerHTML = renderAssistantHtml(rawText, citations);
+    assistEl.dataset.citations = JSON.stringify(citations);
 
   } catch (err) {
     bodyEl.textContent = "请求失败：" + err.message;
@@ -1802,18 +2102,22 @@ async function ask() {
   }
 }
 
-function appendMessage(role, text) {
+function appendMessage(role, text, citations) {
   const row = document.createElement("div");
   row.className = `msg-row ${role}`;
 
   let avatar = role === "user" ? "👤" : "🤖";
+  const body = role === "assistant"
+    ? renderAssistantHtml(text, citations)
+    : escapeHtml(text);
+  if (role === "assistant") {
+    row.dataset.citations = JSON.stringify(citations || []);
+  }
 
   row.innerHTML = `
     <div class="msg-avatar">${avatar}</div>
     <div class="msg-bubble">
-      ${role === "assistant"
-        ? `<div class="msg-body">${text}</div>`
-        : `<div class="msg-body">${escapeHtml(text)}</div>`}
+      <div class="msg-body">${body}</div>
     </div>
   `;
 

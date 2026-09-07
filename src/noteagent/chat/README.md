@@ -7,8 +7,9 @@ HTTP 聊天、`bind_tools` Agent、工具、**人审之后才写盘**。不直�
 | 文件 | 模块 | 作用 |
 |------|------|------|
 | `router.py` | `router` | `GET /`、`GET /documents`、会话 CRUD、`POST /chat`、`POST /chat/review` |
-| `agent.py` | `ChatAgent` | `bind_tools` 循环；SSE token / 内部 `assistant_final` / draft；每步写 tool stub；hop 上限来自 budget；可选 `prompt_path`（默认 `prompts/system.txt`） |
-| `history.py` | `ConversationStore` | 会话/消息唯一写入口；`start_turn`、`append_tool_stub`、`apply_compact`、`list_persistent_after_watermark` |
+| `agent.py` | `ChatAgent` | `bind_tools` 循环；SSE token / `sources` / 内部 `assistant_final` / draft；每步写 tool stub；hop 上限来自 budget；可选 `prompt_path`（默认 `prompts/system.txt`） |
+| `citations.py` | `CitationRegistry` | 本轮 `source_id`；`sanitize_answer` / `strip_cite_markers` |
+| `history.py` | `ConversationStore` | 会话/消息唯一写入口；`start_turn`、`append_tool_stub`、`apply_compact`、`list_persistent_after_watermark`；assistant 可带 `citations` |
 | `context_budget.py` | `ContextBudget`、`budget_from_settings` | 窗口 W、压缩比例、stub 截断、`max_tool_hops` |
 | `context_tokens.py` | `estimate_tokens`、`prefix_until_tokens` | 字符/4 估算，无 tiktoken |
 | `context_compact.py` | `group_turns`、`select_turns_to_drop` 等 | 完整 Turn 边界压缩 |
@@ -44,7 +45,7 @@ HTTP：
 - `GET /conversations`：侧栏历史（按 `updated_at` 倒序）
 - `GET /conversations/{id}/messages`：气泡，仅 `user`/`assistant`（**无 tool stub**）
 - `PATCH` / `DELETE /conversations/{id}`：重命名不改 `updated_at`；删除 CASCADE
-- `POST /chat` JSON：`{"question": "...", "conversation_id": "<uuid>"?}`。先落库 user（带 `turn_id`），SSE：`conversation` → `token` / `draft`；结束后只把最终 assistant 入库
+- `POST /chat` JSON：`{"question": "...", "conversation_id": "<uuid>"?}`。先落库 user（带 `turn_id`），SSE：`conversation` → `sources` → `token` / `draft`；结束后把最终 assistant 与 `citations` 入库
 - `POST /chat/review`：审批草稿；写盘成功后同步该文件向量
 
 跨回合记忆 = watermark 后 Persistent（user + 最终 assistant + tool stub）+ `running_summary`。当前 Turn 工具全文只活在本次 `stream()` 的 Runtime。压缩阈值全部来自 Settings，不在 compact/agent 里写死窗口数字。

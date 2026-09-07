@@ -13,6 +13,7 @@ from noteagent.chat.history import (
     start_turn,
 ) #对话的创建和获取titile
 from noteagent.chat.schemas import (
+    CitationOut,
     ConversationOut,
     MessageOut,
     RenameConversation,
@@ -60,7 +61,13 @@ async def list_messages(conversation_id: str, request: Request) -> list[MessageO
         raise HTTPException(status_code=404, detail="conversation not found")
     _logger.info("list messages conversation=%s count=%d", conversation_id, len(records))
     return [
-        MessageOut(id=m.id, role=m.role, content=m.content, created_at=m.created_at)
+        MessageOut(
+            id=m.id,
+            role=m.role,
+            content=m.content,
+            created_at=m.created_at,
+            citations=[CitationOut.model_validate(item) for item in (m.citations or [])],
+        )
         for m in records
     ]
 
@@ -133,6 +140,7 @@ async def chat_with(
     _logger.info("[conversation=%s] SSE request: %.80s", record.id, require.question)
     assistant_text = ""
     final_text: str | None = None
+    citations: list | None = None
     async for item in agent.stream(require.question, thread_id=record.id, turn_id=turn_id):
         event = str(item.get("event") or "token")
         data = item.get("data")
@@ -143,11 +151,21 @@ async def chat_with(
         elif event == "assistant_final" and isinstance(data, str):
             final_text = data
             continue
+        elif event == "sources" and isinstance(data, list):
+            citations = data
         yield ServerSentEvent(event=event, data=data)
 
     persist = final_text if final_text is not None else assistant_text
     if persist:
-        history.append_message(record.id, "assistant", persist, turn_id=turn_id)
+        history.append_message(
+            record.id, "assistant", persist, turn_id=turn_id, citations=citations,
+        )
+        _logger.info(
+            "persist assistant conversation=%s turn=%s citations=%d",
+            record.id,
+            turn_id,
+            len(citations or []),
+        )
 
 # 
 @router.post("/chat/review")

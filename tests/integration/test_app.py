@@ -73,6 +73,8 @@ def test_home_serves_template(tmp_path: Path):
     assert "conversationList" in response.text
     assert "Documents" in response.text
     assert "btnNewNote" in response.text
+    assert "citePaneSave" in response.text
+    assert "citePaneText" in response.text
     assert "移动到所选" not in response.text
     assert read_home_html() == response.text
 
@@ -125,6 +127,21 @@ def test_chat_persists_messages(tmp_path: Path):
     assert chat.status_code == 200
     messages = client.get(f"/conversations/{conv_id}/messages").json()
     assert len(messages) == 4
+
+
+def test_messages_api_returns_citations(tmp_path: Path):
+    client, history = _client(tmp_path)
+    record = history.create("t")
+    tid = start_turn()
+    cites = [{"index": 1, "file_name": "Go.md", "chunk_index": 0, "quote": "hi"}]
+    history.append_message(record.id, "user", "q", turn_id=tid)
+    history.append_message(
+        record.id, "assistant", "a[[cite:1]]", turn_id=tid, citations=cites,
+    )
+    resp = client.get(f"/conversations/{record.id}/messages")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body[1]["citations"] == cites
 
 
 def test_messages_api_hides_tool_stubs(tmp_path: Path):
@@ -195,6 +212,7 @@ def test_conversations_and_messages_routes(tmp_path: Path):
     assert len(resp.json()) == 1
     assert resp.json()[0]["role"] == "user"
     assert resp.json()[0]["content"] == "hi"
+    assert resp.json()[0]["citations"] == []
 
     resp = client.get("/conversations/00000000-0000-0000-0000-000000000001/messages")
     assert resp.status_code == 404

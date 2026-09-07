@@ -31,7 +31,7 @@
 | 一层目录 | 允许 `notes/Folder/Note.md`，禁止两层和 `..`。根下 `notes/*.md` 为未进文件夹的篇 |
 | 派生检索 | Chroma 由 Markdown 重建。索引失败不回滚已写入的笔记。[检索](docs/architecture/retrieval.md) |
 
-三条运行时原则：LLM 只出提案；磁盘只走人类操作（聊天审批或 Documents）；聊天气泡不画工具过程。
+三条运行时原则：LLM 只出提案；磁盘只走人类操作（聊天审批、Documents、或 Chat 出处侧栏保存）；聊天气泡不画工具过程。
 
 ## 功能说明
 
@@ -39,7 +39,7 @@
 
 左侧是会话列表（PostgreSQL）。点会话加载气泡；底栏输入，Enter 发送、Shift+Enter 换行。流式回复走 `POST /chat`（SSE）。同一时刻只能发一句。
 
-气泡只有 `user` 和最终 `assistant`。`list_files` / 检索 / 提案等工具调用给模型和日志，不进侧栏。
+气泡只有 `user` 和最终 `assistant`（与输入框同宽对齐）。`list_files` / 检索 / 提案等工具调用给模型和日志，不进侧栏。点回复里的 ① 可在右侧改该笔记并保存（`PUT /notes`，与 Documents 相同重索引）；无预览、无删除。
 
 跨回合给模型的上下文 = 摘要水位线之后的 Persistent（含 tool stub）+ `running_summary` + 当前这一轮内存里的 Runtime。公式与截断：[上下文管理](docs/architecture/context-management.md)。会话表：[数据库](docs/architecture/database.md)。
 
@@ -64,7 +64,7 @@
 
 ### 索引
 
-人审写盘或 Documents 保存/删除后，按该文件相对路径同步 Chroma（先删旧点再切块）。collection 损坏时仍可手动重建一篇：
+人审写盘、Documents 保存/删除、或 Chat 出处侧栏保存后，按该文件相对路径同步 Chroma（先删旧点再切块）。collection 损坏时仍可手动重建一篇：
 
 ```powershell
 uv run python scripts/index_notes.py Agent.md

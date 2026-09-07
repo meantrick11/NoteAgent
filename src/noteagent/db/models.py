@@ -6,7 +6,7 @@ Only ``Base`` and the two tables live here. No HTTP, no LLM calls.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Text, Uuid
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Text, Uuid
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -72,4 +72,5 @@ class Message(Base):
     output_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
     truncated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    citations: Mapped[list | None] = mapped_column(JSON, nullable=True)  # assistant 实际引用的来源映射
     conversation: Mapped[Conversation] = relationship(back_populates="messages")    #关联的conversation表id

@@ -29,7 +29,41 @@ def test_search_tool_returns_fragments(tmp_path: Path):
     repo = FileNoteRepository(tmp_path)
     tools = _tool_map(repo)
     result = tools["search_relative_from_chromadb"].invoke({"query": "transformer"})
-    assert result == {"fragments": ["hit:transformer"], "count": 1}
+    assert result == {"fragments": [{"content": "hit:transformer"}], "count": 1}
+
+
+def test_search_tool_assigns_source_id(tmp_path: Path):
+    from noteagent.chat.citations import CitationRegistry, current_citations
+
+    repo = FileNoteRepository(tmp_path)
+    tools = _tool_map(repo)
+    registry = CitationRegistry()
+    token = current_citations.set(registry)
+    try:
+        result = tools["search_relative_from_chromadb"].invoke({"query": "transformer"})
+    finally:
+        current_citations.reset(token)
+    assert result == {
+        "fragments": [{"content": "hit:transformer", "source_id": 1}],
+        "count": 1,
+    }
+
+
+def test_read_file_assigns_source_id(tmp_path: Path):
+    from noteagent.chat.citations import CitationRegistry, current_citations
+    from noteagent.notes.repository import FileNoteRepository as Repo
+
+    repo = Repo(tmp_path)
+    repo.create("Go.md", "Go")
+    tools = _tool_map(repo)
+    registry = CitationRegistry()
+    token = current_citations.set(registry)
+    try:
+        result = tools["read_file"].invoke({"file_name": "Go.md"})
+    finally:
+        current_citations.reset(token)
+    assert result["source_id"] == 1
+    assert "Go" in result["file_content"]
 
 
 def test_tools_do_not_escape_notes(tmp_path: Path):

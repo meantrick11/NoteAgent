@@ -30,7 +30,7 @@ hits = service.search("注意力机制", top_k=3)
 
 索引步骤 INFO 在 [`IndexTrace`](../observability/index_trace.py)，不在 chunker/embedder。`RetrievalService` 只在步骤边界调用。文件：`var/logs/noteagent.log`。
 
-聊天工具 `search_relative_from_chromadb` 内部就是 `search`。Documents 写盘与点「未索引」也走 `index_note` / `delete_note`，见 [frontend.md](../../../docs/architecture/frontend.md) §6。
+聊天工具 `search_relative_from_chromadb` 内部就是 `search`，并把 `file_name` 注册为本轮 `source_id`。Documents 写盘与点「未索引」也走 `index_note` / `delete_note`，见 [frontend.md](../../../docs/architecture/frontend.md) §6。
 
 测试用假 embedder，不加载真实模型：
 

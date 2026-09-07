@@ -72,6 +72,7 @@ class MessageRecord:
     output_preview: str | None
     truncated: bool
     status: str | None
+    citations: list | None = None
 
 
 class ConversationStore:
@@ -135,16 +136,25 @@ class ConversationStore:
             return [_to_message(row) for row in rows]
      #如果遇到新的消息需要添加到conversation_id的对话中去，执行此函数获取对应的Message存储格式
     def append_message(
-        self, conversation_id: str, role: str, content: str, *, turn_id: str
+        self,
+        conversation_id: str,
+        role: str,
+        content: str,
+        *,
+        turn_id: str,
+        citations: list | None = None,
     ) -> MessageRecord:
         """Insert a user/assistant message and bump the conversation's updated_at.
 
         Raises KeyError if the conversation is missing or the id is malformed;
         ValueError if role is not in {user, assistant} or turn_id is empty.
+        citations is only allowed on assistant rows.
         """
 
         if role not in _ROLES:  #只有{user,assistant}两种角色
             raise ValueError(f"invalid role: {role!r}")
+        if citations and role != "assistant":
+            raise ValueError("citations only allowed on assistant messages")
         if not turn_id:
             raise ValueError("turn_id is required")
         try:
@@ -156,13 +166,23 @@ class ConversationStore:
             conversation = session.get(Conversation, parsed)
             if conversation is None:
                 raise KeyError(conversation_id)
-            row = Message(conversation_id=parsed, role=role, content=content, turn_id=turn)
+            row = Message(
+                conversation_id=parsed,
+                role=role,
+                content=content,
+                turn_id=turn,
+                citations=citations if role == "assistant" else None,
+            )
             session.add(row)
             conversation.updated_at = datetime.now(timezone.utc)
             session.commit()
             _logger.info(
-                "append role=%s conversation=%s turn=%s chars=%d",
-                role, conversation_id, turn_id, len(content),
+                "append role=%s conversation=%s turn=%s chars=%d citations=%d",
+                role,
+                conversation_id,
+                turn_id,
+                len(content),
+                len(citations or []),
             )
             return _to_message(row)
         
@@ -370,4 +390,5 @@ def _to_message(row: Message) -> MessageRecord:
         output_preview=row.output_preview,
         truncated=bool(row.truncated),
         status=row.status,
+        citations=list(row.citations) if row.citations else None,
     )

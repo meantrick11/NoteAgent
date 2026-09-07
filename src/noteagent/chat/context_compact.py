@@ -6,6 +6,7 @@ No database or HTTP here: everything operates on ``MessageRecord`` lists and
 
 from dataclasses import dataclass
 
+from noteagent.chat.citations import strip_cite_markers
 from noteagent.chat.context_budget import ContextBudget
 from noteagent.chat.context_tokens import estimate_tokens
 from noteagent.chat.history import MessageRecord
@@ -137,7 +138,7 @@ def format_turns_for_summary(bundles: list[TurnBundle]) -> str:
                     f"preview={record.output_preview or ''} status={record.status or ''}"
                 )
             else:
-                lines.append(f"  [{record.role}] {record.content}")
+                lines.append(f"  [{record.role}] {strip_cite_markers(record.content)}")
     return "\n".join(lines)
 
 

@@ -7,7 +7,7 @@
 | 事实源 | 人审后的 `notes/*.md`。Chroma 是派生索引，可删光按文件重建 |
 | 触发 | 聊天 `commit_review` 写盘成功后同步该 `file_name`；Documents `/notes*` 写盘或点芯片同样走 `index_note` / `delete_note`；`reject` 不碰向量 |
 | 切块 / 模型 | `MarkdownChunker` 500/50；默认 `all-MiniLM-L6-v2`。换模型只改环境变量 |
-| 不是 | 用户勾选入库、PDF 直接 embed、出处 SSE、标题感知切块 |
+| 不是 | 用户勾选入库、PDF 直接 embed、标题感知切块 |
 
 `retrieval` 不改笔记文件、不写 PostgreSQL、不调聊天模型。`notes` / `retrieval` 不得 import `chat`。
 
@@ -79,6 +79,22 @@ Chroma collection 名来自 `CHROMA_COLLECTION`（默认 `my_knowledge`），目
 | metadata.file_name | 笔记文件名，删除与重建的键 |
 | metadata.chunk_index | 本篇内从 0 起的序号 |
 
+短笔记只切出一块时，collection 里就是一条（embedding 为默认模型的 384 维，此处省略）：
+
+```json
+{
+  "id": "Go.md_0",
+  "embedding": [0.012, "..."],
+  "document": "注意力机制用 Query Key Value 计算权重。\n",
+  "metadata": {
+    "file_name": "Go.md",
+    "chunk_index": 0
+  }
+}
+```
+
+子目录笔记的 `id` 与 `file_name` 带相对路径，如 `Lang/Go.md_0`。
+
 没有：章节路径、创建时间、`note_id`、来源 URL、内容哈希。笔记身份就是扁平目录下的 `file_name`。列表若要「最近改过」用文件系统 mtime，不写进点 metadata。
 
 ---
@@ -102,10 +118,10 @@ Chroma collection 名来自 `CHROMA_COLLECTION`（默认 `my_knowledge`），目
 1. `RetrievalService.search(query, top_k=3)`（**3 写死在工具里**）。
 2. 问句 `embed_query`，Chroma 近邻，`include` documents / distances / metadatas。
 3. 每条变成 `SearchHit(content, distance, metadata)`。
-4. 工具**只**把非空 `content` 放进 `{fragments, count}`，丢掉 `file_name` 与 `distance`。
-5. 全文进当前 Turn 的 Runtime `ToolMessage`；前端气泡看不到工具结果。
+4. 工具把非空 `content` 交给模型，并带本轮 `source_id`；`file_name` 只进服务端 `CitationRegistry`，不放进工具返回。
+5. 全文进当前 Turn 的 Runtime `ToolMessage`；前端气泡看不到工具结果。模型句末 `[[cite:N]]` 由聊天层映射成 ①。
 
-空库或未索引时 `fragments` 可以为 `[]`，不是工具错误。无相似度阈值：再差的 3 条也会交给模型。无 `insufficient_evidence`。前端无 sources 事件。
+空库或未索引时 `fragments` 可以为 `[]`，不是工具错误。无相似度阈值：再差的 3 条也会交给模型。无 `insufficient_evidence`。聊天 SSE 有 `sources`（本轮实际引用），见 [frontend.md](./frontend.md)。
 
 ---
 
@@ -127,7 +143,7 @@ Chroma collection 名来自 `CHROMA_COLLECTION`（默认 `my_knowledge`），目
 下列不是现行代码，不要按已上线实现：
 
 - 按 H2/H3 切块、中文 embedding、命中阈值、每篇 chunk 上限
-- SSE / 气泡下的出处芯片（`file_name` 已在点上，工具未传出）
+- 气泡下额外出处芯片、NLI 引用校验
 - 笔记 YAML、`notes` 元数据表、创建时间进向量
 - PDF / OCR / URL 入库、勾选哪些文件进库
 - 混合检索、rerank、独立 Retrieval HTTP

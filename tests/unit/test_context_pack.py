@@ -61,6 +61,21 @@ def test_records_to_langchain_roles():
     assert msgs[2].content == stub_text(records[2])
 
 
+def test_records_to_langchain_strips_cite_markers():
+    records = [_rec("t", "assistant", "yo[[cite:1]]", 1)]
+    msgs = records_to_langchain(records)
+    assert msgs[0].content == "yo"
+    assert "cite" not in msgs[0].content
+    records = [
+        _rec("t", "user", "hi", 1),
+        _rec("t", "assistant", "yo", 2),
+        _rec("t", "tool", "P", 3, tool_name="read_file", output_preview="P"),
+    ]
+    msgs = records_to_langchain(records)
+    assert isinstance(msgs[0], HumanMessage)
+    assert msgs[2].content == stub_text(records[2])
+
+
 def test_build_pack_excludes_current_tool_stub_keeps_runtime_full():
     current = "cur"
     user_rec = _rec(current, "user", "question?", idx=1)

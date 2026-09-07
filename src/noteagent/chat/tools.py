@@ -1,6 +1,7 @@
 from langchain_core.tools import BaseTool
 from langchain.tools import tool
 
+from noteagent.chat.citations import current_citations
 from noteagent.chat.drafts import (
     WRITE_ACTIONS,
     DraftStore,
@@ -35,9 +36,15 @@ def build_chat_tools(
         if not file_name:
             return {"error": "no target file given"}
         try:
-            return {"file_content": notes.read(file_name)}
+            name = notes.normalize(file_name)
+            content = notes.read(name)
         except Exception as exc:
             return {"error": str(exc)}
+        payload: dict = {"file_content": content}
+        registry = current_citations.get()
+        if registry is not None:
+            payload["source_id"] = registry.register(file_name=name)
+        return payload
     #从RAG中检索工具
     @tool(
         "search_relative_from_chromadb",
@@ -46,10 +53,25 @@ def build_chat_tools(
     def search_relative_from_chromadb(query: str) -> dict:
         try:
             hits = retrieval.search(query, top_k=3)
-            docs = [hit.content for hit in hits if hit.content]
-            return {"fragments": docs, "count": len(docs)}
         except Exception as exc:
             return {"error": str(exc)}
+        registry = current_citations.get()
+        fragments: list[dict] = []
+        for hit in hits:
+            if not hit.content:
+                continue
+            item: dict = {"content": hit.content}
+            file_name = str((hit.metadata or {}).get("file_name") or "")
+            if registry is not None and file_name:
+                raw_index = (hit.metadata or {}).get("chunk_index")
+                chunk_index = int(raw_index) if raw_index is not None else None
+                item["source_id"] = registry.register(
+                    file_name=file_name,
+                    chunk_index=chunk_index,
+                    quote=hit.content,
+                )
+            fragments.append(item)
+        return {"fragments": fragments, "count": len(fragments)}
     #提出笔记建议工具
     @tool(
         "propose_note",

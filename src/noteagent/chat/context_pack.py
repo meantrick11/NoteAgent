@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
+from noteagent.chat.citations import strip_cite_markers
 from noteagent.chat.context_budget import ContextBudget
 from noteagent.chat.context_compact import compute_f
 from noteagent.chat.context_tokens import estimate_tokens
@@ -66,7 +67,7 @@ def records_to_langchain(records: list[MessageRecord]) -> list:
         if record.role == "user":
             out.append(HumanMessage(content=record.content))
         elif record.role == "assistant":
-            out.append(AIMessage(content=record.content))
+            out.append(AIMessage(content=strip_cite_markers(record.content)))
         elif record.role == "tool":
             out.append(AIMessage(content=stub_text(record)))
     return out

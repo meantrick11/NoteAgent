@@ -101,9 +101,9 @@ flowchart TD
 |--|--|
 | 描述 | 读取已存在的笔记。`file_name` 如 `Agent.md` 或 `Python/GIL.md`。不能创建或修改文件。 |
 | 参数 | `file_name: str` |
-| 成功 | `{file_content: str}` — `notes.read` |
+| 成功 | `{file_content: str}`，本轮有 CitationRegistry 时另有 `source_id` |
 | 失败 | 空名 `{error: "no target file given"}`；缺失 / 路径非法 `{error}` |
-| 副作用 | 无写盘 |
+| 副作用 | 无写盘；成功时向本轮 registry 注册整篇来源 |
 
 ### 4.3 `search_relative_from_chromadb`
 
@@ -111,11 +111,11 @@ flowchart TD
 |--|--|
 | 描述 | 按问题语义检索笔记片段。询问历史知识点时优先使用。 |
 | 参数 | `query: str` |
-| 成功 | `{fragments: list[str], count: int}`。内部 `retrieval.search(query, top_k=3)`（**3 写死在工具里**），只收集非空 `hit.content`。 |
+| 成功 | `{fragments: [{content, source_id?}], count}`。内部 `retrieval.search(query, top_k=3)`（**3 写死在工具里**）。有 registry 时为每个非空 hit 分配 `source_id`，不把 `file_name` 给模型。 |
 | 失败 | `{error}` |
-| 副作用 | 不写 Chroma、不改笔记 |
+| 副作用 | 不写 Chroma、不改笔记；成功时注册检索来源 |
 
-未索引或空库时 fragments 可为空列表，不算工具实现错误。点上的 `file_name` / `distance` 与审批后如何写入见 [retrieval.md](./retrieval.md)。
+未索引或空库时 fragments 可为空列表，不算工具实现错误。点上的 `file_name` / `distance` 与审批后如何写入见 [retrieval.md](./retrieval.md)。引用渲染见 [frontend.md](./frontend.md)。
 
 ### 4.4 `propose_note`
 

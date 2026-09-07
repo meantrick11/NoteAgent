@@ -79,6 +79,32 @@ def test_append_and_list_messages_order(store: ConversationStore):
     assert messages is not None
     assert [m.role for m in messages] == ["user", "assistant"]
     assert [m.content for m in messages] == ["hi", "hello"]
+    assert messages[0].citations is None
+    assert messages[1].citations is None
+
+
+def test_append_assistant_citations(store: ConversationStore):
+    record = store.create("t")
+    tid = start_turn()
+    cites = [{"index": 1, "file_name": "Go.md", "chunk_index": 0, "quote": "hi"}]
+    store.append_message(record.id, "user", "q", turn_id=tid)
+    store.append_message(
+        record.id, "assistant", "a[[cite:1]]", turn_id=tid, citations=cites,
+    )
+    messages = store.list_messages(record.id)
+    assert messages[1].citations == cites
+
+
+def test_append_user_citations_rejected(store: ConversationStore):
+    record = store.create("t")
+    with pytest.raises(ValueError):
+        store.append_message(
+            record.id,
+            "user",
+            "q",
+            turn_id=start_turn(),
+            citations=[{"index": 1, "file_name": "Go.md"}],
+        )
 
 
 def test_list_messages_unknown_id_returns_none(store: ConversationStore):

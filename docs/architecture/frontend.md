@@ -17,7 +17,7 @@
 
 一张 HTML 里两套主界面，CSS/JS 写在同一文件，但**业务不要串**：
 
-1. **Chat 不管磁盘。** 侧栏是 PostgreSQL 会话。改笔记只通过审批卡片 → `POST /chat/review`。
+1. **Chat 不管磁盘。** 侧栏是 PostgreSQL 会话。Agent 改笔记只通过审批卡片 → `POST /chat/review`。点 ① 打开的出处侧栏是人类写盘，走与 Documents 相同的 `PUT /notes/{path}`（无删除、无预览）。
 2. **Documents 不调模型。** 树、编辑、入库只打 `/notes*`。保存/新建/移动/删除都是人类操作，与聊天审批并列，都算「人写盘」。
 3. **工具过程不画。** 气泡只有 `user` 与最终 `assistant`。Documents 树也不显示 Agent hop。
 4. **不建笔记表。** 最近修改用文件 `mtime`；已/未索引看 Chroma 有没有该相对路径的点。
@@ -48,7 +48,7 @@ Python 只负责读模板。业务规则在 `home.html` 的 fetch 与后端路�
 | 左栏头 | 会话 | 笔记 |
 | 左栏底 | 新对话 | 新建笔记、新建文件夹 |
 | 主区顶 | 「学习笔记助手」 | 笔记名 + 未保存点 + 索引芯片 + mtime |
-| 主区中 | 气泡 | 工具条保存/删除；中编辑、右预览 |
+| 主区中 | 气泡（与输入同宽） | 工具条保存/删除；中编辑、右预览 |
 
 Chat 的会话删除 overlay（`.modal-overlay` + `deleteOverlay`）与 Documents 的 `#docsOverlay` **分开**，避免两套菜单抢同一个节点。
 
@@ -56,9 +56,9 @@ Chat 的会话删除 overlay（`.modal-overlay` + `deleteOverlay`）与 Document
 
 ## 3. Chat 布局（简述）
 
-左：会话列表、三点重命名（行内 input）/删除（overlay）。中：欢迎语或气泡。底：输入框，Enter 发送、Shift+Enter 换行。
+左：会话列表、三点重命名（行内 input）/删除（overlay）。中：欢迎语或气泡（与底栏输入框同宽，栏宽取 768 与满宽的中点，助手/用户左右边距对齐）。底：输入框，Enter 发送、Shift+Enter 换行。
 
-进页 `GET /conversations`；点会话 `GET /conversations/{id}/messages`。发一句立刻画 user 气泡和空 assistant 气泡，读 SSE：`conversation` → `token`（marked）→ 可选 `draft` 卡片。`isStreaming` 时不能连发。
+进页 `GET /conversations`；点会话 `GET /conversations/{id}/messages`（assistant 可带 `citations`）。发一句立刻画 user 气泡和空 assistant 气泡，读 SSE：`conversation` → 可选 `sources` → `token`（marked，并把 `[[cite:N]]` 绘成蓝色上标 ①）→ 可选 `draft` 卡片。点 ① 时聊天区收窄，右侧 textarea 打开该笔记（无预览）；检索片段用选区定位。保存/Ctrl+S 走 `PUT /notes/{path}`，与 Documents 一样先删旧向量再整篇索引。关闭、Escape、切到 Documents 时若未保存先确认。无删除。`isStreaming` 时不能连发。
 
 审批卡片：同意 / 拒绝；create、append 可改目标文件名。`POST /chat/review`。卡片字段与动作见 [chat-tools.md](./chat-tools.md)。
 
@@ -177,6 +177,7 @@ flowchart LR
 
 ```text
 Chat 审批     POST /chat/review  → drafts.commit_review → notes + Chroma
+Chat 出处侧栏 PUT /notes/{path}  → notes.router（与 Documents 保存相同；无删除）
 Documents     /notes*            → notes.router         → notes + Chroma
 Agent 工具    propose_note       → 只进 DraftStore，不写盘
 ```
