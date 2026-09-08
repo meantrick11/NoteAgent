@@ -10,6 +10,7 @@ class AgentTraceHandler(BaseCallbackHandler):
     """Log LLM and tool start/end/error with elapsed milliseconds."""
 
     def __init__(self):
+        """Track per-run start times and tool names for duration logs."""
         self._starts: dict[str, float] = {}
         self._tool_names: dict[str, str] = {}
 
@@ -18,6 +19,7 @@ class AgentTraceHandler(BaseCallbackHandler):
         return round((time.monotonic() - self._starts.pop(run_id, time.monotonic())) * 1000)
 
     def on_llm_start(self, serialized, prompts, *, run_id, **kwargs):
+        """Log model name and prompt size when a chat hop begins (not the full prompt)."""
         self._starts[run_id] = time.monotonic()
         prompt_len = sum(len(p) for p in prompts) if prompts else 0
         logger.info(
@@ -40,6 +42,7 @@ class AgentTraceHandler(BaseCallbackHandler):
         return content if isinstance(content, str) else str(content or "")
 
     def on_llm_end(self, response, *, run_id, **kwargs):
+        """Log hop duration, token usage, and a short reply preview."""
         llm_output = getattr(response, "llm_output", None) or {}
         usage = (
             getattr(response, "usage_metadata", None)
@@ -55,15 +58,18 @@ class AgentTraceHandler(BaseCallbackHandler):
         )
 
     def on_llm_error(self, error, *, run_id, **kwargs):
+        """Log LLM failure and how long the hop ran before it failed."""
         logger.error("LLM error  duration=%dms  error=%s", self._elapsed_ms(run_id), error)
 
     def on_tool_start(self, serialized, input_str, *, run_id, **kwargs):
+        """Log tool name and a truncated argument preview when a tool starts."""
         self._starts[run_id] = time.monotonic()
         name = serialized.get("name", "?")
         self._tool_names[run_id] = name
         logger.info("Tool start  tool=%s  input=%.200s", name, input_str)
 
     def on_tool_end(self, output, *, run_id, **kwargs):
+        """Log tool duration and a truncated result preview."""
         name = self._tool_names.pop(run_id, "?")
         logger.info(
             "Tool end  tool=%s  duration=%dms  output=%.200s",
@@ -73,6 +79,7 @@ class AgentTraceHandler(BaseCallbackHandler):
         )
 
     def on_tool_error(self, error, *, run_id, **kwargs):
+        """Log tool failure, name, and duration."""
         name = self._tool_names.pop(run_id, "?")
         logger.error(
             "Tool error  tool=%s  duration=%dms  error=%s",

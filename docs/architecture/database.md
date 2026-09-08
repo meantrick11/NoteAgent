@@ -1,6 +1,6 @@
 # NoteAgent 数据库
 
-全局职责见 [architecture.md §5.3](./architecture.md#53-数据库)。本文是现行两张表的列、索引、两种读法与实例。
+全局职责见 [architecture.md §5.7](./architecture.md#57-数据库)。本文是现行两张表的列、索引、两种读法与实例。
 
 | 项 | 内容 |
 |---|---|

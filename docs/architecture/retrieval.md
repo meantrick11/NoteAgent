@@ -1,6 +1,6 @@
 # NoteAgent 检索（RAG）
 
-全局职责见 [architecture.md §5.2.7](./architecture.md#527-检索)。本文是现行切块、向量点、审批后同步与查询路径。聊天工具只读入口见 [chat-tools.md §4.3](./chat-tools.md#43-search_relative_from_chromadb)。
+全局职责见 [architecture.md §5.6](./architecture.md#56-检索)。本文是现行切块、向量点、审批后同步与查询路径。聊天工具只读入口见 [chat-tools.md §4.3](./chat-tools.md#43-search_relative_from_chromadb)。
 
 | 项 | 内容 |
 |---|---|
@@ -134,7 +134,7 @@ Chroma collection 名来自 `CHROMA_COLLECTION`（默认 `my_knowledge`），目
 | 向量库目录损坏 | 删 persist 或对每篇跑 `index_notes.py` |
 | 缩短 replace 仍只 upsert、不先删 | **现行已先删。** 旧实现会残留高序号 id |
 
-索引步骤由 [`IndexTrace`](../../src/noteagent/observability/index_trace.py) 写入 `var/logs/noteagent.log`（logger `noteagent.observability.index_trace`），INFO 不打切块原文。`RetrievalService` 只做删点/切块/embed/入库，并在步骤边界调用 tracer。一次 `index_note` 顺序为：`index start` → `index delete file= elapsed_ms=` →（仓库）`note read` → `index chunked file= chunks= chars=` → `index embedded … elapsed_ms=` → `index upserted … elapsed_ms=` → `index done … elapsed_ms=`。空切块在 read 之后 `index skip empty`，无 chunked/embedded/upserted。人审侧另有 `draft indexed` / `draft index failed`。查询仍是 `search query= hits=`。
+索引步骤 logger 与一次 `index_note` 的日志顺序见 [observability.md](./observability.md) §4。INFO 不打切块原文。`RetrievalService` 只做删点/切块/embed/入库，并在步骤边界调用 `IndexTrace`。人审侧另有 `draft indexed` / `draft index failed`。
 
 ---
 

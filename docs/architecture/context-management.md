@@ -1,6 +1,6 @@
 # 短期记忆与上下文装配
 
-全局职责与四层划分见 [architecture.md §5.2.5](./architecture.md#525-上下文装配与压缩)。本文是现行实现的公式、流程图、stub 截断与文件对应。
+全局职责与四层划分见 [architecture.md §5.3.3](./architecture.md#533-上下文装配与压缩)。本文是现行实现的公式、流程图、stub 截断与文件对应。
 
 | 项 | 内容 |
 |---|---|
@@ -49,7 +49,7 @@ Turn N
 | Runtime Context | 当前 Turn 的 tool_call + 完整 Tool Result | 仅当前 Run 的后续 LLM | 无 |
 | DraftStore | 待审笔记全文 | 一行工作区 | SSE 卡片 |
 
-完整 Tool Result 不进库。Runtime 只活在这一次 `POST /chat` 的内存里；Turn 结束或进程退出即丢。排障看 `AgentTraceHandler` → `var/logs/noteagent.log`。
+完整 Tool Result 不进库。Runtime 只活在这一次 `POST /chat` 的内存里；Turn 结束或进程退出即丢。排障看 [observability.md](./observability.md)（`AgentTraceHandler` 与 `chat/agent.py` 的 compact 日志）→ `var/logs/noteagent.log`。
 
 为什么这样分：跨 Turn 若继续堆全文 ToolMessage，下一句会把整篇 `read_file` 再吃一遍；若 Persistent 只有气泡、没有 stub，重启后模型不知道做过 list/search。Draft 不进 `messages`，避免和气泡、近端历史混在一起。
 

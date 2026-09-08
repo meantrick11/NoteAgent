@@ -1,6 +1,6 @@
 # architecture
 
-[`architecture.md`](./architecture.md) 统领现行全局架构。下面是附件（参数、公式、表列、检索点、界面），不替代架构书。
+[`architecture.md`](./architecture.md) 统领现行全局架构。下面是附件（参数、公式、表列、检索点、界面、日志），不替代架构书。
 
 ## 现行
 
@@ -12,6 +12,7 @@
 | [context-management.md](./context-management.md) | 上下文装配与压缩细则 |
 | [database.md](./database.md) | PostgreSQL 两表、Store、实例 |
 | [retrieval.md](./retrieval.md) | 切块、Chroma 点、人写盘后同步、查询路径 |
+| [observability.md](./observability.md) | 日志三层、Agent/Index 轨迹、业务 logger、输出配置 |
 
 评测准则：[docs/evaluations/](../evaluations/README.md)。黄金集不在本目录：仓库根 [`evals/`](../../evals/README.md)。
 

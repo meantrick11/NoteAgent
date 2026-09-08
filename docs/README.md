@@ -1,6 +1,6 @@
 # docs
 
-按阅读顺序串联。`architecture/architecture.md` 是现行系统的全局架构书。专题附件给公式、列清单、工具参数、检索点、界面布局。不要把 `plans/` 或 `DESIGN.md` 当成正在跑的系统。
+按阅读顺序串联。`architecture/architecture.md` 是现行系统的全局架构书。专题附件给公式、列清单、工具参数、检索点、界面布局、日志。不要把 `plans/` 或 `DESIGN.md` 当成正在跑的系统。
 
 只想把项目跑起来：见 [tutorials/](tutorials/README.md)，不要从下面的架构附件开始读。
 
@@ -15,11 +15,12 @@
 5. **[architecture/database.md](architecture/database.md)** — PostgreSQL 两表列与实例。
 6. **[evaluations/README.md](evaluations/README.md)** — 评测准则与账本划分（笔记正文 v0.1；工具 / RAG 以后）。数据不在这里。
 7. **[architecture/retrieval.md](architecture/retrieval.md)** — 切块、Chroma 点、人写盘后同步、查询。
-8. **[roadmap/versions.md](roadmap/versions.md)** — V1–V3 版本目标、小版本功能和验收要求。
-9. **`src/noteagent/**/README.md`** — 与代码同步的包说明。
-10. **[evals/](../evals/README.md)** — 黄金集（考题）；跑分结果在 [evals/prompt/results/](../evals/prompt/results/README.md)，不进 pytest。
-11. **[plans/](plans/README.md)** — 已做过的实现切片；另含未写入代码的入库 Job 设想。
-12. **[architecture/DESIGN.md](architecture/DESIGN.md)** — 屏幕/音频采集旧稿。不要按它写代码。
+8. **[architecture/observability.md](architecture/observability.md)** — 日志三层、Agent/Index 轨迹、业务 logger。
+9. **[roadmap/versions.md](roadmap/versions.md)** — V1–V3 版本目标、小版本功能和验收要求。
+10. **`src/noteagent/**/README.md`** — 与代码同步的包说明。
+11. **[evals/](../evals/README.md)** — 黄金集（考题）；跑分结果在 [evals/prompt/results/](../evals/prompt/results/README.md)，不进 pytest。
+12. **[plans/](plans/README.md)** — 已做过的实现切片；另含未写入代码的入库 Job 设想。
+13. **[architecture/DESIGN.md](architecture/DESIGN.md)** — 屏幕/音频采集旧稿。不要按它写代码。
 
 ## 目录
 

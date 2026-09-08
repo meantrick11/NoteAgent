@@ -1,6 +1,6 @@
 # observability
 
-进程日志、LangChain 回调追踪、检索步骤追踪。不记 API key、不把整份网页/笔记正文打进 INFO。
+进程日志、LangChain 回调追踪、检索步骤追踪。不记 API key、不把整份网页/笔记正文打进 INFO。架构附件：[observability.md](../../../docs/architecture/observability.md)。
 
 ## 包含模块
 
