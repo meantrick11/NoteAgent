@@ -21,7 +21,7 @@ class ColoredFormatter(logging.Formatter):
     """Color level and logger name for console output only."""
 
     def format(self, record):
-        # Copy so file handlers still see uncolored levelname/name.
+        """Color the console line; copy the record so the file handler stays uncolored."""
         record = logging.makeLogRecord(record.__dict__)
         color = _COLORS.get(record.levelno, "")
         record.levelname = f"{color}{record.levelname}{_RESET}"

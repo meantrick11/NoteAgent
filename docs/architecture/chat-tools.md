@@ -1,6 +1,6 @@
 # 聊天工具（现行契约）
 
-> 以代码为准。描述 Agent 四个 `@tool`、何时调用、参数与返回、以及人审后如何落盘。全局架构见 [architecture.md](./architecture.md)。  
+> 以代码为准。描述 Agent 四个 `@tool`、何时调用、参数与返回、以及人审后如何落盘。工具见 [architecture.md §5.3.2](./architecture.md#532-工具与系统提示)；人审落盘见 [§5.4](./architecture.md#54-草稿与人审)。  
 > 工具 hop、stub 截断、Runtime vs Persistent 见 [context-management.md §7.1](./context-management.md#71-工具循环与-stub-截断)。  
 > 切块、Chroma 点、审批后同步见 [retrieval.md](./retrieval.md)。
 

@@ -34,6 +34,7 @@ def _retrieval(request: Request) -> RetrievalService | None:
 
 
 def _raise_notes_error(exc: Exception) -> None:
+    """Map note-path and file errors to 400/404/409; re-raise anything else."""
     if isinstance(exc, NotePathError):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if isinstance(exc, FileNotFoundError):
@@ -46,6 +47,7 @@ def _raise_notes_error(exc: Exception) -> None:
 
 
 def _try_index(retrieval: RetrievalService | None, file_name: str) -> bool:
+    """Rebuild Chroma for one file; log failures and leave the Markdown unchanged."""
     if retrieval is None:
         return False
     try:
@@ -57,6 +59,7 @@ def _try_index(retrieval: RetrievalService | None, file_name: str) -> bool:
 
 
 def _try_delete_index(retrieval: RetrievalService | None, file_name: str) -> None:
+    """Drop this file's vectors; log failures without failing the HTTP write."""
     if retrieval is None:
         return
     try:
@@ -66,6 +69,7 @@ def _try_delete_index(retrieval: RetrievalService | None, file_name: str) -> Non
 
 
 def _indexed(retrieval: RetrievalService | None, file_name: str) -> bool:
+    """True if Chroma has at least one chunk for this path; False on missing retrieval or errors."""
     if retrieval is None:
         return False
     try:

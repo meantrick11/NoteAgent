@@ -218,12 +218,12 @@ flowchart TD
 |---|---|
 | [`db/models.py`](../../src/noteagent/db/models.py) | `turn_id`、stub 字段、`running_summary`、watermark |
 | [`chat/history.py`](../../src/noteagent/chat/history.py) | 按 Turn 追加；按 watermark 列出；列表 API 过滤 tool |
-| [`chat/agent.py`](../../src/noteagent/chat/agent.py) | pack、压缩、每步写 stub、短命 Runtime |
+| [`chat/agent.py`](../../src/noteagent/chat/agent.py) | pack、压缩（日志含 K、F、切掉的 turn_id）、每步写 stub、短命 Runtime |
 | [`chat/context_pack.py`](../../src/noteagent/chat/context_pack.py) | `build_pack` |
 | [`chat/context_compact.py`](../../src/noteagent/chat/context_compact.py) | `group_turns`、`select_turns_to_drop`、`should_compact` |
 | [`chat/context_tokens.py`](../../src/noteagent/chat/context_tokens.py) | `estimate_tokens`、`prefix_until_tokens` |
 | [`chat/drafts.py`](../../src/noteagent/chat/drafts.py) | 待审独立；装配只注入一行 |
-| [`observability/agent_trace.py`](../../src/noteagent/observability/agent_trace.py) | LLM/工具日志；压缩打 K、F、切掉的 turn_id |
+| [`observability/agent_trace.py`](../../src/noteagent/observability/agent_trace.py) | LLM/工具 hop 的 start/end/error 与耗时（不含 compact 数字） |
 | [`home.html`](../../src/noteagent/web/templates/home.html) | 只渲染 user / assistant |
 
 ### 7.1 工具循环与 stub 截断

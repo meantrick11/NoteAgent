@@ -46,7 +46,7 @@ class CitationRegistry:
         chunk_index: int | None = None,
         quote: str | None = None,
     ) -> int:
-        """Return the source_id for this note (and optional chunk quote)."""
+        """Return a 1-based source_id; reuse it when file_name, chunk_index, and quote match."""
         key = (file_name, chunk_index, quote or "")
         existing = self._by_key.get(key)
         if existing is not None:

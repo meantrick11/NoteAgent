@@ -8,7 +8,7 @@
 
 ## 阅读顺序
 
-1. **[architecture/architecture.md](architecture/architecture.md)** — **架构说明书**：简介、背景、总体架构、数据流、前端/后端（含 Agent 与上下文）/数据库模块设计、评测、数据架构。
+1. **[architecture/architecture.md](architecture/architecture.md)** — **架构说明书**：简介、背景、总体架构、数据流、模块设计（5.1 前端；5.2–5.8 HTTP、Agent、人审、笔记、检索、数据库、观测）、评测、数据架构。
 2. **[architecture/frontend.md](architecture/frontend.md)** — 单页布局：Chat 与 Documents 树、编辑预览、拖拽、芯片入库。
 3. **[architecture/chat-tools.md](architecture/chat-tools.md)** — 四工具参数、人审动作。
 4. **[architecture/context-management.md](architecture/context-management.md)** — 上下文装配公式、压缩、stub。

@@ -63,5 +63,5 @@ HTTP：
 记笔记质量与意图门：[evals/](../../../evals/README.md)。准则：[docs/evaluations/](../../../docs/evaluations/README.md)。离线跑分：`python scripts/eval_notes.py --ids b06,n05`。
 
 ```bash
-uv run pytest tests/unit/test_chat_agent_context.py tests/unit/test_context_store.py tests/unit/test_context_pack.py tests/integration/test_app.py -q
+uv run pytest tests/unit/test_chat_agent_context.py tests/unit/test_context_store.py tests/unit/test_context_pack.py tests/unit/test_citations.py tests/integration/test_app.py -q
 ```

@@ -183,6 +183,7 @@ class FileNoteRepository:
         return self._normalize_note(file_name)
 
     def _normalize_folder(self, name: str) -> str:
+        """Return one folder segment under the notes root; reject nesting, `..`, and `.md` names."""
         raw = (name or "").replace("\\", "/").strip().strip("/")
         if not raw:
             raise NotePathError("no target folder given")
@@ -195,6 +196,7 @@ class FileNoteRepository:
         return folder
 
     def _normalize_note(self, file_name: str) -> str:
+        """Return `Note.md` or `Folder/Note.md`; reject `..`, absolute paths, and two-level nests."""
         if not file_name or not str(file_name).strip():
             raise NotePathError("no target file given")
         raw = file_name.replace("\\", "/").strip()
