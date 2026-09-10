@@ -16,7 +16,7 @@
 
 | 文件 | 内容 | 状态 |
 |------|------|------|
-| [note-quality.md](./note-quality.md) | 笔记正文质量 v0.1：六条、小指标、分档、权重、溯源契约 | 现行准则 |
+| [note-quality.md](./note-quality.md) | 笔记正文质量 v0.2：三道硬门、原六维、知识加工增益与证据契约 | 现行准则 |
 | 工具 / Agent 轨迹 | 该不该 `propose_note`、工具顺序、create/append/replace/delete | 以后写本目录；数据仍用 [`evals/agent/`](../../evals/agent/README.md) 与 prompt 集里的 behavior 条 |
 | RAG | Recall、命中文件/章节、引用 | 以后写本目录；数据在 [`evals/rag/`](../../evals/rag/README.md)（尚空） |
 
@@ -24,10 +24,16 @@
 
 ## 基础使用
 
-写或改记笔记提示词时，对照 [note-quality.md](./note-quality.md) 与 [`evals/prompt/cases.jsonl`](../../evals/prompt/cases.jsonl)。跑分：
+写或改记笔记提示词时，对照 [note-quality.md](./note-quality.md) 与 [`evals/prompt/cases.jsonl`](../../evals/prompt/cases.jsonl)。学习型笔记还要使用 [`evals/prompt/learning_notes.jsonl`](../../evals/prompt/learning_notes.jsonl) 和四个固定候选。跑分：
 
 ```bash
 python scripts/eval_notes.py --ids b06,n05
 ```
 
 不要把私人笔记全文写进黄金集。`tests/` 仍只跑无网络单元测试；本脚本不进默认 CI。
+
+## v0.2 校准边界
+
+学习型笔记先过任务匹配、忠实、完整三道硬门，任一失败都不能给出合格结论。四候选的人工排序契约是 `good > literal > omitted`，而 `hallucinated` 必须因无来源命题被忠实硬门淘汰。
+
+校准 fixture 是版本化的评测固定输入，不是用户笔记，也不应被运行时读取。本阶段不实现 Judge；现有自动分数不能替代人工语义判断。字符比、句子边界重合度和标题数量均不能用作语义质量代理。单个 Python 教程样本只用于第一阶段校准，不表示对所有教程的泛化能力。

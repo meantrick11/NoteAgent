@@ -26,6 +26,14 @@ class EvalCase:
     style: str = "faithful_paragraphs"
     expect_action: str | None = None
     seed_files: dict[str, str] = field(default_factory=dict)
+    task_mode: str = ""
+    output_language: str = ""
+    must_concepts: list[str] = field(default_factory=list)
+    must_relations: list[str] = field(default_factory=list)
+    must_preserve: list[str] = field(default_factory=list)
+    forbidden_claims: list[str] = field(default_factory=list)
+    review_questions: list[str] = field(default_factory=list)
+    quality_thresholds: dict[str, int] = field(default_factory=dict)
 
 
 def load_cases(path: Path, ids: list[str] | None = None) -> list[EvalCase]:
@@ -65,4 +73,12 @@ def _from_dict(data: dict) -> EvalCase:
         style=str(data.get("style") or "faithful_paragraphs"),
         expect_action=data.get("expect_action"),
         seed_files=dict(data.get("seed_files") or {}),
+        task_mode=str(data.get("task_mode") or ""),
+        output_language=str(data.get("output_language") or ""),
+        must_concepts=list(data.get("must_concepts") or []),
+        must_relations=list(data.get("must_relations") or []),
+        must_preserve=list(data.get("must_preserve") or []),
+        forbidden_claims=list(data.get("forbidden_claims") or []),
+        review_questions=list(data.get("review_questions") or []),
+        quality_thresholds=dict(data.get("quality_thresholds") or {}),
     )
