@@ -57,6 +57,7 @@ class ConversationRecord:   #对话的记录，记录id\title（对话名称),�
     updated_at: datetime
     running_summary: str | None
     summary_watermark_turn_id: str | None
+    pending_draft: dict | None = None
 
 
 @dataclass(slots=True)  #对于每一条消息，进行数据库记录：
@@ -73,6 +74,7 @@ class MessageRecord:
     truncated: bool
     status: str | None
     citations: list | None = None
+    tool_steps: list | None = None
 
 
 class ConversationStore:
@@ -115,9 +117,11 @@ class ConversationStore:
             return [_to_conversation(row) for row in rows]
     # 传入conversation_id，然后传出对应的conversation的一系列的历史消息
     def list_messages(self, conversation_id: str) -> list[MessageRecord] | None:
-        """Return messages for a conversation, None if missing, [] if empty.
+        """Return user/assistant bubbles, None if missing, [] if empty.
 
-        Messages are ordered created_at ASC, id ASC.
+        Ordered created_at ASC, id ASC. Tool stub rows are not returned as
+        bubbles; they are attached to the assistant of the same turn_id as
+        tool_steps (truncated stub fields only).
         """
         
         try:
@@ -130,10 +134,24 @@ class ConversationStore:
             rows = session.scalars(
                 select(Message)
                 .where(Message.conversation_id == parsed)
-                .where(Message.role.in_(("user", "assistant")))
                 .order_by(Message.created_at.asc(), Message.id.asc())
             ).all()
-            return [_to_message(row) for row in rows]
+            records = [_to_message(row) for row in rows]
+            steps_by_turn: dict[str | None, list[dict]] = {}
+            for rec in records:
+                if rec.role == "tool":
+                    steps_by_turn.setdefault(rec.turn_id, []).append(_tool_step(rec))
+            ui: list[MessageRecord] = []
+            for rec in records:
+                if rec.role not in ("user", "assistant"):
+                    continue
+                rec.tool_steps = (
+                    list(steps_by_turn.get(rec.turn_id) or [])
+                    if rec.role == "assistant"
+                    else []
+                )
+                ui.append(rec)
+            return ui
      #如果遇到新的消息需要添加到conversation_id的对话中去，执行此函数获取对应的Message存储格式
     def append_message(
         self,
@@ -335,6 +353,46 @@ class ConversationStore:
             session.commit()
             _logger.info("delete conversation=%s", conversation_id)
 
+    def set_pending_draft(self, conversation_id: str, payload: dict) -> None:
+        """Overwrite the one pending note draft for this conversation. Does not bump updated_at."""
+        try:
+            parsed = uuid.UUID(conversation_id)
+        except ValueError:
+            raise KeyError(conversation_id) from None
+        with self._session_factory() as session:
+            row = session.get(Conversation, parsed)
+            if row is None:
+                raise KeyError(conversation_id)
+            row.pending_draft = payload
+            session.commit()
+            _logger.info(
+                "pending_draft set conversation=%s action=%s file=%s",
+                conversation_id,
+                payload.get("action"),
+                payload.get("file_name"),
+            )
+
+    def get_pending_draft(self, conversation_id: str) -> dict | None:
+        """Return pending_draft JSON, or None if missing conversation / no draft."""
+        record = self.get(conversation_id)
+        if record is None:
+            return None
+        return record.pending_draft
+
+    def clear_pending_draft(self, conversation_id: str) -> None:
+        """Set pending_draft to NULL. KeyError if the conversation is missing."""
+        try:
+            parsed = uuid.UUID(conversation_id)
+        except ValueError:
+            raise KeyError(conversation_id) from None
+        with self._session_factory() as session:
+            row = session.get(Conversation, parsed)
+            if row is None:
+                raise KeyError(conversation_id)
+            row.pending_draft = None
+            session.commit()
+            _logger.info("pending_draft cleared conversation=%s", conversation_id)
+
 def _turns_after_watermark(rows: list[Message], watermark) -> list[Message]:
     """Return rows whose turn comes strictly after the watermark turn.
 
@@ -372,6 +430,7 @@ def _to_conversation(row: Conversation) -> ConversationRecord:
             if row.summary_watermark_turn_id is not None
             else None
         ),
+        pending_draft=dict(row.pending_draft) if row.pending_draft else None,
     )
 
 #将从数据库中查询出来的Message转换为Python可用的MessageRecord类
@@ -391,4 +450,15 @@ def _to_message(row: Message) -> MessageRecord:
         truncated=bool(row.truncated),
         status=row.status,
         citations=list(row.citations) if row.citations else None,
+        tool_steps=[],
     )
+
+
+def _tool_step(record: MessageRecord) -> dict:
+    """Short tool row for the assistant bubble trace (never full tool output)."""
+    return {
+        "name": record.tool_name or "",
+        "status": record.status or "",
+        "preview": record.output_preview or record.content or "",
+        "arguments": record.tool_arguments or "",
+    }

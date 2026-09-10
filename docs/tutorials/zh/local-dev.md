@@ -31,7 +31,13 @@ uv sync
 uv run alembic upgrade head
 ```
 
-代码已升级而库未升时，发聊天会 500（缺 `running_summary` 等列）。看表用 psql 或图形客户端连同一库；Windows 终端若是 GBK，先 `SET client_encoding TO 'UTF8';` 或 `chcp 65001`。
+`python main.py` 启动时会执行 `alembic upgrade head`（与 Docker 入口相同）。也可手动：
+
+```powershell
+uv run alembic upgrade head
+```
+
+代码已升级而库未升时，打开会话会 500（缺 `pending_draft` 等列）。看表用 psql 或图形客户端连同一库；Windows 终端若是 GBK，先 `SET client_encoding TO 'UTF8';` 或 `chcp 65001`。
 
 ## 嵌入模型
 

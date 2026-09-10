@@ -1,6 +1,8 @@
 from pathlib import Path
 
 from noteagent.chat.drafts import DraftStore, NoteDraft, commit_review
+from noteagent.chat.history import ConversationStore
+from noteagent.db import Base, create_engine_from_url, create_session_factory
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.retrieval.chunker import MarkdownChunker
 from noteagent.retrieval.service import RetrievalService
@@ -112,13 +114,17 @@ def test_index_skip_empty_logs(tmp_path: Path, caplog):
 
 def test_commit_review_create_is_searchable(tmp_path: Path):
     notes, service = _service(tmp_path)
-    store = DraftStore()
-    store.put("t1", NoteDraft(
+    engine = create_engine_from_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    history = ConversationStore(create_session_factory(engine))
+    conv = history.create("t")
+    store = DraftStore(history)
+    store.put(conv.id, NoteDraft(
         action="create",
         file_name="Go.md",
         content="注意力机制用 Query Key Value 计算权重。\n",
     ))
-    result = commit_review(notes, store, "t1", "approve", retrieval=service)
+    result = commit_review(notes, store, conv.id, "approve", retrieval=service)
     assert result["status"] == "written"
     hits = service.search("注意力", top_k=2)
     assert hits

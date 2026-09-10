@@ -6,17 +6,17 @@ HTTP 聊天、`bind_tools` Agent、工具、**人审之后才写盘**。不直�
 
 | 文件 | 模块 | 作用 |
 |------|------|------|
-| `router.py` | `router` | `GET /`、`GET /documents`、会话 CRUD、`POST /chat`、`POST /chat/review` |
-| `agent.py` | `ChatAgent` | `bind_tools` 循环；SSE token / `sources` / 内部 `assistant_final` / draft；每步写 tool stub；hop 上限来自 budget；可选 `prompt_path`（默认 `prompts/system.txt`） |
-| `citations.py` | `CitationRegistry` | 本轮 `source_id`；`sanitize_answer` / `strip_cite_markers` |
-| `history.py` | `ConversationStore` | 会话/消息唯一写入口；`start_turn`、`append_tool_stub`、`apply_compact`、`list_persistent_after_watermark`；assistant 可带 `citations` |
+| `router.py` | `router` | `GET /`、`GET /documents`、会话 CRUD（含 `GET /conversations/{id}`）、`POST /chat`、`POST /chat/review` |
+| `agent.py` | `ChatAgent` | `bind_tools` 循环；SSE thinking / generating / tool / token / `sources` / 内部 `assistant_final` / draft；每步写 tool stub；hop 上限来自 budget；可选 `prompt_path`（默认 `prompts/system.txt`） |
+| `citations.py` | `CitationRegistry` | 本轮 `source_id`；`sanitize_answer` 只保留用到的引用并重排 1..n；`strip_cite_markers` |
+| `history.py` | `ConversationStore` | 会话/消息唯一写入口；`pending_draft`；assistant 可带 `citations` 与 `tool_steps` |
+| `drafts.py` | `DraftStore`、`NoteDraft`、`ProposeNoteInput`、`commit_review` | 待审写入 `conversations.pending_draft`；同意后写盘并同步 Chroma |
 | `context_budget.py` | `ContextBudget`、`budget_from_settings` | 窗口 W、压缩比例、stub 截断、`max_tool_hops` |
 | `context_tokens.py` | `estimate_tokens`、`prefix_until_tokens` | 字符/4 估算，无 tiktoken |
 | `context_compact.py` | `group_turns`、`select_turns_to_drop` 等 | 完整 Turn 边界压缩 |
 | `context_pack.py` | `build_pack` | Persistent + summary + 当前 Runtime；用户句若有编号/`##` 标题则注入「材料标题树」 |
-| `drafts.py` | `DraftStore`、`NoteDraft`、`ProposeNoteInput`、`commit_review` | 按会话暂存提案；同意后写盘并同步 Chroma |
 | `tools.py` | `build_chat_tools` | `list_files`、`read_file`、`search_*`、`propose_note`（无写盘；四动作）。契约：[docs/architecture/chat-tools.md](../../../docs/architecture/chat-tools.md) |
-| `schemas.py` | 请求/响应体 | 含 `ConversationOut`、`MessageOut` |
+| `schemas.py` | 请求/响应体 | 含 `ConversationOut`、`ConversationDetailOut`、`MessageOut`（`tool_steps`） |
 | [`prompts/`](prompts/README.md) | `system.txt` | 现行五要素提示（含一层目录相对路径）；归档 [`prompts/iterations/`](prompts/iterations/README.md) v1–v8 |
 
 ## 基础使用
@@ -30,11 +30,11 @@ from noteagent.chat.context_budget import budget_from_settings
 from noteagent.chat.tools import build_chat_tools
 from noteagent.chat.agent import ChatAgent
 
-drafts = DraftStore()
+drafts = DraftStore(history)
 tools = build_chat_tools(notes, retrieval, drafts)
 agent = ChatAgent(model, tools, notes, drafts, history=history, budget=budget_from_settings(settings), retrieval=retrieval)
 
-async for item in agent.stream("讲一下 for 循环", thread_id="t1", turn_id=start_turn()):
+async for item in agent.stream("讲一下 for 循环", thread_id=conv_id, turn_id=start_turn()):
     # token / draft；assistant_final 只给路由写库，不推前端
     ...
 agent.review("t1", "approve")
@@ -43,9 +43,10 @@ agent.review("t1", "approve")
 HTTP：
 
 - `GET /conversations`：侧栏历史（按 `updated_at` 倒序）
-- `GET /conversations/{id}/messages`：气泡，仅 `user`/`assistant`（**无 tool stub**）
+- `GET /conversations/{id}`：会话详情，含 `pending_draft`（无稿为 null）
+- `GET /conversations/{id}/messages`：气泡，仅 `user`/`assistant`（**无独立 tool 行**；assistant 可带 `tool_steps`）
 - `PATCH` / `DELETE /conversations/{id}`：重命名不改 `updated_at`；删除 CASCADE
-- `POST /chat` JSON：`{"question": "...", "conversation_id": "<uuid>"?}`。先落库 user（带 `turn_id`），SSE：`conversation` → `sources` → `token` / `draft`；结束后把最终 assistant 与 `citations` 入库
+- `POST /chat` JSON：`{"question": "...", "conversation_id": "<uuid>"?}`。先落库 user（带 `turn_id`），SSE：`conversation` → `thinking` / `tool` / `tool_done` / `generating` / `sources` / `token` / `draft`；结束后把最终 assistant 与 `citations` 入库
 - `POST /chat/review`：审批草稿；写盘成功后同步该文件向量
 
 跨回合记忆 = watermark 后 Persistent（user + 最终 assistant + tool stub）+ `running_summary`。当前 Turn 工具全文只活在本次 `stream()` 的 Runtime。压缩阈值全部来自 Settings，不在 compact/agent 里写死窗口数字。

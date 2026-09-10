@@ -13,14 +13,14 @@
 | `test_chunker.py` | 短文不拆、长文拆开 |
 | `test_chat_tools.py` | 工具列表无写盘；`propose_note` 四动作不落盘；一层路径；`ProposeNoteInput` schema |
 | `test_drafts.py` | 同意追加/新建/覆盖/删除、override、拒绝；可选 retrieval 同步 |
-| `test_chat_history.py` | 标题归一化；create/get/list/append；级联删除；重命名/删除 |
+| `test_chat_history.py` | 标题归一化；create/get/list/append；级联删除；重命名/删除；`pending_draft` |
 | `test_context_budget.py` | Settings → `ContextBudget` |
 | `test_context_tokens.py` | token 估算与 stub 截断 |
 | `test_context_compact.py` | Turn 分组、触发、drop/keep、stub 不计双份 |
 | `test_context_pack.py` | pack 装配；从用户句抽取编号/`##` 标题树 |
 | `test_context_store.py` | turn_id、stub、watermark、UI 过滤 tool |
-| `test_chat_agent_context.py` | stub 入库、跨 Turn 无全文工具、hop 上限、压缩 |
-| `test_citations.py` | `source_id` 登记、sanitize、历史包去掉 `[[cite:N]]` |
+| `test_chat_agent_context.py` | stub 入库、跨 Turn 无全文工具、hop 上限、压缩、token 分片、工具后 `generating`、tool hop `think` |
+| `test_citations.py` | `source_id` 登记、sanitize 丢假号、用到的引用按出现顺序重排 1..n |
 | `test_prompt_eval_score.py` | v0.1 L1：标题树、发明标题、锚点、create 正文 H1 |
 | `test_prompt_eval_run.py` | 脚本化 Agent、seed_files、`n00.md` / `index.json` 布局 |
 

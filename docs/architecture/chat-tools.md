@@ -18,7 +18,7 @@
 
 - LLM 只出提案或问答；禁止在回复里声称已经写入或删除文件。
 - `list_files` / `read_file` / `search_relative_from_chromadb` **只读**。
-- `propose_note` 只把一份 [`NoteDraft`](../../src/noteagent/chat/drafts.py) 放进按会话的内存 [`DraftStore`](../../src/noteagent/chat/drafts.py)，**不写磁盘、不写 Chroma**。
+- `propose_note` 只把一份 [`NoteDraft`](../../src/noteagent/chat/drafts.py) 写入该会话的 [`DraftStore`](../../src/noteagent/chat/drafts.py)（`conversations.pending_draft`），**不写磁盘、不写 Chroma**。
 - 磁盘只在用户审批后的 `commit_review` → `_write_draft`：`FileNoteRepository.create` / `write` / `delete`。
 - 审批写盘成功后同步该文件的 Chroma 点（先删旧再索引；`delete` 只删向量）。失败不回滚 Markdown。手动 [`scripts/index_notes.py`](../../scripts/index_notes.py) 仍可用。
 
@@ -54,13 +54,13 @@ flowchart TD
 
 实现要点（[`agent.py`](../../src/noteagent/chat/agent.py) `stream`）：
 
-- 每 hop：`pack_now()` → 可选压缩 → `bound.astream`。无 `tool_calls` 则吐 token 并结束。
-- 有调用则 `tool_map[name].ainvoke(args)`，结果 `json.dumps` 进 Runtime `ToolMessage`，并立刻 `append_tool_stub`。
+- 每 hop：`pack_now()` → 可选压缩 → 未用过工具则 `thinking` 否则 `generating` → `bound.astream`。无 `tool_calls` 则吐 token 并结束。
+- 有调用则 `astream` 中带 name 即推 `tool`，再 `tool_map[name].ainvoke(args)`，结果 `json.dumps` 进 Runtime `ToolMessage`，并立刻 `append_tool_stub`。
 - 工具轮数 ≥ `ContextBudget.max_tool_hops`（环境 `CHAT_MAX_TOOL_HOPS`，默认 8）则打断。细节见 context-management §7.1。
 - 循环结束后若 `drafts.get(thread_id)` 非空，yield SSE `event: draft`，data 为 `NoteDraft.as_dict()`。
 - `propose_note` 依赖 `current_thread_id`（`stream` 入口写入）。无 thread 则工具返回 `{error: "no thread_id"}`，不放草稿。
 
-前端不渲染 tool stub。气泡只有 user / 最终 assistant。
+前端不把 tool stub 画成独立气泡。过程排在助手气泡外：live 可展开；进行中 ing，完成后 Thought / Read / Searched；有工具则标题 Explored 汇总，无工具结束藏排。Thought 可展开该 hop 过渡文字（不入库）。主气泡只有最终 assistant。
 
 ---
 
@@ -115,7 +115,7 @@ flowchart TD
 | 失败 | `{error}` |
 | 副作用 | 不写 Chroma、不改笔记；成功时注册检索来源 |
 
-未索引或空库时 fragments 可为空列表，不算工具实现错误。点上的 `file_name` / `distance` 与审批后如何写入见 [retrieval.md](./retrieval.md)。引用渲染见 [frontend.md](./frontend.md)。
+未索引或空库时 fragments 可为空列表，不算工具实现错误。点上的 `file_name` / `distance` 与审批后如何写入见 [retrieval.md](./retrieval.md)。最终答案里真正出现的引用才写入该条 assistant 的 `messages.citations`，编号按该条正文首次出现重排为 1..n。渲染见 [frontend.md](./frontend.md)。
 
 ### 4.4 `propose_note`
 
@@ -179,11 +179,11 @@ HTTP：`POST /chat/review`，body [`ReviewRequest`](../../src/noteagent/chat/sch
 - `append` / `create`：同意、改追加到所选、改为新建、拒绝。
 - `replace`：同意覆盖、拒绝；无 override 按钮。
 - `delete`：同意删除、拒绝；不渲染 content。
-- `sendReview`：`status === "written"` 且 `action === "delete"` 显示「已删除」，否则「已写入」。
+- `sendReview`：`status === "written"` 且 `action === "delete"` 显示「已删除」，否则「已写入」；成功后移除卡片。打开会话时 `GET /conversations/{id}` 若有 `pending_draft` 再画卡。
 
 后端 override 虽允许 `write_action` 为 replace/delete，当前卡片不会发出这两种 override。
 
-`DraftStore` 进程内 dict，**重启丢失**。
+`DraftStore` 写 `conversations.pending_draft`。重启或切会话后未审稿仍在；已审批列为空，不再出卡。
 
 ---
 
@@ -202,8 +202,8 @@ HTTP：`POST /chat/review`，body [`ReviewRequest`](../../src/noteagent/chat/sch
 | [`chat/tools.py`](../../src/noteagent/chat/tools.py) | 四个工具 |
 | [`chat/drafts.py`](../../src/noteagent/chat/drafts.py) | schema、DraftStore、`commit_review` |
 | [`chat/agent.py`](../../src/noteagent/chat/agent.py) | hop 循环、SSE draft、`review` |
-| [`chat/router.py`](../../src/noteagent/chat/router.py) | `POST /chat`、`POST /chat/review` |
-| [`chat/schemas.py`](../../src/noteagent/chat/schemas.py) | `ReviewRequest` |
+| [`chat/router.py`](../../src/noteagent/chat/router.py) | `GET /conversations/{id}`、`POST /chat`、`POST /chat/review` |
+| [`chat/schemas.py`](../../src/noteagent/chat/schemas.py) | `ReviewRequest`、`ConversationDetailOut` |
 | [`prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt) | 意图门与质量约束 |
 | [`web/templates/home.html`](../../src/noteagent/web/templates/home.html) | 审批卡片 |
 | [`notes/repository.py`](../../src/noteagent/notes/repository.py) | 真正 IO |

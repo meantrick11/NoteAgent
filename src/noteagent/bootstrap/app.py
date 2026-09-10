@@ -61,7 +61,7 @@ def build_container(settings: Settings) -> AppContainer:
         store=ChromaVectorStore(settings.chroma_dir, settings.chroma_collection),
     )
      #Retrieval service initialization
-    drafts = DraftStore()
+    drafts = DraftStore(history)
 
     tools = build_chat_tools(notes, retrieval, drafts)     #创建所有交给Agent的工具，包括笔记管理（CURD），RAG检索工具，草稿工具等
 

@@ -8,7 +8,7 @@
 | 测试库 | 内存 SQLite（`Base.metadata.create_all`） |
 | 聊天装配 | [context-management.md](./context-management.md) |
 
-PostgreSQL 只存会话与消息。笔记正文在 `notes/`；向量在 Chroma（[retrieval.md](./retrieval.md)）；待审草稿在内存 `DraftStore`。本库不写 HTTP、不调 LLM。
+PostgreSQL 存会话、消息和待审草稿 JSON。笔记正文在 `notes/`；向量在 Chroma（[retrieval.md](./retrieval.md)）。本库不写 HTTP、不调 LLM。
 
 ---
 
@@ -19,7 +19,7 @@ PostgreSQL 只存会话与消息。笔记正文在 `notes/`；向量在 Chroma�
 | [`src/noteagent/db/models.py`](../../src/noteagent/db/models.py) | ORM：`Base`、`Conversation`、`Message` |
 | [`src/noteagent/db/engine.py`](../../src/noteagent/db/engine.py) | `create_engine_from_url`、`create_session_factory` |
 | [`src/noteagent/chat/history.py`](../../src/noteagent/chat/history.py) | 唯一业务写入口 `ConversationStore` |
-| [`alembic/versions/`](../../alembic/versions/) | 迁移。现行 head：`8c2e1a4b7d90` |
+| [`alembic/versions/`](../../alembic/versions/) | 迁移。现行 head：`a9b4c2d1e8f0` |
 | [`src/noteagent/bootstrap/app.py`](../../src/noteagent/bootstrap/app.py) | 无 `DATABASE_URL` 则 `build_container` 失败；shutdown `engine.dispose` |
 
 依赖：`chat` 可 import `db`；`db` 不得 import `chat`。路由只调 `ConversationStore`，不 `session.add`。
@@ -53,6 +53,7 @@ conversations 1 ──< messages
 | `updated_at` | timestamptz | 否 | 写入 user/assistant 时刷新；重命名不改；写 stub 不改 |
 | `running_summary` | Text | 是 | 该会话唯一摘要栏。压缩时追加，不按 Turn 拆行 |
 | `summary_watermark_turn_id` | UUID | 是 | 摘要已覆盖的最后已完成 `turn_id`；新会话 `NULL` |
+| `pending_draft` | JSON | 是 | 待审 `NoteDraft`；有值须人审，批准/拒绝后 `NULL` |
 
 索引：`ix_conversations_updated_at`（侧栏倒序）。
 
@@ -71,7 +72,7 @@ conversations 1 ──< messages
 | `output_preview` | Text | 是 | 工具输出前 N token（N 来自环境） |
 | `truncated` | Boolean | 否，默认 false | 输出是否被截成 preview |
 | `status` | Text | 是 | `ok` / `error` |
-| `citations` | JSON | 是 | 仅 assistant：本轮实际引用 `[{index, file_name, chunk_index, quote}]` |
+| `citations` | JSON | 是 | 仅 assistant：本条实际引用 `[{index, file_name, chunk_index, quote}]`，index 按该条正文首次出现为 1..n |
 
 索引：`ix_messages_conversation_created`（`conversation_id`, `created_at`）；`ix_messages_conversation_turn`（`conversation_id`, `turn_id`）。
 
@@ -126,7 +127,6 @@ tool 行不存工具全文、不存 Agent 自我输出。截断规则见 [contex
 | 数据 | 位置 |
 |------|------|
 | 当前 Turn 工具全文 | 内存 Runtime，Turn 结束或进程退出即丢 |
-| 待审草稿全文 | `DraftStore` |
 | 已审批笔记 | `notes/*.md` |
 | 检索向量 | Chroma |
 
@@ -138,4 +138,4 @@ tool 行不存工具全文、不存 Agent 自我输出。截断规则见 [contex
 uv run alembic upgrade head
 ```
 
-现行 head `8c2e1a4b7d90`（`down_revision = 3d1c2b8a9e4f`）。`messages.citations` 可空 JSON，仅 assistant 最终消息写入实际引用。旧 `messages.turn_id` 可空，升级时按「遇到 user 开新 turn」回填。
+现行 head `a9b4c2d1e8f0`（`down_revision = 8c2e1a4b7d90`）。`conversations.pending_draft` 可空 JSON。此前 `messages.citations` 可空 JSON，仅 assistant 最终消息写入实际引用。旧 `messages.turn_id` 可空，升级时按「遇到 user 开新 turn」回填。

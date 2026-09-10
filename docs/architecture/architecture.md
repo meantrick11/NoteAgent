@@ -40,9 +40,9 @@ NoteAgent 是个人学习笔记助手：在浏览器里对话，把值得保留�
 
 这三条决定了后面所有模块怎么切：
 
-1. **LLM 只出提案。** 工具不能 `open()` 笔记。`propose_note` 只把草稿放进内存。
+1. **LLM 只出提案。** 工具不能 `open()` 笔记。`propose_note` 只把草稿写入该会话的 `pending_draft`。
 2. **磁盘只走人类操作。** `create` / `append` / `replace` / `delete` 发生在聊天 `commit_review`，或 Documents 的 `/notes*`。工具不能写盘。
-3. **气泡不是全过程。** 前端只画 `user` 与最终 `assistant`。工具调用给模型和日志，不进侧栏。
+3. **气泡不是全过程。** 前端画 `user` 与最终 `assistant`。工具过程在气泡**外**单独一排：live 可展开，当前步英文闪烁；写回答为 Generating...；结束后有工具则 Explored 汇总 + ▼，无工具藏排。步骤完成后为 Thought / Read / Searched。不进侧栏、不进主气泡正文。
 
 ### 1.5 文档目的
 
@@ -101,12 +101,12 @@ ChatAgent  chat/agent.py          仅 Chat 路径
     ├── 工具         chat/tools.py            只读 + 提案
     ├── 上下文       context_pack / compact   Persistent + Runtime
     ├── 会话写入口   chat/history.py          → PostgreSQL
-    ├── 草稿槽       chat/drafts.py           内存 DraftStore；审批才写盘
+    ├── 草稿槽       chat/drafts.py           DraftStore → conversations.pending_draft；审批才写盘
     ├── 笔记 IO      notes/repository.py      审批或 Documents HTTP 写入
     └── 检索         retrieval/               工具 search；写盘后 index
 ```
 
-四种存储职责不同：PostgreSQL 管会话；`DraftStore` 管未审批全文；`notes/` 管正式知识；Chroma 管由 Markdown 派生的向量。
+四种存储职责不同：PostgreSQL 管会话与待审草稿；`notes/` 管正式知识；Chroma 管由 Markdown 派生的向量。
 
 ### 3.2 依赖方向
 
@@ -178,9 +178,9 @@ flowchart TD
   chroma -->|search 工具| tools
 ```
 
-**进页。** 下发页面；Chat 侧栏 `GET /conversations`；点会话 `GET /conversations/{id}/messages`，只渲染 user / assistant。
+**进页。** 下发页面；Chat 侧栏 `GET /conversations`；点会话 `GET /conversations/{id}/messages` 画气泡（助手可带气泡外过程排 `tool_steps`），再 `GET /conversations/{id}` 回湿待审卡片。列表里仍只有 user / assistant 行。
 
-**发一句。** `POST /chat`：先把本句 user 写入 PostgreSQL（新 `turn_id`），SSE 推 `conversation`（侧栏拿到 id），再 `ChatAgent.stream`。每一跳：按 watermark 后 Persistent、`running_summary`、本轮 Runtime、可选 draft 一行装配；超预算则压缩；再 `astream`。有 `tool_calls` 则本地执行、立刻写 stub、全文进 Runtime 再跳。无工具则推 `token`，路由把最终 assistant 入库。若本轮 `propose_note` 成功，再推 `draft`。
+**发一句。** `POST /chat`：先把本句 user 写入 PostgreSQL（新 `turn_id`），SSE 推 `conversation`（侧栏拿到 id），再 `ChatAgent.stream`。本回合尚未用工具时 hop 开头推 `thinking`；用过工具后改推 `generating`（避免盖掉过程排）。超预算则压缩；再 `astream`。出现带 name 的 `tool_calls` 即推 `tool`，本地执行后 `tool_done`、写 stub、全文进 Runtime 再跳（该跳正文不进气泡）。无工具则边收边推 `token`，路由把 `assistant_final` 入库。若本轮 `propose_note` 成功，再推 `draft`。
 
 **人审。** `POST /chat/review` → `commit_review` → 改 `notes/`。写盘成功后按该 `file_name` 删除旧向量，再对当前全文切块写入 Chroma（`delete` 只删向量）。索引失败只记日志，不回滚文件。手动 [`scripts/index_notes.py`](../../scripts/index_notes.py) 仍可整篇重建。
 
@@ -232,7 +232,7 @@ flowchart TD
 
 ### 5.1 前端
 
-**职责。** 单页：顶栏切 Chat / Documents。Chat 侧栏管会话，主栏画气泡，底栏发消息，草稿以卡片出现。Documents 用一层目录树管已落地的 Markdown：打开即编辑+预览，保存/移动/删除/点芯片同步向量。不实现独立前端工程，不渲染工具过程。
+**职责。** 单页：顶栏切 Chat / Documents。Chat 侧栏管会话，主栏画气泡，底栏发消息，草稿以卡片出现。Documents 用一层目录树管已落地的 Markdown：打开即编辑+预览，保存/移动/删除/点芯片同步向量。不实现独立前端工程。工具过程在助手气泡外一排，不进主气泡正文。
 
 **结构与协作。** `GET /` 与 `GET /documents` 下发同一 [`web/templates/home.html`](../../src/noteagent/web/templates/home.html)，默认 Chat。Chat：`GET /conversations`、点会话再取消息、`POST /chat` 读 SSE、`POST /chat/review` 审草稿；点 ① 打开出处侧栏，保存走 `PUT /notes/{path}`；会话三点走 `PATCH`/`DELETE /conversations/{id}`。Documents：文件夹与根 `.md` 同级；拖到文件夹组确认后 `POST /notes/move`；芯片 `POST /notes/{path}/index`。树、弹窗、同步滚动、两条写盘路径的界面约定见 [frontend.md](./frontend.md)。`isStreaming` 为真时不能连发。
 
@@ -250,7 +250,7 @@ flowchart TD
 
 **结构与协作。** [`chat/router.py`](../../src/noteagent/chat/router.py) 与 [`notes/router.py`](../../src/noteagent/notes/router.py) 由 `create_app` `include_router`。聊天依赖从 container 取 `history` 与 `chat_agent`；笔记取 `notes` 与 `retrieval`。
 
-`POST /chat` 在流式开始前跑 Depends `resolve_conversation`：未知 id 则 **SSE 之前** 404；无 id 则 `history.create`，标题来自首句截断。然后 `start_turn()`、`append_message(user)`，进入 `agent.stream`。SSE：`conversation` 的 data 为 `{id, title}`；`sources` 为本轮实际引用列表；`token` 为净化后的最终正文；`draft` 为 pending JSON。内部事件 `assistant_final` 只给路由写库，不推前端。空 data 不 yield。
+`POST /chat` 在流式开始前跑 Depends `resolve_conversation`：未知 id 则 **SSE 之前** 404；无 id 则 `history.create`，标题来自首句截断。然后 `start_turn()`、`append_message(user)`，进入 `agent.stream`。SSE：`conversation` 的 data 为 `{id, title}`；`sources` 为本条助手消息实际引用（编号 1..n）；`token` 为流式正文（cite 号可能仍是工具 source_id）；`answer` 为净化并重排后的全文；`draft` 为 pending JSON。内部事件 `assistant_final` 只给路由写库；路由再推 `answer`（同一份净化正文，引用已按该条 1..n 重排）给气泡对齐。空 data 不 yield。
 
 #### 5.2.1 聊天路由
 
@@ -259,7 +259,8 @@ flowchart TD
 | GET | `/` | 下发 home.html（Chat） |
 | GET | `/documents` | 同一模板，前端切 Documents |
 | GET | `/conversations` | `history.list_conversations`，侧栏按 `updated_at` 倒序 |
-| GET | `/conversations/{id}/messages` | `history.list_messages`（仅 user/assistant）；缺会话 404 |
+| GET | `/conversations/{id}` | `history.get`；含 `pending_draft`；缺会话 404 |
+| GET | `/conversations/{id}/messages` | `history.list_messages`（仅 user/assistant，assistant 可带 `tool_steps`）；缺会话 404 |
 | PATCH | `/conversations/{id}` | `history.rename`；空标题或过长 400；不改 `updated_at` |
 | DELETE | `/conversations/{id}` | `history.delete`，消息 CASCADE；204 |
 | POST | `/chat` | 落库 user → `chat_agent.stream` → 落库最终 assistant |
@@ -292,7 +293,7 @@ flowchart TD
 
 **职责。** 一次用户发送对应一次 Turn：装配上下文、跑工具循环、yield token 与可选 draft。`review` 转到草稿模块。Agent 不直接写 `notes/`。
 
-**结构与协作。** [`chat/agent.py`](../../src/noteagent/chat/agent.py) `ChatAgent.stream(question, thread_id, turn_id)` 把 `current_thread_id` / `current_turn_id` 写入 contextvars（`propose_note` 用来绑定会话）。局部列表 `runtime` 只活在这一次 HTTP 请求里。每跳：`pack_now()` → 超预算则 compact → `model.bind_tools(tools).astream(pack.messages)`。有 `tool_calls` 则 `ainvoke`，结果进 Runtime `ToolMessage`，并立刻 `history.append_tool_stub`。无 `tool_calls` 则 yield `token` 与内部 `assistant_final`。若 `DraftStore` 仍有 pending，再 yield `draft`。轮数受 `ContextBudget.max_tool_hops`（`CHAT_MAX_TOOL_HOPS`）限制。
+**结构与协作。** [`chat/agent.py`](../../src/noteagent/chat/agent.py) `ChatAgent.stream(question, thread_id, turn_id)` 把 `current_thread_id` / `current_turn_id` 写入 contextvars（`propose_note` 用来绑定会话）。局部列表 `runtime` 只活在这一次 HTTP 请求里。每跳：`pack_now()` → 超预算则 compact → 未用过工具则 yield `thinking`，否则 yield `generating` → `astream`。`astream` 中一旦出现带 name 的 `tool_calls` 则 yield `tool`（执行前不重复）。有 `tool_calls` 则 `ainvoke`、yield `tool_done`，结果进 Runtime `ToolMessage`，并立刻 `history.append_tool_stub`（该跳不 yield `token`）。无 `tool_calls` 则边收边 yield `token`， hop 结束 yield `sources` 与内部 `assistant_final`。若 `DraftStore` 仍有 pending，再 yield `draft`。轮数受 `ContextBudget.max_tool_hops`（`CHAT_MAX_TOOL_HOPS`）限制。
 
 这不是 LangChain `AgentExecutor`，也没有跨 Turn checkpointer。`bind_tools` 只把 JSON Schema 交给模型 API；循环、执行、写 stub 都在 `stream` 里。
 
@@ -330,7 +331,7 @@ flowchart TD
 | Persistent | watermark 之后的 user、最终 assistant、tool stub | 是 | 仅 user / 最终 assistant |
 | `running_summary` | 会话一行累积摘要 | 有则带上 | 否 |
 | Runtime | 当前 Turn 的 tool_call 与工具**全文** | 仅本轮后续 hop | 否 |
-| DraftStore | 待审笔记全文 | 一行工作区 | SSE 卡片 |
+| DraftStore | 待审笔记全文（PG） | 一行工作区 | SSE 卡片；打开会话回湿 |
 
 [`build_pack`](../../src/noteagent/chat/context_pack.py) 拼：system、工具定义、summary、Persistent、当前 user、draft 一行、Runtime。当前 Turn 已写入的 stub **不**再装进 pack。包体积达到窗口触发比例时，[`context_compact.py`](../../src/noteagent/chat/context_compact.py) 只从**已完成** Turn 切一段做成摘要，拼到旧 `running_summary`，watermark 推到被切的最后一个已完成 `turn_id`。旧 `messages` 行不删。
 
@@ -354,11 +355,11 @@ flowchart TD
 
 **职责。** 暂存待审草稿；用户表态后由确定性代码改磁盘。不调用 LLM。
 
-**结构与协作。** [`DraftStore`](../../src/noteagent/chat/drafts.py) 是 `dict[thread_id, NoteDraft]`，每会话最多一份 pending，进程重启即空。`NoteDraft.as_dict()` 即 SSE `draft` 与卡片字段。
+**结构与协作。** [`DraftStore`](../../src/noteagent/chat/drafts.py) 把每会话一份 pending 写在 `conversations.pending_draft`（JSON，形状 = `NoteDraft.as_dict()`）。有 JSON = 待审；`NULL` = 无待审。`GET /conversations/{id}` 把该字段交给前端回湿卡片。`NoteDraft.as_dict()` 同时用于 SSE `draft` 事件。
 
-[`commit_review`](../../src/noteagent/chat/drafts.py)：`pop` 后，`reject` 丢弃；`approve` 用草稿上的动作和文件名；`override` 必须带 `write_action` 与 `file_name`。`_write_draft`：`create` 先写 `# 标题` 再追加；`append` 追加；`replace` 覆盖；`delete` 删文件。路径非法或冲突则把 draft 放回 store。写盘成功后同步 Chroma（见 5.6）。
+[`commit_review`](../../src/noteagent/chat/drafts.py)：`pop` 后，`reject` 丢弃并把列置空；`approve` 用草稿上的动作和文件名；`override` 必须带 `write_action` 与 `file_name`。`_write_draft`：`create` 先写 `# 标题` 再追加；`append` 追加；`replace` 覆盖；`delete` 删文件。路径非法或冲突则把 draft 放回 store。写盘成功后同步 Chroma（见 5.6）。
 
-**为什么。** 草稿与气泡分开，避免模型把未审批全文当成已落盘知识。放内存是因为待审寿命短；重启后应重新提案，而不是静默写盘。写盘函数不含模型，失败可对同一份 draft 重试。
+**为什么。** 草稿与气泡分开，避免模型把未审批全文当成已落盘知识。挂在会话行上是因为待审是会话工作状态，重启后仍须人审，不能静默写盘。写盘函数不含模型，失败可对同一份 draft 重试。
 
 **代码落点。** [`chat/drafts.py`](../../src/noteagent/chat/drafts.py)；HTTP 见 5.2.1 `POST /chat/review`。
 
@@ -388,7 +389,7 @@ flowchart TD
 
 **结构与协作。** 两张表：`conversations` 1 — N `messages`，删会话 CASCADE。业务写入口只有 [`ConversationStore`](../../src/noteagent/chat/history.py)。`append_message` 只接受 `user` / `assistant`。`append_tool_stub` 写 `role=tool` 的预览行，不刷新 `updated_at`。前端 `list_messages` 过滤 tool 行。模型装配走 watermark 之后的全部 role。列、索引、实例见 [database.md](./database.md)。
 
-ORM：[`db/models.py`](../../src/noteagent/db/models.py)。连接：[`db/engine.py`](../../src/noteagent/db/engine.py)。迁移：[`alembic/versions/`](../../alembic/versions/)，head `8c2e1a4b7d90`。
+ORM：[`db/models.py`](../../src/noteagent/db/models.py)。连接：[`db/engine.py`](../../src/noteagent/db/engine.py)。迁移：[`alembic/versions/`](../../alembic/versions/)，head `a9b4c2d1e8f0`。
 
 **为什么。** 聊天要可切换、可重启恢复，所以进库。笔记要可读可搬家，所以不进这两张表。压缩改摘要和 watermark、不删行，早期气泡仍能画出来。stub 不顶 `updated_at`，避免一次 `list_files` 被当成「有新聊天」。`db` 不 import `chat`，表与 Agent 循环解耦。
 
@@ -435,7 +436,7 @@ ORM：[`db/models.py`](../../src/noteagent/db/models.py)。连接：[`db/engine.
 |------|------|----------|
 | 会话气泡、stub、running_summary | PostgreSQL | 删会话 CASCADE；压缩不删消息行 |
 | 当前 Turn 工具全文 | 进程内 Runtime | 本轮 HTTP 结束即丢 |
-| 待审草稿全文 | 内存 DraftStore | 审批结束或进程重启即丢 |
+| 待审草稿全文 | PostgreSQL `conversations.pending_draft` | 批准/拒绝后置空；删会话 CASCADE |
 | 正式笔记 | `notes/*.md` | 人审后的事实源 |
 | 检索向量 | Chroma | 由已批准 Markdown 派生；写盘成功后按文件重建，可删重建 |
 

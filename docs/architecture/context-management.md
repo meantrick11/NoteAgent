@@ -47,7 +47,7 @@ Turn N
 | Persistent History | `user`、最终 `assistant`、tool stub | watermark 之后的未压缩段 | 仅 user / 最终 assistant |
 | running_summary | 该会话一行累积摘要 | 有则每轮带上 | 不显示 |
 | Runtime Context | 当前 Turn 的 tool_call + 完整 Tool Result | 仅当前 Run 的后续 LLM | 无 |
-| DraftStore | 待审笔记全文 | 一行工作区 | SSE 卡片 |
+| DraftStore | 待审笔记全文（`conversations.pending_draft`） | 一行工作区 | SSE 卡片；打开会话回湿 |
 
 完整 Tool Result 不进库。Runtime 只活在这一次 `POST /chat` 的内存里；Turn 结束或进程退出即丢。排障看 [observability.md](./observability.md)（`AgentTraceHandler` 与 `chat/agent.py` 的 compact 日志）→ `var/logs/noteagent.log`。
 
@@ -224,7 +224,7 @@ flowchart TD
 | [`chat/context_tokens.py`](../../src/noteagent/chat/context_tokens.py) | `estimate_tokens`、`prefix_until_tokens` |
 | [`chat/drafts.py`](../../src/noteagent/chat/drafts.py) | 待审独立；装配只注入一行 |
 | [`observability/agent_trace.py`](../../src/noteagent/observability/agent_trace.py) | LLM/工具 hop 的 start/end/error 与耗时（不含 compact 数字） |
-| [`home.html`](../../src/noteagent/web/templates/home.html) | 只渲染 user / assistant |
+| [`home.html`](../../src/noteagent/web/templates/home.html) | 气泡为 user / assistant；工具过程在气泡外一排 |
 
 ### 7.1 工具循环与 stub 截断
 

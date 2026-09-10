@@ -589,6 +589,76 @@
     border: 1px solid var(--border);
     border-bottom-left-radius: 4px;
   }
+  .msg-col {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .msg-trace {
+    margin: 0 0 6px;
+    padding: 0 2px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .msg-trace[hidden] { display: none; }
+  .msg-trace-head {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .msg-trace-head:hover { color: var(--text); }
+  .msg-trace-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .msg-trace-head.live .msg-trace-label {
+    animation: msg-trace-pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes msg-trace-pulse {
+    50% { opacity: 0.4; }
+  }
+  .msg-trace-chevron { flex-shrink: 0; line-height: 1; }
+  .msg-trace.open > .msg-trace-head .msg-trace-chevron { transform: rotate(180deg); }
+  .msg-trace-list {
+    display: none;
+    margin: 6px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .msg-trace.open .msg-trace-list { display: block; }
+  .msg-trace-list li {
+    margin: 2px 0;
+  }
+  .msg-trace-list li.live {
+    animation: msg-trace-pulse 1.1s ease-in-out infinite;
+  }
+  .step-think-head {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .step-think.open .step-think-head .msg-trace-chevron { transform: rotate(180deg); }
+  .step-think-body {
+    display: none;
+    margin: 4px 0 8px 8px;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    color: var(--text-secondary);
+  }
+  .step-think.open .step-think-body { display: block; }
 
   /* Markdown inside bubble */
   .msg-bubble p { margin: 0 0 8px; }
@@ -779,6 +849,28 @@
     cursor: pointer;
   }
   .draft-card button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .save-toast {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    z-index: 300;
+    padding: 10px 14px;
+    background: #1f2937;
+    color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    font-size: 13px;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-6px);
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+  }
+  .save-toast.save-toast-on {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
 </style>
 </head>
 <body>
@@ -883,6 +975,8 @@
   </div>
 </div>
 
+<div id="saveToast" class="save-toast" role="status">文件已保存</div>
+
 <script>
 // ========== 状态 ==========
 let currentConversationId = null;
@@ -899,6 +993,9 @@ const citePaneSave = document.getElementById("citePaneSave");
 let citeFileName = null;
 let citeDirty = false;
 let citeHintLocate = "";
+const CITE_PENDING = "__pending__";
+const citePaneByConv = {};
+let citeRestoreGen = 0;
 
 function citeMark(n) {
   if (n >= 1 && n <= 20) return String.fromCharCode(0x245F + n);
@@ -913,9 +1010,28 @@ function citationMap(citations) {
   return map;
 }
 
+/** Remumber this message's cites 1..n by first appearance; drop unknown tags. */
+function localizeCitations(text, citations) {
+  const byOld = citationMap(citations);
+  const oldToNew = {};
+  const used = [];
+  const rewritten = String(text || "").replace(/\[\[cite:(\d+)\]\]/g, (_, raw) => {
+    const old = Number(raw);
+    const item = byOld[old];
+    if (!item) return "";
+    if (oldToNew[old] == null) {
+      oldToNew[old] = used.length + 1;
+      used.push(Object.assign({}, item, { index: oldToNew[old] }));
+    }
+    return "[[cite:" + oldToNew[old] + "]]";
+  });
+  return { text: rewritten, citations: used };
+}
+
 function renderAssistantHtml(text, citations) {
-  const map = citationMap(citations);
-  const withMarks = String(text || "").replace(/\[\[cite:(\d+)\]\]/g, (_, raw) => {
+  const local = localizeCitations(text, citations);
+  const map = citationMap(local.citations);
+  const withMarks = local.text.replace(/\[\[cite:(\d+)\]\]/g, (_, raw) => {
     const n = Number(raw);
     if (!map[n]) return "";
     return `<sup class="cite-ref" data-cite="${n}">${citeMark(n)}</sup>`;
@@ -963,6 +1079,95 @@ function resetCitePane() {
   setCiteHint();
 }
 
+function citePaneKey(id) {
+  return id || CITE_PENDING;
+}
+
+function snapshotCitePane(id) {
+  citePaneByConv[citePaneKey(id)] = {
+    hidden: citePane.hidden,
+    fileName: citeFileName,
+    text: citePaneText.value,
+    dirty: citeDirty,
+    hintLocate: citeHintLocate,
+    selStart: citePaneText.selectionStart,
+    selEnd: citePaneText.selectionEnd,
+    scrollTop: citePaneText.scrollTop,
+  };
+}
+
+function hideCitePaneVisual() {
+  citePane.hidden = true;
+  resetCitePane();
+}
+
+function anyCiteDirty() {
+  if (citeDirty) return true;
+  return Object.keys(citePaneByConv).some((key) => {
+    const snap = citePaneByConv[key];
+    return snap && snap.dirty;
+  });
+}
+
+function restoreCiteSelection(snap) {
+  if (snap.selStart == null) return;
+  try {
+    citePaneText.setSelectionRange(snap.selStart, snap.selEnd || snap.selStart);
+  } catch {
+    /* textarea not focused */
+  }
+  citePaneText.scrollTop = snap.scrollTop || 0;
+}
+
+async function restoreCitePane(id) {
+  const gen = ++citeRestoreGen;
+  const snap = citePaneByConv[citePaneKey(id)];
+  if (!snap || snap.hidden || !snap.fileName) {
+    hideCitePaneVisual();
+    return;
+  }
+  citePane.hidden = false;
+  citeFileName = snap.fileName;
+  citeHintLocate = snap.hintLocate || "";
+  citePaneTitle.textContent = snap.fileName;
+  if (snap.dirty) {
+    citePaneText.value = snap.text || "";
+    citePaneText.disabled = false;
+    citePaneSave.disabled = false;
+    citeDirty = true;
+    setCiteHint();
+    restoreCiteSelection(snap);
+    return;
+  }
+  citeDirty = false;
+  citePaneText.value = "";
+  citePaneText.disabled = true;
+  citePaneSave.disabled = true;
+  setCiteHint();
+  const res = await fetch(noteUrl(snap.fileName));
+  if (gen !== citeRestoreGen) return;
+  if (!res.ok) {
+    citeHintLocate = "无法打开笔记。";
+    setCiteHint();
+    return;
+  }
+  const json = await res.json();
+  if (gen !== citeRestoreGen) return;
+  citePaneText.value = json.content || "";
+  citePaneText.disabled = false;
+  citePaneSave.disabled = false;
+  restoreCiteSelection(snap);
+}
+
+function adoptCitePaneConversation(newId) {
+  if (!newId) return;
+  const pending = citePaneByConv[CITE_PENDING];
+  if (pending && !citePaneByConv[newId]) {
+    citePaneByConv[newId] = pending;
+  }
+  delete citePaneByConv[CITE_PENDING];
+}
+
 async function confirmCiteDiscard() {
   if (!citeDirty) return true;
   return docsConfirm({
@@ -974,8 +1179,8 @@ async function confirmCiteDiscard() {
 
 async function closeCitePane() {
   if (!(await confirmCiteDiscard())) return false;
-  citePane.hidden = true;
-  resetCitePane();
+  hideCitePaneVisual();
+  snapshotCitePane(currentConversationId);
   return true;
 }
 
@@ -1036,12 +1241,14 @@ async function saveCitedNote() {
   }
   citeDirty = false;
   setCiteHint();
+  snapshotCitePane(currentConversationId);
   if (docsCurrent === citeFileName) {
     document.getElementById("docsText").value = citePaneText.value;
     docsDirty = false;
     renderDocsPreview();
     renderDocsHeader();
   }
+  showSaveToast();
 }
 
 document.getElementById("citePaneClose").addEventListener("click", () => {
@@ -1122,16 +1329,17 @@ function isDocumentsPath() {
 
 async function showView(name, push) {
   const docs = name === "documents";
-  if (docs && citeDirty) {
-    const ok = await docsConfirm({
-      title: "未保存修改",
-      body: "出处笔记有未保存修改，确定离开？",
-      danger: false,
-    });
-    if (!ok) return;
-    citeDirty = false;
-    resetCitePane();
-    citePane.hidden = true;
+  if (docs) {
+    if (anyCiteDirty()) {
+      const ok = await docsConfirm({
+        title: "未保存修改",
+        body: "出处笔记有未保存修改，确定离开？",
+        danger: false,
+      });
+      if (!ok) return;
+    }
+    snapshotCitePane(currentConversationId);
+    hideCitePaneVisual();
   }
   if (!docs && isDocumentsPath() && docsDirty) {
     const ok = await docsConfirm({
@@ -1150,6 +1358,7 @@ async function showView(name, push) {
     history.pushState({ view: name }, "", path);
   }
   if (docs) loadDocuments();
+  else restoreCitePane(currentConversationId);
 }
 
 document.getElementById("navChat").addEventListener("click", (e) => {
@@ -1164,7 +1373,7 @@ window.addEventListener("popstate", () => {
   showView(isDocumentsPath() ? "documents" : "chat", false);
 });
 window.addEventListener("beforeunload", (e) => {
-  if (docsDirty || citeDirty) {
+  if (docsDirty || anyCiteDirty()) {
     e.preventDefault();
     e.returnValue = "";
   }
@@ -1212,6 +1421,31 @@ function docsPrompt({ title, body, value }) {
 
 function docsAlert(title, body) {
   return openDocsModal({ title, body, danger: false, input: false, alert: true }).then(() => {});
+}
+
+let saveToastTimer = null;
+function showSaveToast() {
+  const el = document.getElementById("saveToast");
+  // Some embedded browsers (Cursor) set innerWidth larger than the real window,
+  // so `right: 16px` is drawn past the visible edge. Park next to the nav tabs then.
+  const outer = window.outerWidth || window.innerWidth;
+  const clipped = window.innerWidth > outer + 8;
+  if (clipped) {
+    const docs = document.getElementById("navDocs").getBoundingClientRect();
+    el.style.left = Math.round(docs.right + 8) + "px";
+    el.style.right = "auto";
+  } else {
+    el.style.left = "auto";
+    el.style.right = "16px";
+  }
+  el.classList.remove("save-toast-on");
+  void el.offsetWidth;
+  el.classList.add("save-toast-on");
+  if (saveToastTimer) clearTimeout(saveToastTimer);
+  saveToastTimer = setTimeout(() => {
+    el.classList.remove("save-toast-on");
+    saveToastTimer = null;
+  }, 3000);
 }
 
 document.getElementById("docsModalCancel").addEventListener("click", () => closeDocsModal(null));
@@ -1526,6 +1760,7 @@ async function saveDocument() {
     return;
   }
   docsDirty = false;
+  showSaveToast();
   await loadDocuments();
   renderDocsHeader();
 }
@@ -1821,25 +2056,37 @@ async function loadConversations(activeId) {
 }
 
 async function openConversation(id) {
+  if (id === currentConversationId) return;
+  snapshotCitePane(currentConversationId);
   currentConversationId = id;
-  const res = await fetch(`/conversations/${id}/messages`);
-  if (!res.ok) return;
-  const messages = await res.json();
+  const [msgRes, convRes] = await Promise.all([
+    fetch(`/conversations/${id}/messages`),
+    fetch(`/conversations/${id}`),
+  ]);
+  if (!msgRes.ok) return;
+  const messages = await msgRes.json();
   if (!Array.isArray(messages)) return;
   chatInner.innerHTML = "";
   messages.forEach((msg) => {
-    appendMessage(msg.role, msg.content, msg.citations);
+    appendMessage(msg.role, msg.content, msg.citations, msg.tool_steps);
   });
+  if (convRes.ok) {
+    const conv = await convRes.json();
+    if (conv.pending_draft) renderDraftCard(conv.pending_draft);
+  }
   document.querySelectorAll(".conversation-item").forEach((el) => {
     el.classList.toggle("active", el.dataset.id === id);
   });
   chatContainer.scrollTop = chatContainer.scrollHeight;
+  await restoreCitePane(id);
 }
 
 // ========== 新对话 ==========
 function newChat() {
+  snapshotCitePane(currentConversationId);
   currentConversationId = null;
-  closeCitePane();
+  hideCitePaneVisual();
+  snapshotCitePane(null);
   chatInner.innerHTML = `<div class="welcome" id="welcome">
     <h2>今天想学点什么？</h2>
     <p>告诉我你的学习内容，我帮你整理成结构化笔记</p>
@@ -1983,6 +2230,7 @@ async function confirmDelete() {
     closeDeleteDialog();
     if (!res.ok) return;
     if (currentConversationId === id) newChat();
+    delete citePaneByConv[id];
     loadConversations(currentConversationId);
   } catch {
     closeDeleteDialog();
@@ -2026,8 +2274,9 @@ async function ask() {
   appendMessage("user", question);
 
   // 渲染空的助手消息
-  const assistEl = appendMessage("assistant", "");
+  const assistEl = appendMessage("assistant", "", [], [], { live: true });
   const bodyEl = assistEl.querySelector(".msg-body");
+  const steps = [];
 
   try {
     const res = await fetch("/chat", {
@@ -2045,7 +2294,6 @@ async function ask() {
     let rawText = "";
     let eventName = "token";
     let citations = [];
-
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -2069,16 +2317,68 @@ async function ask() {
           }
           if (eventName === "conversation") {
             if (payload && typeof payload === "object") {
+              adoptCitePaneConversation(payload.id);
               currentConversationId = payload.id;
               loadConversations(payload.id);
             }
+          } else if (eventName === "thinking") {
+            completeOpenPhase(steps, "_think");
+            completeOpenPhase(steps, "_gen");
+            steps.push({ name: "_think", status: "", preview: "", arguments: "", content: "" });
+            paintTrace(assistEl, steps, true);
+          } else if (eventName === "generating") {
+            ensureGenerating(steps);
+            paintTrace(assistEl, steps, true);
+          } else if (eventName === "think") {
+            const add = typeof payload === "string" ? payload : "";
+            if (add) {
+              let think = [...steps].reverse().find((s) => s.name === "_think");
+              if (!think) {
+                think = { name: "_think", status: "", preview: "", arguments: "", content: "" };
+                steps.push(think);
+              }
+              think.content = (think.content || "") + add;
+              if (think.content.length > 4000) think.content = think.content.slice(0, 4000) + "…";
+            }
+            paintTrace(assistEl, steps, true);
+          } else if (eventName === "tool") {
+            completeOpenPhase(steps, "_think");
+            completeOpenPhase(steps, "_gen");
+            const name = payload && payload.name ? payload.name : "";
+            const args = payload && payload.args ? payload.args : {};
+            const existing = steps.find((s) => s.name === name && !s.status);
+            if (existing) {
+              existing.arguments = JSON.stringify(args);
+            } else {
+              steps.push({ name, status: "", preview: "", arguments: JSON.stringify(args), content: "" });
+            }
+            paintTrace(assistEl, steps, true);
+          } else if (eventName === "tool_done") {
+            const step = steps.find((s) => s.name === payload.name && !s.status) || steps[steps.length - 1];
+            if (step && payload && typeof payload === "object") {
+              step.status = payload.status || "ok";
+              step.preview = payload.preview || "";
+              step.arguments = payload.arguments || step.arguments || "";
+            }
+            paintTrace(assistEl, steps, true);
           } else if (eventName === "draft") {
             renderDraftCard(payload);
           } else if (eventName === "sources") {
             citations = Array.isArray(payload) ? payload : [];
-            assistEl.dataset.citations = JSON.stringify(citations);
-          } else if (typeof payload === "string") {
+            assistEl.dataset.citations = JSON.stringify(
+              localizeCitations(rawText, citations).citations
+            );
+            bodyEl.innerHTML = renderAssistantHtml(rawText, citations);
+          } else if (eventName === "answer" && typeof payload === "string") {
+            rawText = payload;
+            assistEl.dataset.citations = JSON.stringify(
+              localizeCitations(rawText, citations).citations
+            );
+            bodyEl.innerHTML = renderAssistantHtml(rawText, citations);
+          } else if (eventName === "token" && typeof payload === "string") {
             rawText += payload;
+            ensureGenerating(steps);
+            paintTrace(assistEl, steps, true);
             bodyEl.innerHTML = renderAssistantHtml(rawText, citations);
           }
           continue;
@@ -2090,10 +2390,14 @@ async function ask() {
     }
 
     bodyEl.innerHTML = renderAssistantHtml(rawText, citations);
-    assistEl.dataset.citations = JSON.stringify(citations);
+    assistEl.dataset.citations = JSON.stringify(
+      localizeCitations(rawText, citations).citations
+    );
+    finishTrace(assistEl, steps);
 
   } catch (err) {
     bodyEl.textContent = "请求失败：" + err.message;
+    finishTrace(assistEl, steps);
   } finally {
     isStreaming = false;
     btnSend.disabled = false;
@@ -2102,7 +2406,178 @@ async function ask() {
   }
 }
 
-function appendMessage(role, text, citations) {
+function toolFileName(args) {
+  if (!args) return "";
+  if (typeof args === "object") return String(args.file_name || args.query || "");
+  try {
+    const parsed = JSON.parse(args);
+    return String(parsed.file_name || parsed.query || "");
+  } catch {
+    return "";
+  }
+}
+
+function toolQuery(args) {
+  if (!args) return "";
+  if (typeof args === "object") return String(args.query || args.file_name || "");
+  try {
+    const parsed = JSON.parse(args);
+    return String(parsed.query || parsed.file_name || "");
+  } catch {
+    return "";
+  }
+}
+
+function completeOpenPhase(steps, name) {
+  const open = (steps || []).find((s) => s.name === name && !s.status);
+  if (open) open.status = "ok";
+}
+
+/** True if the turn used a note tool (not _think / _gen). */
+function hasRealTools(steps) {
+  return (steps || []).some((s) => s.name && s.name[0] !== "_");
+}
+
+/** Close thought hops and keep one in-progress generating step for the answer. */
+function ensureGenerating(steps) {
+  completeOpenPhase(steps, "_think");
+  const openGen = (steps || []).find((s) => s.name === "_gen" && !s.status);
+  if (!openGen) {
+    steps.push({ name: "_gen", status: "", preview: "", arguments: "", content: "" });
+  }
+}
+
+function toolLiveLabel(step) {
+  const name = typeof step === "string" ? step : (step && step.name) || "";
+  const args = typeof step === "string" ? "" : (step && step.arguments) || "";
+  if (name === "_think") return "Thinking...";
+  if (name === "_gen") return "Generating...";
+  if (name === "read_file") {
+    const file = toolFileName(args);
+    return file ? `Reading ${file}...` : "Reading notes...";
+  }
+  if (name === "list_files") return "Listing notes...";
+  if (name === "search_relative_from_chromadb") return "Searching notes...";
+  if (name === "propose_note") return "Proposing a note...";
+  return name ? `Calling ${name}...` : "Thinking...";
+}
+
+function toolFlowLabel(step) {
+  if (!step) return "";
+  const name = step.name || "";
+  if (step.status === "error") return `Failed ${name || "tool"}`;
+  if (name === "_think") return "Thought";
+  if (name === "_gen") return "Generated";
+  if (name === "read_file") {
+    const file = toolFileName(step.arguments);
+    return file ? `Read ${file}` : "Read notes";
+  }
+  if (name === "list_files") return "Listed notes";
+  if (name === "search_relative_from_chromadb") {
+    const q = toolQuery(step.arguments);
+    return q ? `Searched ${q}` : "Searched notes";
+  }
+  if (name === "propose_note") {
+    const file = toolFileName(step.arguments);
+    return file ? `Proposed ${file}` : "Proposed a note";
+  }
+  return name ? `Called ${name}` : "";
+}
+
+function liveTraceLabel(steps) {
+  const running = [...(steps || [])].reverse().find((s) => !s.status);
+  if (running) return toolLiveLabel(running);
+  if (hasRealTools(steps)) return englishSummary(steps, true);
+  if ((steps || []).some((s) => s.name === "_gen")) return "Generating...";
+  return "Thinking...";
+}
+
+function englishSummary(steps, live) {
+  const tools = (steps || []).filter((s) => s.name && s.name[0] !== "_");
+  const nRead = tools.filter((s) => s.name === "read_file").length;
+  const nSearch = tools.filter((s) => s.name === "search_relative_from_chromadb").length;
+  const nList = tools.filter((s) => s.name === "list_files").length;
+  const nProp = tools.filter((s) => s.name === "propose_note").length;
+  const nErr = tools.filter((s) => s.status === "error").length;
+  const bits = [];
+  if (nRead) bits.push(nRead === 1 ? "1 file" : `${nRead} files`);
+  if (nSearch) bits.push(nSearch === 1 ? "1 search" : `${nSearch} searches`);
+  if (nList) bits.push(live ? "Listing notes..." : "Listed notes");
+  if (nProp) bits.push(
+    nProp === 1
+      ? (live ? "Proposing a note..." : "1 proposal")
+      : (live ? `${nProp} proposals...` : `${nProp} proposals`)
+  );
+  if (nErr) bits.push(`${nErr} failed`);
+  if (!bits.length) return live ? "Thinking..." : "Thought";
+  if (nRead || nSearch) return (live ? "Exploring " : "Explored ") + bits.join(", ");
+  return bits.join(", ");
+}
+
+function renderTraceList(row, steps) {
+  const list = row.querySelector(".msg-trace-list");
+  if (!list) return;
+  const openThinks = row._openThinks || new Set();
+  row._openThinks = openThinks;
+  list.innerHTML = (steps || []).map((step, i) => {
+    if (step.name === "_gen") return "";
+    if (step.name === "_think") {
+      const hasBody = !!(step.content && step.content.trim());
+      if (step.status && !hasBody) return "";
+      const open = openThinks.has(i);
+      const label = step.status ? "Thought" : "Thinking...";
+      const chev = hasBody ? `<span class="msg-trace-chevron">▼</span>` : "";
+      const body = hasBody
+        ? `<div class="step-think-body">${escapeHtml(step.content)}</div>`
+        : "";
+      return `<li class="step-think${open ? " open" : ""}${step.status ? "" : " live"}">
+        <button type="button" class="step-think-head" data-i="${i}">
+          <span>${escapeHtml(label)}</span>${chev}
+        </button>${body}
+      </li>`;
+    }
+    const running = !step.status;
+    const label = running ? toolLiveLabel(step) : toolFlowLabel(step);
+    return `<li class="${running ? "live" : ""}">${escapeHtml(label)}</li>`;
+  }).join("");
+  list.querySelectorAll(".step-think-head").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const i = Number(btn.dataset.i);
+      if (openThinks.has(i)) openThinks.delete(i);
+      else openThinks.add(i);
+      const item = btn.closest(".step-think");
+      if (item) item.classList.toggle("open");
+    });
+  });
+}
+
+function paintTrace(row, steps, live) {
+  const trace = row.querySelector(".msg-trace");
+  const head = row.querySelector(".msg-trace-head");
+  const text = row.querySelector(".msg-trace-label");
+  if (!trace || !head || !text) return;
+  if (!live && !hasRealTools(steps)) {
+    trace.hidden = true;
+    head.classList.remove("live");
+    return;
+  }
+  trace.hidden = false;
+  head.classList.toggle("live", !!live);
+  text.textContent = live ? liveTraceLabel(steps) : englishSummary(steps, false);
+  renderTraceList(row, steps);
+}
+
+function finishTrace(row, steps) {
+  (steps || []).forEach((step) => {
+    if (!step.status) step.status = "ok";
+  });
+  const trace = row.querySelector(".msg-trace");
+  paintTrace(row, steps, false);
+  if (trace) trace.classList.remove("open");
+}
+
+function appendMessage(role, text, citations, toolSteps, opts) {
   const row = document.createElement("div");
   row.className = `msg-row ${role}`;
 
@@ -2111,15 +2586,43 @@ function appendMessage(role, text, citations) {
     ? renderAssistantHtml(text, citations)
     : escapeHtml(text);
   if (role === "assistant") {
-    row.dataset.citations = JSON.stringify(citations || []);
+    row.dataset.citations = JSON.stringify(localizeCitations(text, citations || []).citations);
   }
 
-  row.innerHTML = `
-    <div class="msg-avatar">${avatar}</div>
+  const live = opts && opts.live;
+  const steps = toolSteps || [];
+  const showTrace = role === "assistant" && (live || steps.length);
+  const headLabel = live ? liveTraceLabel(steps) : englishSummary(steps, false);
+
+  row.innerHTML = role === "assistant"
+    ? `<div class="msg-avatar">${avatar}</div>
+    <div class="msg-col">
+      <div class="msg-trace"${showTrace ? "" : " hidden"}>
+        <button type="button" class="msg-trace-head${live ? " live" : ""}">
+          <span class="msg-trace-label">${escapeHtml(headLabel)}</span>
+          <span class="msg-trace-chevron">▼</span>
+        </button>
+        <ul class="msg-trace-list"></ul>
+      </div>
+      <div class="msg-bubble">
+        <div class="msg-body">${body}</div>
+      </div>
+    </div>`
+    : `<div class="msg-avatar">${avatar}</div>
     <div class="msg-bubble">
       <div class="msg-body">${body}</div>
-    </div>
-  `;
+    </div>`;
+
+  if (role === "assistant") {
+    const head = row.querySelector(".msg-trace-head");
+    if (head) {
+      head.addEventListener("click", () => {
+        const trace = row.querySelector(".msg-trace");
+        if (trace && !trace.hidden) trace.classList.toggle("open");
+      });
+    }
+    if (steps.length) renderTraceList(row, steps);
+  }
 
   chatInner.appendChild(row);
   chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -2181,7 +2684,7 @@ function renderDraftCard(draft) {
   const disable = () => buttons.forEach((btn) => { btn.disabled = true; });
   card.querySelector('[data-act="approve"]').onclick = async () => {
     disable();
-    await sendReview({ action: "approve" });
+    await sendReview({ action: "approve" }, card);
   };
   const overrideAppend = card.querySelector('[data-act="override-append"]');
   if (overrideAppend) {
@@ -2193,7 +2696,7 @@ function renderDraftCard(draft) {
         action: "override",
         write_action: "append",
         file_name: select.value,
-      });
+      }, card);
     };
   }
   const overrideCreate = card.querySelector('[data-act="override-create"]');
@@ -2206,18 +2709,18 @@ function renderDraftCard(draft) {
         action: "override",
         write_action: "create",
         file_name: name,
-      });
+      }, card);
     };
   }
   card.querySelector('[data-act="reject"]').onclick = async () => {
     disable();
-    await sendReview({ action: "reject" });
+    await sendReview({ action: "reject" }, card);
   };
   chatInner.appendChild(card);
   chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
-async function sendReview(body) {
+async function sendReview(body, card) {
   const res = await fetch("/chat/review", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -2229,10 +2732,13 @@ async function sendReview(body) {
     text = json.action === "delete"
       ? `已删除 ${json.file_name}`
       : `已写入 ${json.file_name}`;
+    if (card) card.remove();
   } else if (json.status === "rejected") {
     text = "已取消写入";
+    if (card) card.remove();
   } else {
     text = "审批失败：" + (json.error || res.status);
+    if (card) card.querySelectorAll("button").forEach((btn) => { btn.disabled = false; });
   }
   const row = appendMessage("assistant", text);
   return row;

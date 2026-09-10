@@ -121,7 +121,7 @@ Chroma collection 名来自 `CHROMA_COLLECTION`（默认 `my_knowledge`），目
 4. 工具把非空 `content` 交给模型，并带本轮 `source_id`；`file_name` 只进服务端 `CitationRegistry`，不放进工具返回。
 5. 全文进当前 Turn 的 Runtime `ToolMessage`；前端气泡看不到工具结果。模型句末 `[[cite:N]]` 由聊天层映射成 ①。
 
-空库或未索引时 `fragments` 可以为 `[]`，不是工具错误。无相似度阈值：再差的 3 条也会交给模型。无 `insufficient_evidence`。聊天 SSE 有 `sources`（本轮实际引用），见 [frontend.md](./frontend.md)。
+空库或未索引时 `fragments` 可以为 `[]`，不是工具错误。无相似度阈值：再差的 3 条也会交给模型。无 `insufficient_evidence`。聊天 SSE 有 `sources`（本条助手消息实际引用，编号 1..n），见 [frontend.md](./frontend.md)。
 
 ---
 

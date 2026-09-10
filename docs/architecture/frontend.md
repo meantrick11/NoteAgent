@@ -19,7 +19,7 @@
 
 1. **Chat 不管磁盘。** 侧栏是 PostgreSQL 会话。Agent 改笔记只通过审批卡片 → `POST /chat/review`。点 ① 打开的出处侧栏是人类写盘，走与 Documents 相同的 `PUT /notes/{path}`（无删除、无预览）。
 2. **Documents 不调模型。** 树、编辑、入库只打 `/notes*`。保存/新建/移动/删除都是人类操作，与聊天审批并列，都算「人写盘」。
-3. **工具过程不画。** 气泡只有 `user` 与最终 `assistant`。Documents 树也不显示 Agent hop。
+3. **工具过程单独一排。** 进行中英文当前步可闪烁（ing + `...`），live 也可点 ▼ 看步骤；写回答时为 Generating...。有工具则结束后标题为 Explored N files；无工具则隐藏过程排。步骤完成后改成 Thought / Read / Searched。有正文的 Thought 可展开。主气泡仍是最终 `assistant` 正文。Documents 树不显示 Agent hop。
 4. **不建笔记表。** 最近修改用文件 `mtime`；已/未索引看 Chroma 有没有该相对路径的点。
 5. **一层目录。** 树上文件夹与根目录 `.md` 同级；文件夹内笔记再缩进。根文件仍是 `notes/*.md`，不造磁盘上的「未分类/」。
 
@@ -58,7 +58,7 @@ Chat 的会话删除 overlay（`.modal-overlay` + `deleteOverlay`）与 Document
 
 左：会话列表、三点重命名（行内 input）/删除（overlay）。中：欢迎语或气泡（与底栏输入框同宽，栏宽取 768 与满宽的中点，助手/用户左右边距对齐）。底：输入框，Enter 发送、Shift+Enter 换行。
 
-进页 `GET /conversations`；点会话 `GET /conversations/{id}/messages`（assistant 可带 `citations`）。发一句立刻画 user 气泡和空 assistant 气泡，读 SSE：`conversation` → 可选 `sources` → `token`（marked，并把 `[[cite:N]]` 绘成蓝色上标 ①）→ 可选 `draft` 卡片。点 ① 时聊天区收窄，右侧 textarea 打开该笔记（无预览）；检索片段用选区定位。保存/Ctrl+S 走 `PUT /notes/{path}`，与 Documents 一样先删旧向量再整篇索引。关闭、Escape、切到 Documents 时若未保存先确认。无删除。`isStreaming` 时不能连发。
+进页 `GET /conversations`；点会话 `GET /conversations/{id}/messages` 画气泡，再 `GET /conversations/{id}` 回湿 `pending_draft` 卡片。发一句立刻画 user 气泡和空 assistant。读 SSE：`conversation` → `thinking` / `think` / `tool` / `tool_done` / `generating`（过程排 live 也可展开；当前步英文闪烁）→ `token`（marked，并把该条消息内的 `[[cite:N]]` 绘成蓝色上标 ①，编号按该条首次出现为 1..n）→ 可选 `sources` / `draft`。结束后有工具则为 `Explored 2 files, 1 search` 这类英文汇总 + ▼；无工具不留过程排。点 ① 时聊天区收窄，右侧 textarea 打开该笔记（无预览）；检索片段用选区定位。切到另一个会话时侧栏按 `conversation_id` 快照（含未保存缓冲），互不顶替；关页或进 Documents 时若有未保存出处再确认。保存/Ctrl+S 走 `PUT /notes/{path}`，与 Documents 一样先删旧向量再整篇索引。关闭、Escape、切到 Documents 时若未保存先确认。无删除。`isStreaming` 时不能连发。
 
 审批卡片：同意 / 拒绝；create、append 可改目标文件名。`POST /chat/review`。卡片字段与动作见 [chat-tools.md](./chat-tools.md)。
 
@@ -179,7 +179,7 @@ flowchart LR
 Chat 审批     POST /chat/review  → drafts.commit_review → notes + Chroma
 Chat 出处侧栏 PUT /notes/{path}  → notes.router（与 Documents 保存相同；无删除）
 Documents     /notes*            → notes.router         → notes + Chroma
-Agent 工具    propose_note       → 只进 DraftStore，不写盘
+Agent 工具    propose_note       → conversations.pending_draft，不写盘
 ```
 
 同一 `FileNoteRepository` 与 `RetrievalService.index_note` / `delete_note`。聊天侧日志是 `draft indexed`；Documents 侧是 `notes http *`。失败都不回滚 Markdown。

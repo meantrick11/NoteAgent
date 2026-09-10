@@ -47,6 +47,10 @@ def test_list_messages_hides_tool_stubs(store: ConversationStore):
     store.append_message(c.id, "assistant", "done", turn_id=tid)
     ui = store.list_messages(c.id)
     assert [x.role for x in ui] == ["user", "assistant"]
+    assert ui[0].tool_steps == []
+    assert ui[1].tool_steps is not None
+    assert ui[1].tool_steps[0]["name"] == "read_file"
+    assert ui[1].tool_steps[0]["arguments"] == '{"file_name":"A.md"}'
     pers = store.list_persistent_after_watermark(c.id)
     assert [x.role for x in pers] == ["user", "tool", "assistant"]
     stub = pers[1]

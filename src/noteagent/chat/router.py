@@ -14,11 +14,13 @@ from noteagent.chat.history import (
 ) #对话的创建和获取titile
 from noteagent.chat.schemas import (
     CitationOut,
+    ConversationDetailOut,
     ConversationOut,
     MessageOut,
     RenameConversation,
     RequestModel,
     ReviewRequest,
+    ToolStepOut,
 )       #获取对应的路由请求体或者响应体的pydantic模型
 from noteagent.web import read_home_html    #返回前端初始网页
 
@@ -51,6 +53,27 @@ async def list_conversations(request: Request) -> list[ConversationOut]:
         for r in records
     ]
 
+
+@router.get("/conversations/{conversation_id}")
+async def get_conversation(conversation_id: str, request: Request) -> ConversationDetailOut:
+    """Return one conversation and its pending draft, or 404 if missing."""
+    history = request.app.state.container.history
+    record = history.get(conversation_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    _logger.info(
+        "get conversation=%s pending_draft=%s",
+        conversation_id,
+        bool(record.pending_draft),
+    )
+    return ConversationDetailOut(
+        id=record.id,
+        title=record.title,
+        updated_at=record.updated_at,
+        pending_draft=record.pending_draft,
+    )
+
+
 #如果点击对应的对话，会触发此加载对应的聊天历史的消息
 @router.get("/conversations/{conversation_id}/messages")
 async def list_messages(conversation_id: str, request: Request) -> list[MessageOut]:
@@ -67,6 +90,7 @@ async def list_messages(conversation_id: str, request: Request) -> list[MessageO
             content=m.content,
             created_at=m.created_at,
             citations=[CitationOut.model_validate(item) for item in (m.citations or [])],
+            tool_steps=[ToolStepOut.model_validate(item) for item in (m.tool_steps or [])],
         )
         for m in records
     ]
@@ -150,6 +174,8 @@ async def chat_with(
             assistant_text += data
         elif event == "assistant_final" and isinstance(data, str):
             final_text = data
+            # Browser gets remumbered full text; assistant_final itself stays internal.
+            yield ServerSentEvent(event="answer", data=data)
             continue
         elif event == "sources" and isinstance(data, list):
             citations = data

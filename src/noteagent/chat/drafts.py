@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from noteagent.chat.history import ConversationStore
 from noteagent.notes.repository import FileNoteRepository, NotePathError
 from noteagent.retrieval.service import RetrievalService
 
@@ -74,12 +75,28 @@ class NoteDraft:
             "existing_files": self.existing_files,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "NoteDraft":
+        """Rebuild a draft from conversations.pending_draft JSON."""
+        similar = data.get("similar") or []
+        if isinstance(similar, str):
+            similar = [item.strip() for item in similar.split(",") if item.strip()]
+        existing = data.get("existing_files") or []
+        return cls(
+            action=data.get("action") or "",
+            file_name=data.get("file_name") or "",
+            content=data.get("content") or "",
+            reason=data.get("reason") or "",
+            similar=list(similar),
+            existing_files=list(existing),
+        )
+
 
 class DraftStore:
-    """In-memory pending draft per chat thread. Lost on process restart."""
+    """One pending draft per conversation, stored on conversations.pending_draft."""
 
-    def __init__(self):
-        self._pending: dict[str, NoteDraft] = {}
+    def __init__(self, history: ConversationStore) -> None:
+        self._history = history
 
     def put(self, thread_id: str, draft: NoteDraft) -> None:
         _logger.info(
@@ -88,13 +105,20 @@ class DraftStore:
             draft.action,
             draft.file_name,
         )
-        self._pending[thread_id] = draft
+        self._history.set_pending_draft(thread_id, draft.as_dict())
 
     def get(self, thread_id: str) -> NoteDraft | None:
-        return self._pending.get(thread_id)
+        payload = self._history.get_pending_draft(thread_id)
+        if not payload:
+            return None
+        return NoteDraft.from_dict(payload)
 
     def pop(self, thread_id: str) -> NoteDraft | None:
-        return self._pending.pop(thread_id, None)
+        draft = self.get(thread_id)
+        if draft is None:
+            return None
+        self._history.clear_pending_draft(thread_id)
+        return draft
 
 ##如果用户确认提交对应的笔记，此函数表示确认然后执行write到对应文件的
 def commit_review(

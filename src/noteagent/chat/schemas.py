@@ -28,6 +28,12 @@ class ConversationOut(BaseModel):
     updated_at: datetime
 
 
+class ConversationDetailOut(ConversationOut):
+    """One conversation plus the current pending draft, if any."""
+
+    pending_draft: dict | None = None
+
+
 class CitationOut(BaseModel):
     """One citation mapping stored on an assistant message."""
 
@@ -35,6 +41,15 @@ class CitationOut(BaseModel):
     file_name: str
     chunk_index: int | None = None
     quote: str | None = None
+
+
+class ToolStepOut(BaseModel):
+    """Truncated tool stub attached to an assistant bubble (not a chat row)."""
+
+    name: str
+    status: str = ""
+    preview: str = ""
+    arguments: str = ""
 
 
 class MessageOut(BaseModel):
@@ -45,6 +60,7 @@ class MessageOut(BaseModel):
     content: str
     created_at: datetime
     citations: list[CitationOut] = Field(default_factory=list)
+    tool_steps: list[ToolStepOut] = Field(default_factory=list)
 
 
 class RenameConversation(BaseModel):

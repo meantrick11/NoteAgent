@@ -16,4 +16,10 @@
 | [2026-09-06-prompt-eval.md](./2026-09-06-prompt-eval.md) | 离线提示词评测：黄金集、L1 打分、一键脚本、`n05.md` 结果（已做） |
 | [2026-09-07-chat-citations.md](./2026-09-07-chat-citations.md) | 聊天出处：`[[cite:N]]` → ①；`messages.citations` JSON；右侧笔记预览 |
 | [2026-09-07-chat-cite-edit.md](./2026-09-07-chat-cite-edit.md) | Chat 气泡同栏对齐；出处侧栏可保存（`PUT /notes`），无预览无删除 |
+| [2026-09-09-pending-draft.md](./2026-09-09-pending-draft.md) | 待审草稿进 `conversations.pending_draft`；打开会话回湿卡片 |
+| [2026-09-09-chat-stream-trace.md](./2026-09-09-chat-stream-trace.md) | 真流式 token；助手气泡一行可展开工具过程 |
+| [2026-09-09-chat-trace-summary.md](./2026-09-09-chat-trace-summary.md) | 过程排实时当前步骤；结束 `Finished` + ▼ 展开流程 |
+| [2026-09-09-chat-trace-cursor-flow.md](./2026-09-09-chat-trace-cursor-flow.md) | Cursor 式步骤流；英文汇总标题；live 可展开；Thinking 看推理 |
+| [2026-09-09-cite-pane-isolation.md](./2026-09-09-cite-pane-isolation.md) | 出处侧栏按会话快照；每条助手消息引用重排 1..n |
+| [2026-09-10-chat-trace-tense.md](./2026-09-10-chat-trace-tense.md) | 过程排时态：ing / Thought·Explored；generating 不再画成 Thinking；无工具结束藏排 |
 | [draft-generation.md](./draft-generation.md) | 入库 Job / URL 源 / 自动索引设想，不是现行架构 |

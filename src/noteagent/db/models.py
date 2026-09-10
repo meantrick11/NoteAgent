@@ -41,6 +41,7 @@ class Conversation(Base):
     summary_watermark_turn_id: Mapped[uuid.UUID | None] = mapped_column(    
         Uuid(as_uuid=True), nullable=True
     )   #最近摘要的水位线
+    pending_draft: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # 待审 NoteDraft JSON，无稿为 NULL
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation", cascade="all, delete-orphan"
     )   #具体的message表的映射

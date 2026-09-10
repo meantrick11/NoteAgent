@@ -67,7 +67,7 @@ def build_eval_agent(
     engine = create_engine_from_url("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     history = ConversationStore(create_session_factory(engine))
-    drafts = DraftStore()
+    drafts = DraftStore(history)
     tools = build_chat_tools(notes, _FakeRetrieval(), drafts)
     agent = ChatAgent(
         model=model,

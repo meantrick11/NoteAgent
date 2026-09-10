@@ -6,7 +6,7 @@
 
 | 文件 | 覆盖 |
 |------|------|
-| `test_app.py` | 首页、Documents 路由、SSE、会话 CRUD、messages 隐藏 tool stub、只入库最终 assistant |
+| `test_app.py` | 首页、Documents 路由、SSE 多 token、会话 CRUD、`pending_draft`、messages 隐藏 tool 行但带 `tool_steps` |
 | `test_notes_api.py` | Documents HTTP：保存重索引、move 清旧向量、列表 indexed |
 | `test_retrieval_service.py` | 假向量下 index + search；reindex 去掉旧 chunk；审批 create 后可搜；索引步骤 INFO |
 

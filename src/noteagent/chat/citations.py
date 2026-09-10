@@ -85,20 +85,33 @@ def strip_cite_markers(text: str) -> str:
 
 
 def sanitize_answer(text: str, registry: CitationRegistry) -> tuple[str, list[dict[str, object]]]:
-    """Keep only registered [[cite:N]] tags; return cleaned text and used sources."""
-    used: dict[int, Citation] = {}
+    """Keep registered [[cite:N]] tags; remumber used sources 1..n in first-seen order."""
+    old_to_new: dict[int, int] = {}
+    used: list[Citation] = []
     dropped = 0
 
     def repl(match: re.Match[str]) -> str:
         nonlocal dropped
-        cite = registry.get(int(match.group(1)))
+        old = int(match.group(1))
+        cite = registry.get(old)
         if cite is None:
             dropped += 1
             return ""
-        used[cite.index] = cite
-        return match.group(0)
+        new = old_to_new.get(old)
+        if new is None:
+            new = len(old_to_new) + 1
+            old_to_new[old] = new
+            used.append(
+                Citation(
+                    index=new,
+                    file_name=cite.file_name,
+                    chunk_index=cite.chunk_index,
+                    quote=cite.quote,
+                )
+            )
+        return f"[[cite:{new}]]"
 
     cleaned = CITE_RE.sub(repl, text)
-    ordered = [used[i].as_dict() for i in sorted(used)]
+    ordered = [cite.as_dict() for cite in used]
     _logger.info("citation sanitize kept=%d dropped=%d", len(ordered), dropped)
     return cleaned, ordered

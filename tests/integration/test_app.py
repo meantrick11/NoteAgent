@@ -75,6 +75,8 @@ def test_home_serves_template(tmp_path: Path):
     assert "btnNewNote" in response.text
     assert "citePaneSave" in response.text
     assert "citePaneText" in response.text
+    assert "citePaneByConv" in response.text
+    assert "localizeCitations" in response.text
     assert "移动到所选" not in response.text
     assert read_home_html() == response.text
 
@@ -94,6 +96,7 @@ def test_chat_and_review_routes(tmp_path: Path):
     assert chat.status_code == 200
     assert chat.headers["content-type"].startswith("text/event-stream")
     assert "event: conversation" in chat.text
+    assert "event: answer" in chat.text
     assert _collect_tokens(chat.text) == "echo:你好"
 
     review = client.post(
@@ -159,6 +162,8 @@ def test_messages_api_hides_tool_stubs(tmp_path: Path):
     resp = client.get(f"/conversations/{record.id}/messages")
     assert resp.status_code == 200
     assert [m["role"] for m in resp.json()] == ["user", "assistant"]
+    assert resp.json()[0]["tool_steps"] == []
+    assert resp.json()[1]["tool_steps"][0]["name"] == "read_file"
 
 
 def test_chat_persists_final_assistant_not_tool_hop_tokens(tmp_path: Path):
@@ -189,6 +194,37 @@ def test_chat_persists_final_assistant_not_tool_hop_tokens(tmp_path: Path):
     messages = client.get(f"/conversations/{conv_id}/messages").json()
     assert messages[1]["content"] == "done"
     assert _collect_tokens(chat.text) == "calling-tool"
+
+
+def test_chat_sse_forwards_multiple_token_events(tmp_path: Path):
+    class FakeChunkAgent:
+        async def stream(self, question: str, thread_id: str, turn_id: str | None = None):
+            yield {"event": "thinking", "data": "thinking"}
+            yield {"event": "token", "data": "Hel"}
+            yield {"event": "token", "data": "lo"}
+            yield {"event": "assistant_final", "data": "Hello"}
+
+        def review(self, thread_id: str, action: str, write_action=None, file_name=None):
+            return {"status": "rejected"}
+
+    settings = Settings(notes_dir=tmp_path, chroma_dir=tmp_path / "chroma")
+    engine, history = _sqlite_history()
+    container = AppContainer(
+        settings=settings,
+        notes=FileNoteRepository(tmp_path),
+        retrieval=None,  # type: ignore[arg-type]
+        chat_agent=FakeChunkAgent(),  # type: ignore[arg-type]
+        engine=engine,
+        history=history,
+    )
+    client = TestClient(create_app(container))
+    chat = client.post("/chat", json={"question": "hi"})
+    tokens = [data for event, data in _parse_sse(chat.text) if event == "token"]
+    assert [json.loads(t) for t in tokens] == ["Hel", "lo"]
+    events = _parse_sse(chat.text)
+    conv_id = json.loads(next(data for event, data in events if event == "conversation"))["id"]
+    messages = client.get(f"/conversations/{conv_id}/messages").json()
+    assert messages[1]["content"] == "Hello"
 
 
 def test_conversations_and_messages_routes(tmp_path: Path):
@@ -276,3 +312,73 @@ def test_delete_conversation_unknown_id(tmp_path: Path):
     client, _ = _client(tmp_path)
     resp = client.delete("/conversations/00000000-0000-0000-0000-000000000001")
     assert resp.status_code == 404
+
+
+_DRAFT_PAYLOAD = {
+    "action": "create",
+    "file_name": "Go.md",
+    "content": "## 控制流\n\n",
+    "reason": "新文件",
+    "similar": [],
+    "existing_files": [],
+}
+
+
+def test_get_conversation_includes_pending_draft(tmp_path: Path):
+    client, history = _client(tmp_path)
+    record = history.create("t")
+    history.set_pending_draft(record.id, _DRAFT_PAYLOAD)
+
+    resp = client.get(f"/conversations/{record.id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == record.id
+    assert body["title"] == "t"
+    assert body["pending_draft"]["file_name"] == "Go.md"
+
+    messages = client.get(f"/conversations/{record.id}/messages").json()
+    assert messages == []
+
+
+def test_get_conversation_unknown_id(tmp_path: Path):
+    client, _ = _client(tmp_path)
+    resp = client.get("/conversations/00000000-0000-0000-0000-000000000001")
+    assert resp.status_code == 404
+
+
+def test_review_clears_pending_draft(tmp_path: Path):
+    from noteagent.chat.drafts import DraftStore, NoteDraft, commit_review
+
+    notes = FileNoteRepository(tmp_path)
+    engine, history = _sqlite_history()
+    drafts = DraftStore(history)
+
+    class ReviewAgent(FakeAgent):
+        def review(self, thread_id: str, action: str, write_action=None, file_name=None):
+            return commit_review(
+                notes, drafts, thread_id, action, write_action, file_name,
+            )
+
+    settings = Settings(notes_dir=tmp_path, chroma_dir=tmp_path / "chroma")
+    container = AppContainer(
+        settings=settings,
+        notes=notes,
+        retrieval=None,  # type: ignore[arg-type]
+        chat_agent=ReviewAgent(),  # type: ignore[arg-type]
+        engine=engine,
+        history=history,
+    )
+    client = TestClient(create_app(container))
+    record = history.create("t")
+    drafts.put(record.id, NoteDraft(
+        action="create", file_name="Go.md", content="## 控制流\n\n",
+    ))
+    assert client.get(f"/conversations/{record.id}").json()["pending_draft"] is not None
+
+    review = client.post(
+        "/chat/review", json={"thread_id": record.id, "action": "reject"},
+    )
+    assert review.json() == {"status": "rejected"}
+    assert client.get(f"/conversations/{record.id}").json()["pending_draft"] is None
+    assert list(tmp_path.iterdir()) == []
+

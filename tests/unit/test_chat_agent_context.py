@@ -53,7 +53,7 @@ def _agent(
     engine = create_engine_from_url("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     history = ConversationStore(create_session_factory(engine))
-    drafts = DraftStore()
+    drafts = DraftStore(history)
     tools = build_chat_tools(notes, _FakeRetrieval(), drafts)
     agent = ChatAgent(
         model=model, tools=tools, notes=notes, drafts=drafts,
@@ -88,6 +88,7 @@ async def test_stream_writes_stub_and_ui_hides_tool(tmp_path: Path):
     history.append_message(conv.id, "assistant", "done", turn_id=turn)
     ui = history.list_messages(conv.id)
     assert [r.role for r in ui] == ["user", "assistant"]
+    assert ui[1].tool_steps and ui[1].tool_steps[0]["name"] == "list_files"
 
 
 async def test_second_turn_does_not_see_previous_tool_full(tmp_path: Path):
@@ -215,3 +216,75 @@ async def test_tiny_window_compacts_older_complete_turn(tmp_path: Path):
 
     ui = history.list_messages(conv.id)
     assert any("UNIQUE_TURN1" in r.content for r in ui)
+
+
+async def test_stream_yields_token_chunks(tmp_path: Path):
+    from langchain_core.messages import AIMessageChunk
+
+    class SplitModel:
+        def bind_tools(self, tools):
+            return self
+
+        async def astream(self, messages, config=None):
+            yield AIMessageChunk(content="Hel")
+            yield AIMessageChunk(content="lo")
+
+        def invoke(self, messages):
+            return AIMessage(content="SUMCHUNK")
+
+    agent, history, _notes = _agent(tmp_path, SplitModel())  # type: ignore[arg-type]
+    conv = history.create("t")
+    turn = start_turn()
+    history.append_message(conv.id, "user", "hi", turn_id=turn)
+    events = await _consume(agent.stream("hi", conv.id, turn))
+    tokens = [e["data"] for e in events if e["event"] == "token"]
+    assert tokens == ["Hel", "lo"]
+    assert any(e["event"] == "thinking" for e in events)
+    finals = [e["data"] for e in events if e["event"] == "assistant_final"]
+    assert finals == ["Hello"]
+    assert not any(e["event"] == "generating" for e in events)
+
+
+async def test_stream_generating_after_tools_not_thinking(tmp_path: Path):
+    """Next hop after tools must emit generating, not another thinking."""
+    model = ScriptedModel([
+        AIMessage(content="", tool_calls=[{"name": "list_files", "id": "c1", "args": {}}]),
+        AIMessage(content="done"),
+    ])
+    agent, history, _notes = _agent(tmp_path, model)
+    conv = history.create("t")
+    turn = start_turn()
+    history.append_message(conv.id, "user", "hi", turn_id=turn)
+    events = await _consume(agent.stream("hi", conv.id, turn))
+    kinds = [e["event"] for e in events]
+    assert kinds.count("thinking") == 1
+    assert "generating" in kinds
+    assert kinds.index("tool") < kinds.index("tool_done")
+    assert kinds.index("tool_done") < kinds.index("generating")
+    assert kinds.count("tool") == 1
+    thinking_after_done = [
+        i for i, k in enumerate(kinds)
+        if k == "thinking" and i > kinds.index("tool_done")
+    ]
+    assert thinking_after_done == []
+
+
+async def test_stream_tool_hop_content_is_think_not_token(tmp_path: Path):
+    """Tool-hop prose goes to think events, not the answer bubble tokens."""
+    model = ScriptedModel([
+        AIMessage(
+            content="will search",
+            tool_calls=[{"name": "list_files", "id": "c1", "args": {}}],
+        ),
+        AIMessage(content="done"),
+    ])
+    agent, history, _notes = _agent(tmp_path, model)
+    conv = history.create("t")
+    turn = start_turn()
+    history.append_message(conv.id, "user", "hi", turn_id=turn)
+    events = await _consume(agent.stream("hi", conv.id, turn))
+    thinks = [e["data"] for e in events if e["event"] == "think"]
+    tokens = [e["data"] for e in events if e["event"] == "token"]
+    assert "will search" in thinks
+    assert "will search" not in tokens
+    assert tokens == ["done"]

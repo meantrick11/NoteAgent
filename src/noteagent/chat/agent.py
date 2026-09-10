@@ -49,6 +49,52 @@ def _chunk_text(content: object) -> str:
     return ""
 
 
+def _has_tool_calls(message: object) -> bool:
+    """True if this hop is (or is becoming) a tool call, not a user-visible reply."""
+    calls = getattr(message, "tool_calls", None) or []
+    chunks = getattr(message, "tool_call_chunks", None) or []
+    return bool(calls) or bool(chunks)
+
+
+def _tool_call_triple(call: object) -> tuple[str, str, dict]:
+    """Return (id, name, args) for a LangChain tool_call dict or object."""
+    if isinstance(call, dict):
+        name = str(call.get("name") or "")
+        call_id = str(call.get("id") or "")
+        raw_args = call.get("args")
+    else:
+        name = str(getattr(call, "name", None) or "")
+        call_id = str(getattr(call, "id", "") or "")
+        raw_args = getattr(call, "args", None)
+    args = raw_args if isinstance(raw_args, dict) else {}
+    return call_id or name, name, args
+
+
+def _reasoning_text(chunk: object) -> str:
+    """Optional model reasoning field; empty on ordinary chat models."""
+    extra = getattr(chunk, "additional_kwargs", None) or {}
+    if not isinstance(extra, dict):
+        return ""
+    for key in ("reasoning_content", "reasoning"):
+        val = extra.get(key)
+        if isinstance(val, str) and val:
+            return val
+    return ""
+
+
+def _named_tool_calls(message: object) -> list[tuple[str, str, dict]]:
+    """Named tool_calls on this message (skip incomplete chunks without a name)."""
+    found: list[tuple[str, str, dict]] = []
+    seen: set[str] = set()
+    for call in getattr(message, "tool_calls", None) or []:
+        call_id, name, args = _tool_call_triple(call)
+        if not name or call_id in seen:
+            continue
+        seen.add(call_id)
+        found.append((call_id, name, args))
+    return found
+
+
 class ChatAgent:
     """Streams chat tokens and pending drafts; writes notes only after review."""   #流式输出聊天内容和待处理的草稿; 只有在审核通过后才写入笔记
 
@@ -87,7 +133,7 @@ class ChatAgent:
     async def stream(
         self, question: str, thread_id: str, turn_id: str
     ) -> AsyncIterator[dict]:
-        """Yield {event, data}: tokens and an optional draft. Writes tool stubs."""
+        """Yield thinking, tool, token, sources, and optional draft events."""
         _logger.info(
             "agent stream start thread=%s turn=%s question=%.80s", thread_id, turn_id, question
         )
@@ -95,11 +141,11 @@ class ChatAgent:
         token2 = current_turn_id.set(turn_id)
         registry = CitationRegistry()
         token3 = current_citations.set(registry)
-        try:
+        try:    #为了定义pack&compact相关的函数
             runtime: list = []
-            tool_map = {t.name: t for t in self._tools}
-            tool_defs = "\n".join(f"{t.name}: {t.description}" for t in self._tools)
-            system = self._prompt_path.read_text(encoding="utf-8")
+            tool_map = {t.name: t for t in self._tools} #将工具名和工具对象映射到字典中tool_name->tool_function
+            tool_defs = "\n".join(f"{t.name}: {t.description}" for t in self._tools)    #将工具的定义描述打包为字符串，方便发送给LLM（此处是为了构建对应的提示词）
+            system = self._prompt_path.read_text(encoding="utf-8")  #获取系统提示词
 
             def pack_now(*, log: bool = False) -> PackResult:
                 conv = self._history.get(thread_id)
@@ -173,27 +219,54 @@ class ChatAgent:
 
             bound = self._model.bind_tools(self._tools) #将工具绑定到LLM上
             tool_rounds = 0
-            final_text = ""
+            used_tools = False
             while True:
                 pack = pack_now()   #初始化拼接输入（系统提示词、工具定义等等）
                 run_compact_if_needed(pack)     #检查是否需要compact？如果需要，那么自动compact
-                pack = pack_now(log=True)
+                pack = pack_now(log=True)   #再次打包拼接提示词，如果有compact则是新的内容，如果没有，则是旧内容
+                # After tools, generating must not look like a fresh "thinking" headline.
+                if used_tools:
+                    yield {"event": "generating", "data": "generating"}
+                else:
+                    yield {"event": "thinking", "data": "thinking"}
                 assembled_ai = None
                 hop_tokens: list[str] = []
+                saw_tool = False
+                announced_ids: set[str] = set()
                 async for chunk in bound.astream(
                     pack.messages, config={"callbacks": [AgentTraceHandler()]}
                 ):
-                    text = _chunk_text(chunk.content)   #全转换为String类型的文本
-                    if text:
-                        hop_tokens.append(text)
                     assembled_ai = chunk if assembled_ai is None else assembled_ai + chunk
+                    if _has_tool_calls(chunk) or _has_tool_calls(assembled_ai):
+                        saw_tool = True
+                    for call_id, name, args in _named_tool_calls(assembled_ai):
+                        if call_id in announced_ids:
+                            continue
+                        announced_ids.add(call_id)
+                        _logger.info(
+                            "tool announced conversation=%s turn=%s tool=%s",
+                            thread_id, turn_id, name,
+                        )
+                        yield {"event": "tool", "data": {"name": name, "args": args}}
+                    text = _chunk_text(chunk.content)
+                    reason = _reasoning_text(chunk)
+                    # Tool hops: prose/reasoning go to the trace, never the bubble.
+                    if saw_tool:
+                        for piece in (reason, text):
+                            if piece:
+                                yield {"event": "think", "data": piece}
+                    else:
+                        if reason:
+                            yield {"event": "think", "data": reason}
+                        if text:
+                            hop_tokens.append(text)
+                            yield {"event": "token", "data": text}
                 ai = assembled_ai
                 if ai is None or not getattr(ai, "tool_calls", None):
                     final_text = "".join(hop_tokens)
                     final_text, used = sanitize_answer(final_text, registry)
                     yield {"event": "sources", "data": used}
                     if final_text:
-                        yield {"event": "token", "data": final_text}
                         yield {"event": "assistant_final", "data": final_text}
                     break
                 if tool_rounds >= self._budget.max_tool_hops:
@@ -203,11 +276,18 @@ class ChatAgent:
                     )
                     break
                 tool_rounds += 1
+                used_tools = True
                 runtime.append(ai)
                 for call in ai.tool_calls:
-                    name = call["name"] if isinstance(call, dict) else getattr(call, "name")
-                    args = (call.get("args") if isinstance(call, dict) else getattr(call, "args", None)) or {}
-                    call_id = call["id"] if isinstance(call, dict) else getattr(call, "id")
+                    call_id, name, args = _tool_call_triple(call)
+                    if isinstance(call, dict):
+                        tool_call_id = call.get("id") or call_id
+                    else:
+                        tool_call_id = getattr(call, "id", None) or call_id
+                    if call_id not in announced_ids:
+                        announced_ids.add(call_id)
+                        yield {"event": "tool", "data": {"name": name, "args": args}}
+                    _logger.info("tool start conversation=%s turn=%s tool=%s", thread_id, turn_id, name)
                     try:
                         raw = await tool_map[name].ainvoke(args)
                         status = "ok"
@@ -215,14 +295,23 @@ class ChatAgent:
                         raw = {"error": str(exc)}
                         status = "error"
                     out = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False)
-                    self._history.append_tool_stub(
+                    stub = self._history.append_tool_stub(
                         thread_id, turn_id=turn_id, tool_name=name,
                         arguments=json.dumps(args, ensure_ascii=False),
                         output=out, status=status,
                         stub_preview_tokens=self._budget.stub_preview_tokens,
                         args_preview_chars=self._budget.args_preview_chars,
                     )
-                    runtime.append(ToolMessage(content=out, tool_call_id=call_id, name=name))
+                    yield {
+                        "event": "tool_done",
+                        "data": {
+                            "name": name,
+                            "status": status,
+                            "preview": stub.output_preview or "",
+                            "arguments": stub.tool_arguments or "",
+                        },
+                    }
+                    runtime.append(ToolMessage(content=out, tool_call_id=tool_call_id, name=name))
             pending = self._drafts.get(thread_id)
             if pending is not None:
                 yield {"event": "draft", "data": pending.as_dict()}

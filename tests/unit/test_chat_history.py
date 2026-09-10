@@ -184,3 +184,42 @@ def test_delete_removes_conversation_and_messages(store: ConversationStore):
 def test_delete_unknown_id_raises(store: ConversationStore):
     with pytest.raises(KeyError):
         store.delete("00000000-0000-0000-0000-000000000001")
+
+
+_PAYLOAD = {
+    "action": "create",
+    "file_name": "Go.md",
+    "content": "## 控制流\n\n",
+    "reason": "新文件",
+    "similar": [],
+    "existing_files": [],
+}
+
+
+def test_pending_draft_roundtrip(store: ConversationStore):
+    record = store.create("t")
+    assert record.pending_draft is None
+    store.set_pending_draft(record.id, _PAYLOAD)
+    assert store.get_pending_draft(record.id) == _PAYLOAD
+    assert store.get(record.id).pending_draft == _PAYLOAD
+    store.clear_pending_draft(record.id)
+    assert store.get_pending_draft(record.id) is None
+
+
+def test_set_pending_draft_overwrites(store: ConversationStore):
+    record = store.create("t")
+    store.set_pending_draft(record.id, _PAYLOAD)
+    store.set_pending_draft(record.id, {**_PAYLOAD, "file_name": "Other.md"})
+    assert store.get_pending_draft(record.id)["file_name"] == "Other.md"
+
+
+def test_set_pending_draft_unknown_id_raises(store: ConversationStore):
+    with pytest.raises(KeyError):
+        store.set_pending_draft("00000000-0000-0000-0000-000000000001", _PAYLOAD)
+
+
+def test_delete_conversation_drops_pending_draft(store: ConversationStore):
+    record = store.create("t")
+    store.set_pending_draft(record.id, _PAYLOAD)
+    store.delete(record.id)
+    assert store.get_pending_draft(record.id) is None

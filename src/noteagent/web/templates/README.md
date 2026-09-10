@@ -30,7 +30,7 @@ FastAPI `GET /` 与 `GET /documents` 返回的 HTML。不要把笔记正文或�
 | DELETE | `/notes/folders/{name}` | —（删文件夹内全部笔记和向量） |
 | POST | `/notes/move` | `from`、`to` |
 
-SSE：先 `event: conversation`（`{id, title}`），可选 `event: sources`（本轮引用映射），再 `event: token` 拼进助手气泡、`event: draft` 渲染审批卡片。`[[cite:N]]` 绘成 ①。点 ① 打开可编辑侧栏，保存走 `PUT /notes/{path}`。后端内部的 `assistant_final` 不推给页面。
+SSE：先 `event: conversation`（`{id, title}`），可选 `event: sources`（本条助手消息实际引用，编号 1..n），再 `event: token` 拼进助手气泡、流结束 `event: answer` 换成净化并重排后的全文、`event: draft` 渲染审批卡片。`[[cite:N]]` 绘成该条消息内的 ①。点 ① 打开可编辑侧栏，保存走 `PUT /notes/{path}`。切会话时侧栏按会话快照，不把 A 的展开顶到 B。后端内部的 `assistant_final` 不直接推给页面（路由转成 `answer`）。
 
 用户气泡（`.msg-row.user .msg-body`）使用 `white-space: pre-wrap`，粘贴的换行会显示成分段；助手气泡仍走 `marked`。
 
