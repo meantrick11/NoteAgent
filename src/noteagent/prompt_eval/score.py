@@ -1,4 +1,4 @@
-"""v0.1 L1 note-body scorer. L2 items are marked inapplicable and renormalized."""
+"""Deterministic legacy scoring plus v0.2 learning-note semantic qualification."""
 
 from __future__ import annotations
 
@@ -8,7 +8,16 @@ from dataclasses import dataclass, field
 from noteagent.chat.context_pack import extract_source_headings
 from noteagent.prompt_eval.cases import EvalCase
 
-RUBRIC_VERSION = "v0.1"
+RUBRIC_VERSION = "v0.2"
+
+HARD_GATE_ORDER = ("task_alignment", "faithful", "complete")
+SEMANTIC_DIMENSION_ORDER = (
+    "structure",
+    "fluent",
+    "form",
+    "retrievable",
+    "processing",
+)
 
 # Parent weights for the comparison total. Inapplicable parents are dropped.
 PARENT_WEIGHTS: dict[str, float] = {
@@ -57,14 +66,27 @@ class MetricScore:
 
 
 @dataclass
+class LearningNoteSemanticResult:
+    """Validated Judge decisions, dimension scores, and source/draft evidence."""
+
+    hard_gates: dict[str, bool]
+    dimensions: dict[str, int]
+    evidence: dict[str, dict[str, list[str]]]
+
+
+@dataclass
 class NoteScore:
-    """Body score plus the behavior gate. total/parents are None if the gate fails."""
+    """Behavior, deterministic scores, and optional learning-note semantics."""
 
     behavior_pass: bool
     total: float | None
     parents: dict[str, float | None]
     metrics: list[MetricScore]
     behavior_evidence: list[str] = field(default_factory=list)
+    qualified: bool | None = None
+    hard_gates: dict[str, bool] = field(default_factory=dict)
+    dimensions: dict[str, int] = field(default_factory=dict)
+    semantic_evidence: dict[str, dict[str, list[str]]] = field(default_factory=dict)
 
 
 def score_note(
@@ -75,6 +97,7 @@ def score_note(
     action: str | None,
     file_name: str | None,
     content: str | None,
+    semantic_result: LearningNoteSemanticResult | None = None,
 ) -> NoteScore:
     """Run the behavior gate, then L1 body metrics when a draft exists and the gate passes."""
     gate_ok, gate_evidence = _behavior_gate(case, proposed=proposed, tools=tools, action=action)
@@ -94,6 +117,37 @@ def score_note(
             metrics=[],
             behavior_evidence=gate_evidence + ["无草稿，未评正文"],
         )
+    if case.task_mode == "learning_note":
+        metrics = _score_learning_deterministic(
+            case, file_name=file_name, content=content or ""
+        )
+        parents = _parent_scores(metrics)
+        if semantic_result is None:
+            return NoteScore(
+                behavior_pass=True,
+                total=None,
+                parents=parents,
+                metrics=metrics,
+                behavior_evidence=gate_evidence,
+            )
+        gates_pass = all(
+            semantic_result.hard_gates[name] for name in HARD_GATE_ORDER
+        )
+        thresholds_pass = all(
+            semantic_result.dimensions[name] >= threshold
+            for name, threshold in case.quality_thresholds.items()
+        )
+        return NoteScore(
+            behavior_pass=True,
+            total=None,
+            parents=parents,
+            metrics=metrics,
+            behavior_evidence=gate_evidence,
+            qualified=gates_pass and thresholds_pass,
+            hard_gates=dict(semantic_result.hard_gates),
+            dimensions=dict(semantic_result.dimensions),
+            semantic_evidence=dict(semantic_result.evidence),
+        )
     metrics = _score_body(case, action=action, file_name=file_name, content=content or "")
     parents = _parent_scores(metrics)
     return NoteScore(
@@ -103,6 +157,30 @@ def score_note(
         metrics=metrics,
         behavior_evidence=gate_evidence,
     )
+
+
+def _score_learning_deterministic(
+    case: EvalCase, *, file_name: str | None, content: str
+) -> list[MetricScore]:
+    """Keep literal, anchor, Markdown, and path checks out of semantic qualification."""
+    material = _material(case.user)
+    return [
+        *_faithful(material, content)[1:3],
+        _coverage(
+            "complete.anchors",
+            20,
+            case.must_anchors,
+            content,
+            empty="无 must_anchors",
+        ),
+        _commands(material, content),
+        _examples(material, content),
+        _fence(material, content),
+        _quote(material, content),
+        _indent(content),
+        _spacing(content),
+        *_retrievable(case, file_name),
+    ]
 
 
 def _behavior_gate(

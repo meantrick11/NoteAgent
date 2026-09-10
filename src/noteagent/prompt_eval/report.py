@@ -151,7 +151,32 @@ def render_case_md(run, config: dict | None = None) -> str:
         "",
         ]
     )
-    if not score.behavior_pass:
+    if case.task_mode == "learning_note":
+        lines.append(f"- 行为门: {'通过' if score.behavior_pass else '**失败**'}")
+        if score.qualified is None:
+            lines.append("- 语义评测未完成")
+            lines.append("- qualified: `None`")
+        else:
+            lines.append("- 语义评测: 已完成")
+            lines.append(f"- qualified: `{score.qualified}`")
+        lines.append("- 总分: —")
+        if getattr(run, "judge_error", None):
+            lines.append(f"- Judge error: `{_cell(run.judge_error)}`")
+        for name in ("task_alignment", "faithful", "complete"):
+            value = score.hard_gates.get(name)
+            status = "未完成" if value is None else "通过" if value else "失败"
+            lines.append(f"- {name}: {status}")
+        for name in ("structure", "fluent", "form", "retrievable", "processing"):
+            value = score.dimensions.get(name)
+            lines.append(f"- {name}: {'未完成' if value is None else f'{value}/4'}")
+        if score.semantic_evidence:
+            lines.extend(["", "### 语义证据", ""])
+            for name, evidence in score.semantic_evidence.items():
+                source = "；".join(evidence.get("source", []))
+                draft = "；".join(evidence.get("draft", []))
+                lines.append(f"- {name} source: {_cell(source)}")
+                lines.append(f"- {name} draft: {_cell(draft)}")
+    elif not score.behavior_pass:
         lines.append("- 行为门: **失败**")
         lines.append("- 正文: 未评正文")
         lines.append("- 总分: —")
@@ -269,6 +294,9 @@ def _index_row(run) -> dict:
         "behavior_pass": score.behavior_pass,
         "total": score.total,
         "parents": score.parents,
+        "qualified": score.qualified,
+        "hard_gates": score.hard_gates,
+        "dimensions": score.dimensions,
     }
 
 

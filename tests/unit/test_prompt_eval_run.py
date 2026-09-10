@@ -9,9 +9,13 @@ from langchain_core.messages import AIMessage
 from noteagent.bootstrap.settings import Settings
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.prompt_eval.cases import EvalCase, load_cases
-from noteagent.prompt_eval.report import case_filename, result_dest, write_stage
-from noteagent.prompt_eval.run import CaseRun, ToolHop, build_eval_agent, run_case, seed_notes
-from noteagent.prompt_eval.score import RUBRIC_VERSION, score_note
+from noteagent.prompt_eval.report import case_filename, render_case_md, result_dest, write_stage
+from noteagent.prompt_eval.run import CaseRun, ToolHop, build_eval_agent, run_case, run_eval, seed_notes
+from noteagent.prompt_eval.score import (
+    RUBRIC_VERSION,
+    LearningNoteSemanticResult,
+    score_note,
+)
 
 
 class ScriptedModel:
@@ -29,8 +33,43 @@ class ScriptedModel:
     def invoke(self, messages):
         return AIMessage(content="SUMCHUNK")
 
+
+class ScriptedJudge:
+    """Fake asynchronous Judge that returns one strict JSON response."""
+
+    def __init__(self, payload: dict):
+        self.payload = payload
+
+    async def ainvoke(self, messages):
+        return AIMessage(content=json.dumps(self.payload, ensure_ascii=False))
+
+
 _CASES = Path(__file__).resolve().parents[2] / "evals" / "prompt" / "cases.jsonl"
 _PROMPT = Path(__file__).resolve().parents[2] / "src" / "noteagent" / "chat" / "prompts" / "system.txt"
+
+_SEMANTIC_PAYLOAD = {
+    "hard_gates": {"task_alignment": True, "faithful": True, "complete": True},
+    "dimensions": {
+        "structure": 3,
+        "fluent": 4,
+        "form": 3,
+        "retrievable": 3,
+        "processing": 3,
+    },
+    "evidence": {
+        name: {"source": [f"source-{name}"], "draft": [f"draft-{name}"]}
+        for name in (
+            "task_alignment",
+            "faithful",
+            "complete",
+            "structure",
+            "fluent",
+            "form",
+            "retrievable",
+            "processing",
+        )
+    },
+}
 
 
 def _settings() -> Settings:
@@ -110,6 +149,167 @@ async def test_seed_files_and_behavior_search(tmp_path: Path):
     assert run.draft is None
     assert run.score.behavior_pass is True
     assert run.score.total is None
+
+
+async def test_run_case_calls_scripted_judge_for_learning_draft(tmp_path: Path):
+    """A learning draft is judged and the semantic result reaches score_note."""
+    case = EvalCase(
+        id="l-scripted",
+        kind="quality",
+        user="整理为学习笔记。\n\nSource fact.",
+        expect_propose=True,
+        expect_tools_prefix=["list_files"],
+        task_mode="learning_note",
+        quality_thresholds={"structure": 3, "processing": 3},
+    )
+    model = ScriptedModel(
+        [
+            AIMessage(content="", tool_calls=[{"name": "list_files", "id": "c1", "args": {}}]),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "propose_note",
+                        "id": "c2",
+                        "args": {
+                            "action": "create",
+                            "file_name": "Learning.md",
+                            "content": "学习笔记",
+                            "reason": "new",
+                            "similar": "",
+                        },
+                    }
+                ],
+            ),
+            AIMessage(content="已提交草稿"),
+        ]
+    )
+    agent, notes, history, drafts = build_eval_agent(
+        tmp_path / "notes", model=model, prompt_path=_PROMPT, settings=_settings()
+    )
+
+    run = await run_case(
+        case,
+        seq=1,
+        agent=agent,
+        notes=notes,
+        history=history,
+        drafts=drafts,
+        judge_model=ScriptedJudge(_SEMANTIC_PAYLOAD),
+        judge_model_name="judge-scripted",
+    )
+
+    assert run.judge_error is None
+    assert run.score.qualified is True
+    assert run.score.dimensions["processing"] == 3
+
+
+def test_learning_report_marks_semantic_incomplete_and_completed():
+    """Learning reports distinguish absent Judge results from completed results."""
+    case = EvalCase(
+        id="l-report",
+        kind="quality",
+        user="整理。\n\nsource",
+        expect_propose=True,
+        task_mode="learning_note",
+    )
+    draft = {"action": "create", "file_name": "Note.md", "content": "draft"}
+    incomplete = CaseRun(
+        seq=1,
+        case=case,
+        score=score_note(
+            case,
+            proposed=True,
+            tools=[],
+            action="create",
+            file_name="Note.md",
+            content="draft",
+        ),
+        draft=draft,
+        judge_error="invalid Judge JSON",
+    )
+    semantic = LearningNoteSemanticResult(
+        _SEMANTIC_PAYLOAD["hard_gates"],
+        _SEMANTIC_PAYLOAD["dimensions"],
+        _SEMANTIC_PAYLOAD["evidence"],
+    )
+    completed = CaseRun(
+        seq=1,
+        case=case,
+        score=score_note(
+            case,
+            proposed=True,
+            tools=[],
+            action="create",
+            file_name="Note.md",
+            content="draft",
+            semantic_result=semantic,
+        ),
+        draft=draft,
+    )
+
+    incomplete_md = render_case_md(incomplete)
+    completed_md = render_case_md(completed)
+
+    assert "语义评测未完成" in incomplete_md
+    assert "invalid Judge JSON" in incomplete_md
+    assert "总分: —" in incomplete_md
+    assert "qualified: `True`" in completed_md
+    assert "task_alignment: 通过" in completed_md
+    assert "processing: 3/4" in completed_md
+    assert "source-processing" in completed_md
+
+
+async def test_run_eval_records_same_model_as_not_independent(tmp_path: Path):
+    """Matching chat and Judge model names are recorded as non-independent."""
+    case = EvalCase(
+        id="l-config",
+        kind="quality",
+        user="整理。\n\nsource",
+        expect_propose=True,
+        task_mode="learning_note",
+    )
+    model = ScriptedModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "propose_note",
+                        "id": "c1",
+                        "args": {
+                            "action": "create",
+                            "file_name": "Note.md",
+                            "content": "draft",
+                            "reason": "new",
+                            "similar": "",
+                        },
+                    }
+                ],
+            ),
+            AIMessage(content="ok"),
+        ]
+    )
+    settings = _settings()
+    settings.chat_model = "same-model"
+    settings.judge_model = "same-model"
+
+    await run_eval(
+        [case],
+        dest=tmp_path / "result",
+        prompt_path=_PROMPT,
+        settings=settings,
+        model=model,
+        judge_model=ScriptedJudge(_SEMANTIC_PAYLOAD),
+        prompt_display="system.txt",
+        cases_display="learning.jsonl",
+    )
+
+    config = json.loads((tmp_path / "result" / "config.json").read_text(encoding="utf-8"))
+    assert config["judge_model"] == "same-model"
+    assert config["judge_independent"] is False
+    assert len(config["judge_prompt_sha256"]) == 64
+    assert config["judge_failures"] == {}
 
 
 def test_write_stage_layout(tmp_path: Path):

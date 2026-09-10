@@ -4,7 +4,7 @@
 
 `rubric_version`：**v0.2**。v0.2 改变了质量定义和合格判定，**不得与 v0.1 直接比较总分或排名**。
 
-数据集见 [evals/prompt/](../../evals/prompt/README.md)。现有 L1 打分器仍实现 v0.1；本任务只发布契约与校准固定输入，不实现 Judge。
+数据集见 [evals/prompt/](../../evals/prompt/README.md)。旧 case 保持 v0.1 的 `total` / `parents` 行为；`learning_note` case 使用确定性检查加可选语义 Judge，并以三道硬门和配置维度阈值决定 `qualified`。
 
 ## 1. 任务边界
 
@@ -104,6 +104,14 @@
 - 未完成项及原因。
 
 语义 Judge 缺失或解析失败时标记“未完成”，不得将未评项摊权成虚高总分。若生成模型与 Judge 模型相同，必须标记 `judge_independent=false`，不能声称是独立校准。
+
+运行学习型校准：
+
+```bash
+python scripts/eval_notes.py --judge --cases evals/prompt/learning_notes.jsonl --ids l01
+```
+
+启用前必须配置 `DEEPSEEK_API_KEY` 和非空 `JUDGE_MODEL`。`JUDGE_MODEL` 可与 `CHAT_MODEL` 相同，但这只表示第二次评分调用，不构成独立模型校准。不传 `--judge` 时不会调用评分模型，报告中的 `qualified`、硬门和语义维度保持未完成。Judge 返回非严格 JSON、缺字段、空证据或 0–4 越界分数时，本次语义评测失败并在配置中留痕。
 
 ## 6. 校准集契约
 

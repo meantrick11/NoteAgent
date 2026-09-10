@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from noteagent.bootstrap.settings import Settings, project_root
-from noteagent.llm.factory import create_chat_model
+from noteagent.llm.factory import create_chat_model, create_judge_model
 from noteagent.observability.logging import setup_logging
 from noteagent.prompt_eval.cases import load_cases
 from noteagent.prompt_eval.report import result_dest
@@ -33,6 +33,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ids", default="", help="Comma-separated case ids; default is the whole set")
     parser.add_argument("--prompt", default=str(DEFAULT_PROMPT), help="Path to system.txt")
     parser.add_argument("--cases", default=str(DEFAULT_CASES), help="JSONL golden set")
+    parser.add_argument(
+        "--judge",
+        action="store_true",
+        help="Run the semantic Judge; requires JUDGE_MODEL",
+    )
     parser.add_argument("--force", action="store_true", help="Overwrite an existing result folder")
     args = parser.parse_args(argv)
 
@@ -62,23 +67,28 @@ def main(argv: list[str] | None = None) -> int:
     if not settings.deepseek_api_key.get_secret_value().strip():
         print("DEEPSEEK_API_KEY is not set", file=sys.stderr)
         return 1
+    if args.judge and not settings.judge_model.strip():
+        print("JUDGE_MODEL is not set", file=sys.stderr)
+        return 1
 
     level = getattr(logging, settings.log_level.upper(), logging.DEBUG)
     setup_logging(settings.log_dir, level=level)
     logger = logging.getLogger("noteagent.prompt_eval")
     cases = load_cases(cases_path, ids)
     logger.info(
-        "eval start dest=%s cases=%d dataset=%s filter=%s prompt=%s model=%s",
+        "eval start dest=%s cases=%d dataset=%s filter=%s prompt=%s model=%s judge_model=%s",
         dest,
         len(cases),
         cases_path,
         ids or "all",
         prompt_path,
         settings.chat_model,
+        settings.judge_model if args.judge else "disabled",
     )
     prompt_display = _display_path(root, prompt_path)
     cases_display = _display_path(root, cases_path)
     model = create_chat_model(settings)
+    judge_model = create_judge_model(settings) if args.judge else None
     asyncio.run(
         run_eval(
             cases,
@@ -86,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
             prompt_path=prompt_path,
             settings=settings,
             model=model,
+            judge_model=judge_model,
             prompt_display=prompt_display,
             cases_display=cases_display,
             case_filter=ids,
