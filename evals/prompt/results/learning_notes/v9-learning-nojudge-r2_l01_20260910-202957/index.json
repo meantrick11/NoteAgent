@@ -1,0 +1,29 @@
+{
+  "cases_path": "evals/prompt/learning_notes.jsonl",
+  "case_filter": [
+    "l01"
+  ],
+  "label": "v9-learning-nojudge-r2",
+  "sort": "worst_first",
+  "cases": [
+    {
+      "file": "l01.md",
+      "id": "l01",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": null,
+      "parents": {
+        "faithful": 100.0,
+        "complete": null,
+        "structure": null,
+        "fluent": null,
+        "form": 83.33,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {}
+    }
+  ]
+}

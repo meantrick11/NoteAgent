@@ -1,4 +1,4 @@
-"""v0.1 L1 note-body scorer. L2 items are marked inapplicable and renormalized."""
+"""Deterministic legacy scoring plus v0.2 learning-note semantic qualification."""
 
 from __future__ import annotations
 
@@ -8,7 +8,16 @@ from dataclasses import dataclass, field
 from noteagent.chat.context_pack import extract_source_headings
 from noteagent.prompt_eval.cases import EvalCase
 
-RUBRIC_VERSION = "v0.1"
+RUBRIC_VERSION = "v0.2"
+
+HARD_GATE_ORDER = ("task_alignment", "faithful", "complete")
+SEMANTIC_DIMENSION_ORDER = (
+    "structure",
+    "fluent",
+    "form",
+    "retrievable",
+    "processing",
+)
 
 # Parent weights for the comparison total. Inapplicable parents are dropped.
 PARENT_WEIGHTS: dict[str, float] = {
@@ -26,11 +35,44 @@ _HEDGE = ("通常", "可能", "往往", "建议", "默认", "usually", "may ", "
 _STRONG = ("一定", "必须", "总是", "绝对", "只能", "must always", "always must")
 _ATX = re.compile(r"^(#{1,6})\s+(\S.*)$")
 _NUMBERED = re.compile(r"^(\d+(?:\.\d+)*)\.?\s+\S")
-_LITERAL = re.compile(
-    r"(?:/[^\s，。；]+)|(?:python\d+\.\d+)|(?:sys\.argv(?:\[\d+\])?)|(?:UTF-8)|"
-    r"(?:Control-[A-Z])|(?:py\.exe)|(?:quit\(\))|(?:functools\.wraps)|(?:@decorator)",
+# Chars that may precede an absolute-path slash (or string start).
+_PATH_PREFIX = frozenset(" \t\n\r([{\"'")
+# Chars that end a path body; sentence periods are stripped afterward via rstrip.
+_PATH_STOP = frozenset(" \t\n\r，。；、,;:)]}\"'!?")
+_FIXED_LITERAL = re.compile(
+    r"python\d+\.\d+|sys\.argv(?:\[\d+\])?|UTF-8|Control-[A-Z]|py\.exe|"
+    r"quit\(\)|functools\.wraps|@decorator",
     re.I,
 )
+
+
+def _extract_literals(text: str) -> list[str]:
+    """Return path and fixed-identifier literals found in *text*.
+
+    Unix paths keep original case; other fixed identifiers are lowercased.
+    Paths start at string begin or after whitespace / an open bracket or quote;
+    the body runs until whitespace or common Chinese/English separators.
+    """
+    found: list[str] = []
+    index = 0
+    length = len(text)
+    while index < length:
+        if text[index] != "/":
+            index += 1
+            continue
+        if index > 0 and text[index - 1] not in _PATH_PREFIX:
+            index += 1
+            continue
+        start = index
+        index += 1
+        while index < length and text[index] not in _PATH_STOP:
+            index += 1
+        path = text[start:index].rstrip(".")
+        if len(path) > 1:
+            found.append(path)
+    for match in _FIXED_LITERAL.finditer(text):
+        found.append(match.group(0).lower())
+    return found
 _COMMAND = re.compile(
     r"python\s+-[cm]\b|import\s+\w+|quit\(\)|#\s*-\*-\s*coding:",
     re.I,
@@ -57,14 +99,54 @@ class MetricScore:
 
 
 @dataclass
+class ReviewQuestionAssessment:
+    """One Judge decision about whether the draft supports a preset question."""
+
+    question: str
+    answerable: bool
+    answer: str
+    draft_evidence: list[str]
+    reason: str
+
+
+@dataclass
+class SemanticEvidence:
+    """One hard-gate or dimension evidence bundle with a human-readable rationale."""
+
+    source: list[str]
+    draft: list[str]
+    reason: str
+
+
+@dataclass
+class LearningNoteSemanticResult:
+    """Validated Judge decisions, dimension scores, and source/draft evidence."""
+
+    hard_gates: dict[str, bool]
+    dimensions: dict[str, int]
+    evidence: dict[str, SemanticEvidence]
+    review_questions: list[ReviewQuestionAssessment] = field(default_factory=list)
+
+
+@dataclass
 class NoteScore:
-    """Body score plus the behavior gate. total/parents are None if the gate fails."""
+    """Behavior, deterministic scores, and optional learning-note semantics."""
 
     behavior_pass: bool
     total: float | None
     parents: dict[str, float | None]
     metrics: list[MetricScore]
     behavior_evidence: list[str] = field(default_factory=list)
+    qualified: bool | None = None
+    hard_gates: dict[str, bool] = field(default_factory=dict)
+    dimensions: dict[str, int] = field(default_factory=dict)
+    semantic_evidence: dict[str, SemanticEvidence] = field(default_factory=dict)
+    review_question_assessments: list[ReviewQuestionAssessment] = field(
+        default_factory=list
+    )
+    review_questions_answered: int = 0
+    review_questions_total: int = 0
+    semantic_completed: bool = False
 
 
 def score_note(
@@ -75,16 +157,53 @@ def score_note(
     action: str | None,
     file_name: str | None,
     content: str | None,
+    semantic_result: LearningNoteSemanticResult | None = None,
 ) -> NoteScore:
     """Run the behavior gate, then L1 body metrics when a draft exists and the gate passes."""
     gate_ok, gate_evidence = _behavior_gate(case, proposed=proposed, tools=tools, action=action)
+    if case.task_mode == "learning_note" and proposed:
+        path_check = _file_name_ok(file_name)
+        if path_check.score == 0:
+            gate_ok = False
+            gate_evidence.extend(path_check.evidence)
     if not gate_ok:
+        learning = case.task_mode == "learning_note"
         return NoteScore(
             behavior_pass=False,
             total=None,
             parents={key: None for key in PARENT_ORDER},
             metrics=[],
             behavior_evidence=gate_evidence,
+            qualified=False if learning else None,
+            hard_gates=(
+                dict(semantic_result.hard_gates)
+                if learning and semantic_result is not None
+                else {}
+            ),
+            dimensions=(
+                dict(semantic_result.dimensions)
+                if learning and semantic_result is not None
+                else {}
+            ),
+            semantic_evidence=(
+                dict(semantic_result.evidence)
+                if learning and semantic_result is not None
+                else {}
+            ),
+            review_question_assessments=(
+                list(semantic_result.review_questions)
+                if learning and semantic_result is not None
+                else []
+            ),
+            review_questions_answered=(
+                sum(item.answerable for item in semantic_result.review_questions)
+                if learning and semantic_result is not None
+                else 0
+            ),
+            review_questions_total=(
+                len(case.review_questions) if learning else 0
+            ),
+            semantic_completed=learning and semantic_result is not None,
         )
     if not proposed:
         return NoteScore(
@@ -93,6 +212,55 @@ def score_note(
             parents={key: None for key in PARENT_ORDER},
             metrics=[],
             behavior_evidence=gate_evidence + ["无草稿，未评正文"],
+        )
+    if case.task_mode == "learning_note":
+        metrics = _score_learning_deterministic(
+            case, file_name=file_name, content=content or ""
+        )
+        parents = _parent_scores(metrics)
+        threshold_errors = _quality_threshold_errors(case.quality_thresholds)
+        if semantic_result is None:
+            return NoteScore(
+                behavior_pass=True,
+                total=None,
+                parents=parents,
+                metrics=metrics,
+                behavior_evidence=gate_evidence + threshold_errors,
+                qualified=False if threshold_errors else None,
+                review_questions_total=len(case.review_questions),
+            )
+        gates_pass = all(
+            semantic_result.hard_gates[name] for name in HARD_GATE_ORDER
+        )
+        thresholds_pass = not threshold_errors and all(
+            semantic_result.dimensions[name] >= threshold
+            for name, threshold in case.quality_thresholds.items()
+        )
+        questions_pass = len(semantic_result.review_questions) == len(
+            case.review_questions
+        ) and all(
+            assessment.question == question and assessment.answerable
+            for assessment, question in zip(
+                semantic_result.review_questions, case.review_questions
+            )
+        )
+        return NoteScore(
+            behavior_pass=True,
+            total=None,
+            parents=parents,
+            metrics=metrics,
+            behavior_evidence=gate_evidence + threshold_errors,
+            qualified=gates_pass and thresholds_pass and questions_pass,
+            hard_gates=dict(semantic_result.hard_gates),
+            dimensions=dict(semantic_result.dimensions),
+            semantic_evidence=dict(semantic_result.evidence),
+            review_question_assessments=list(semantic_result.review_questions),
+            review_questions_answered=sum(
+                assessment.answerable
+                for assessment in semantic_result.review_questions
+            ),
+            review_questions_total=len(case.review_questions),
+            semantic_completed=True,
         )
     metrics = _score_body(case, action=action, file_name=file_name, content=content or "")
     parents = _parent_scores(metrics)
@@ -103,6 +271,43 @@ def score_note(
         metrics=metrics,
         behavior_evidence=gate_evidence,
     )
+
+
+def _score_learning_deterministic(
+    case: EvalCase, *, file_name: str | None, content: str
+) -> list[MetricScore]:
+    """Keep literal, anchor, Markdown, and path checks out of semantic qualification."""
+    material = _material(case.user)
+    return [
+        *_faithful(material, content)[1:3],
+        _coverage(
+            "complete.anchors",
+            20,
+            case.must_anchors,
+            content,
+            empty="无 must_anchors",
+        ),
+        _commands(material, content),
+        _examples(material, content),
+        _fence(material, content),
+        _quote(material, content),
+        _indent(content),
+        _spacing(content),
+        *_retrievable(case, file_name),
+    ]
+
+
+def _quality_threshold_errors(thresholds: dict) -> list[str]:
+    """Return explicit learning-note threshold configuration errors."""
+    errors: list[str] = []
+    for name, threshold in thresholds.items():
+        if name not in SEMANTIC_DIMENSION_ORDER:
+            errors.append(f"quality_thresholds unknown dimension '{name}'")
+        elif type(threshold) is not int:
+            errors.append(f"quality_thresholds.{name} must be an integer")
+        elif not 0 <= threshold <= 4:
+            errors.append(f"quality_thresholds.{name} must be from 0 to 4")
+    return errors
 
 
 def _behavior_gate(
@@ -170,8 +375,8 @@ def _faithful(material: str, content: str) -> list[MetricScore]:
 
 def _literals(material: str, content: str) -> MetricScore:
     """Invented paths / versions / identifiers in the draft score 0."""
-    src = {item.lower() for item in _LITERAL.findall(material)}
-    dst = {item.lower() for item in _LITERAL.findall(content)}
+    src = set(_extract_literals(material))
+    dst = set(_extract_literals(content))
     extra = sorted(dst - src)
     if extra:
         return MetricScore(

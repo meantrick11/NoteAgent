@@ -1,0 +1,399 @@
+{
+  "case_id": "l01",
+  "candidates": {
+    "good": {
+      "fixture": "good.md",
+      "fixture_sha256": "043faac4393f5707b2f66558c9a37b89db78d8f02107d892686ab7a08124e767",
+      "hard_gates": {},
+      "dimensions": {},
+      "qualified": false,
+      "evidence": {},
+      "review_questions": [],
+      "error": "evidence.processing.source[0] is not an input substring"
+    },
+    "literal": {
+      "fixture": "literal.md",
+      "fixture_sha256": "c31e0739dd4308610fd919564273cb9d65769aaadf5ebed6b3e8af2e1192d800",
+      "hard_gates": {
+        "task_alignment": true,
+        "faithful": true,
+        "complete": true
+      },
+      "dimensions": {
+        "structure": 2,
+        "fluent": 4,
+        "form": 2,
+        "retrievable": 1,
+        "processing": 1
+      },
+      "qualified": false,
+      "evidence": {
+        "task_alignment": {
+          "source": [
+            "将这篇文章翻译并整理为合适的笔记。"
+          ],
+          "draft": [
+            "## 1. 激发你的兴趣",
+            "Python 正是适合你的语言。"
+          ],
+          "reason": "任务要求把文章翻译并整理为笔记，输出语言为 zh-CN；草稿以中文完整翻译正文，并带有章节标题和 Markdown 笔记形态，任务类型、范围和输出语言均被执行，故硬门通过。"
+        },
+        "faithful": {
+          "source": [
+            "If you’re a professional software developer, you may have to work with several C/C++/Java libraries but find the usual write/compile/test/re-compile cycle is too slow."
+          ],
+          "draft": [
+            "如果你是专业软件开发者，你可能必须使用若干 C/C++/Java 库，却发现通常的编写、编译、测试、重新编译周期太慢。"
+          ],
+          "reason": "草稿用“可能必须”保留 may have to 的可能/情境义，未绝对化；“有些任务想要自动化”“并不适合 GUI 应用或游戏”“也可能花费大量开发时间”“通常比等价……短得多”“其中一些模块提供”等处的模态、限定和示例关系也与来源一致，未引入 forbidden_claims 中的任何外部说法。"
+        },
+        "complete": {
+          "source": [
+            "Some of these modules provide things like file I/O, system calls, sockets, and even interfaces to graphical user interface toolkits like Tk."
+          ],
+          "draft": [
+            "其中一些模块提供文件 I/O、系统调用、套接字，甚至 Tk 等图形用户界面工具包的接口。"
+          ],
+          "reason": "must_concepts 中的语义单元均可在草稿中找到对应内容：自动化任务举例、专业开发者的慢编译循环与测试负担、Shell/批处理的适用与不适用、C/C++/Java 初稿成本、Windows/macOS/Unix、结构与错误检查、灵活数组与字典、Awk/Perl 对比、模块复用与标准库示例、解释执行、交互式解释器、代码更短三原因、C 扩展与嵌入、命名来源、边读边操作、下一章内容与后续学习路线，硬门通过。"
+        },
+        "structure": {
+          "source": [
+            "1. Whetting Your Appetite"
+          ],
+          "draft": [
+            "## 1. 激发你的兴趣"
+          ],
+          "reason": "草稿保留顶层章节标题作为范围，并按来源段落顺序组织各段语义，但没有形成主题分块、子标题或关系分层，语义组织基本等同于原段落序列，因此结构分较低。"
+        },
+        "fluent": {
+          "source": [
+            "Python is simple to use, but it is a real programming language, offering much more structure and support for large programs than shell scripts or batch files can offer."
+          ],
+          "draft": [
+            "Python 使用简单，但它是一门真正的编程语言，比 shell 脚本或批处理文件能为大型程序提供更多结构和支持。"
+          ],
+          "reason": "中文行文通顺连贯，句间衔接自然；术语与译名前后一致（解释器、模块、高级数据类型、GUI 应用、标准模块），未有明显歧义或术语漂移。"
+        },
+        "form": {
+          "source": [
+            "- the high-level data types allow you to express complex operations in a single statement;"
+          ],
+          "draft": [
+            "- 高级数据类型让你能用一条语句表达复杂操作；"
+          ],
+          "reason": "笔记形式使用二级标题和项目符号列表，列表与“三个原因”的内容对应，Markdown 形态基本服务于内容且无过度格式；但除标题和一处列表外没有更多形式承载，故仅给基础分。"
+        },
+        "retrievable": {
+          "source": [
+            "1. Whetting Your Appetite"
+          ],
+          "draft": [
+            "literal.md",
+            "## 1. 激发你的兴趣"
+          ],
+          "reason": "文件名 literal.md 为泛化命名，不含 Python、教程或章节主题等可检索信息；正文仅标题“1. 激发你的兴趣”可作稳定主题词，缺乏路径和更多稳定主题索引，检索性弱。"
+        },
+        "processing": {
+          "source": [
+            "If you do much work on computers, eventually you find that there’s some task you’d like to automate."
+          ],
+          "draft": [
+            "如果你经常使用计算机，最终会发现有些任务想要自动化。"
+          ],
+          "reason": "草稿基本逐句直译，只有语言转换、标题翻译和少量 Markdown 格式变化，没有去重、分组归纳、因果关系显式化或形成便于复习的结构，加工增益很低。"
+        }
+      },
+      "review_questions": [
+        {
+          "question": "文中列举了哪些适合自动化的任务？",
+          "answerable": true,
+          "answer": "对大量文本文件执行搜索和替换；以复杂方式重命名并重新排列一批照片文件；编写小型定制数据库、专用 GUI 应用或简单游戏。",
+          "draft_evidence": [
+            "例如，你可能想对大量文本文件执行搜索和替换，或以复杂方式重命名并重新排列一批照片文件。也许你想编写一个小型定制数据库、专用 GUI 应用或简单游戏。"
+          ],
+          "reason": ""
+        },
+        {
+          "question": "为什么材料认为 Shell/批处理和 C/C++/Java 对这些任务各有局限？",
+          "answerable": true,
+          "answer": "Shell 脚本最擅长移动文件和修改文本数据，并不适合 GUI 应用或游戏；而 C/C++/Java 即使只得到第一版程序也可能花费大量开发时间。",
+          "draft_evidence": [
+            "你可以为其中一些任务编写 Unix shell 脚本或 Windows 批处理文件，但 shell 脚本最擅长移动文件和修改文本数据，并不适合 GUI 应用或游戏。你也可以编写 C/C++/Java 程序，但即使得到第一版程序也可能花费大量开发时间。"
+          ],
+          "reason": ""
+        },
+        {
+          "question": "Python 相比 Shell、C、Awk/Perl 分别有哪些文中明确给出的特点？",
+          "answerable": true,
+          "answer": "相比 Shell/批处理：Python 是真正的编程语言，能为大型程序提供更多结构和支持。相比 C：Python 提供更多错误检查，并内置灵活数组、字典等高级数据类型。相比 Awk/Perl：由于数据类型更通用，Python 适用的问题领域广得多，而许多事情用 Python 完成至少同样容易。",
+          "draft_evidence": [
+            "Python 使用简单，但它是一门真正的编程语言，比 shell 脚本或批处理文件能为大型程序提供更多结构和支持。另一方面，Python 还比 C 提供更多错误检查；作为一种非常高级的语言，它内置灵活数组、字典等高级数据类型。因为数据类型更通用，Python 适用的问题领域比 Awk 甚至 Perl 广得多，而许多事情用 Python 完成至少同样容易。"
+          ],
+          "reason": ""
+        },
+        {
+          "question": "解释执行和交互式解释器如何帮助开发？",
+          "answerable": true,
+          "answer": "解释执行因为不需要编译和链接，可以在程序开发期间节省大量时间；解释器可以交互使用，便于试验语言特性、编写一次性程序，或在自底向上的程序开发中测试函数，也是方便的桌面计算器。",
+          "draft_evidence": [
+            "Python 是解释型语言。因为不需要编译和链接，它可以在程序开发期间节省大量时间。解释器可以交互使用，便于试验语言特性、编写一次性程序，或在自底向上的程序开发中测试函数。"
+          ],
+          "reason": ""
+        },
+        {
+          "question": "Python 程序通常更短的三个原因是什么？",
+          "answerable": true,
+          "answer": "高级数据类型让你能用一条语句表达复杂操作；语句分组通过缩进完成，而不是使用起止括号；不需要变量或参数声明。",
+          "draft_evidence": [
+            "- 高级数据类型让你能用一条语句表达复杂操作；\n- 语句分组通过缩进完成，而不是使用起止括号；\n- 不需要变量或参数声明。"
+          ],
+          "reason": ""
+        },
+        {
+          "question": "Python 如何通过 C 扩展或嵌入连接外部能力？",
+          "answerable": true,
+          "answer": "懂 C 时可以很容易给解释器添加新的内建函数或模块，用于以最高速度执行关键操作，或把 Python 程序连接到可能只有二进制形式的库（如供应商专用图形库）；还可以把 Python 解释器连接进用 C 编写的应用，作为该应用的扩展语言或命令语言。",
+          "draft_evidence": [
+            "Python 可以扩展：如果你懂 C，就很容易给解释器添加新的内建函数或模块，用于以最高速度执行关键操作，或把 Python 程序连接到可能只有二进制形式的库，例如供应商专用图形库。真正喜欢上 Python 后，还可以把 Python 解释器连接进用 C 编写的应用，把它作为该应用的扩展语言或命令语言。"
+          ],
+          "reason": ""
+        },
+        {
+          "question": "Python 的名称来自哪里？",
+          "answerable": true,
+          "answer": "来自 BBC 节目《Monty Python’s Flying Circus》，与爬行动物毫无关系。",
+          "draft_evidence": [
+            "顺便说一下，这门语言以 BBC 节目《Monty Python’s Flying Circus》命名，与爬行动物毫无关系。"
+          ],
+          "reason": ""
+        },
+        {
+          "question": "教程接下来按什么路线展开？",
+          "answerable": true,
+          "answer": "下一章解释解释器的使用机制，这些信息相当平凡但对尝试后面的示例必不可少；教程其余部分通过示例介绍 Python 语言和系统的多种特性，从简单表达式、语句和数据类型开始，经过函数和模块，最后触及异常和用户自定义类等高级概念。",
+          "draft_evidence": [
+            "下一章将解释解释器的使用机制。这些信息相当平凡，但对尝试后面展示的示例必不可少。\n\n教程其余部分通过示例介绍 Python 语言和系统的多种特性：从简单表达式、语句和数据类型开始，经过函数和模块，最后触及异常和用户自定义类等高级概念。"
+          ],
+          "reason": ""
+        }
+      ],
+      "error": null
+    },
+    "omitted": {
+      "fixture": "omitted.md",
+      "fixture_sha256": "e20159057881de37e6f417ffc382626bd2d5a241604c8cdfc32fe7bd35126bf6",
+      "hard_gates": {},
+      "dimensions": {},
+      "qualified": false,
+      "evidence": {},
+      "review_questions": [],
+      "error": "evidence unexpected key: fluent_placeholder"
+    },
+    "hallucinated": {
+      "fixture": "hallucinated.md",
+      "fixture_sha256": "d56c4b3b0888676c90cdd6f8e0c48e6198851c86492bf117c17fdfcc2f25b310",
+      "hard_gates": {
+        "task_alignment": true,
+        "faithful": false,
+        "complete": false
+      },
+      "dimensions": {
+        "structure": 2,
+        "fluent": 3,
+        "form": 3,
+        "retrievable": 1,
+        "processing": 2
+      },
+      "qualified": false,
+      "evidence": {
+        "task_alignment": {
+          "source": [
+            "将这篇文章翻译并整理为合适的笔记。"
+          ],
+          "draft": [
+            "## Python 为什么是自动化首选"
+          ],
+          "reason": "草稿以中文笔记形式呈现原文主要内容，标题化组织并使用了 zh-CN，执行了“翻译并整理为笔记”的任务类型与输出语言，故 task_alignment 通过。"
+        },
+        "faithful": {
+          "source": [
+            "Programs written in Python are typically much shorter than equivalent C, C++, or Java programs, for several reasons:",
+            "Some of these modules provide things like file I/O, system calls, sockets, and even interfaces to graphical user interface toolkits like Tk.",
+            "no variable or argument declarations are necessary."
+          ],
+          "draft": [
+            "Python 是动态类型语言，因此完全不需要考虑类型；它的自动垃圾回收也让所有内存错误成为过去。",
+            "字典底层采用哈希表，所以任何查找都保证是常数时间。",
+            "Python 原生异步能力优于 C/C++/Java，特别适合所有高并发服务；虽然 GIL 限制 CPU 密集型多线程，但多进程总能线性加速。",
+            "Python 因而总是比 C/C++/Java 运行得更快。",
+            "Tk 是 Python 自带的唯一 GUI 框架。"
+          ],
+          "reason": "来源只说 Python 程序“typically”更短、标准库“some of these modules provide things like”含 Tk 等示例、无需“变量或参数声明”，均为有限、举例、情境化表述。草稿却加入来源完全没有且被任务列为禁止的断言：动态类型因而不需考虑类型、自动垃圾回收、字典哈希表常数时间、原生异步优于 C/C++/Java、GIL 限制、总是比 C/C++/Java 更快、Tk 是唯一 GUI 框架，并把 typically/some 等限定改为绝对化断言，故 faithful 失败。"
+        },
+        "complete": {
+          "source": [
+            "Perhaps you’d like to write a small custom database, or a specialized GUI application, or a simple game.",
+            "Perhaps you’re writing a test suite for such a library and find writing the testing code a tedious task. Or maybe you’ve written a program that could use an extension language, and you don’t want to design and implement a whole new language for your application.",
+            "Because of its more general data types Python is applicable to a much larger problem domain than Awk or even Perl, yet many things are at least as easy in Python as in those languages."
+          ],
+          "draft": [
+            "面对批量替换文本、整理照片、制作 GUI 或游戏等任务，Python 往往比 Shell 和 C/C++/Java 更方便。",
+            "相比 C，Python 有更多错误检查，并内置灵活数组和字典。",
+            "懂 C 的开发者可以添加内建函数或模块，加速关键操作或连接二进制库，也可以把解释器嵌入 C 应用作为命令语言。"
+          ],
+          "reason": "草稿覆盖了多数 must_concepts（自动化任务、Shell 与 C/C++/Java 局限、跨平台、模块与标准库、解释执行、交互式、简短原因、C 扩展、命名来源、学习路线）。但任务要求的“自定义数据库”示例、“专业开发者测试代码负担与扩展语言需求”、“相比 Awk/Perl 的通用数据类型扩大适用问题域”等关键语义单元在草稿中完全缺失，故 complete 失败。"
+        },
+        "structure": {
+          "source": [
+            "1. Whetting Your Appetite",
+            "The rest of the tutorial introduces various features of the Python language and system through examples, beginning with simple expressions, statements and data types, through functions and modules, and finally touching upon advanced concepts like exceptions and user-defined classes."
+          ],
+          "draft": [
+            "## Python 为什么是自动化首选",
+            "## 快速开发的技术基础",
+            "## 扩展生态与学习路线"
+          ],
+          "reason": "草稿保留并重组了顶层范围，用三个主题标题把原文内容分组，具备一定来源依据的语义组织；但标题体系是自拟的，且部分板块（如动态类型/垃圾回收段）不来自原文，分组也未完整承接原文的开发者视角与语言对比顺序，故给 2。"
+        },
+        "fluent": {
+          "source": [
+            "将这篇文章翻译并整理为合适的笔记。"
+          ],
+          "draft": [
+            "面对批量替换文本、整理照片、制作 GUI 或游戏等任务，Python 往往比 Shell 和 C/C++/Java 更方便。Shell 主要适合文件与文本操作，而 C/C++/Java 的编译迭代可能让第一版程序耗时较长。"
+          ],
+          "reason": "中文表达通顺连贯，术语（解释器、模块、标准库、GUI 等）前后一致，未出现明显语句断裂，故给 3；个别句子因加入来源外断言而语义关系被扭曲，但不属语言通顺层面的主要缺陷。"
+        },
+        "form": {
+          "source": [
+            "将这篇文章翻译并整理为合适的笔记。"
+          ],
+          "draft": [
+            "## 快速开发的技术基础"
+          ],
+          "reason": "草稿使用 Markdown 标题划分主题，层级清晰、便于浏览，形态服务于笔记内容；但未使用列表等结构来承载原文的分点信息，故给 3。"
+        },
+        "retrievable": {
+          "source": [
+            "将这篇文章翻译并整理为合适的笔记。"
+          ],
+          "draft": [
+            "hallucinated.md"
+          ],
+          "reason": "标题中的主题词（自动化、快速开发、扩展生态、学习路线）具备一定检索价值，但文件名“hallucinated.md”不描述内容、无路径信息，难以凭文件名定位主题，故给 1。"
+        },
+        "processing": {
+          "source": [
+            "In the next chapter, the mechanics of using the interpreter are explained. This is rather mundane information, but essential for trying out the examples shown later."
+          ],
+          "draft": [
+            "教程建议边读边操作解释器：下一章学习解释器机制，之后从表达式、语句和数据类型进入函数、模块、异常与用户自定义类。"
+          ],
+          "reason": "草稿做了主题分组、去重和压缩，并将学习路线归纳为一条清晰路径，属于超出逐句搬运的组织加工；但整体仍是原文要点的浓缩改写，未显式呈现主要因果/对比关系，且缺项与来源外断言削弱了学习结构，故给 2。"
+        }
+      },
+      "review_questions": [
+        {
+          "question": "文中列举了哪些适合自动化的任务？",
+          "answerable": true,
+          "answer": "草稿列举了批量替换文本、整理照片、制作 GUI 或游戏等任务；草稿未提到自定义数据库。",
+          "draft_evidence": [
+            "面对批量替换文本、整理照片、制作 GUI 或游戏等任务"
+          ],
+          "reason": ""
+        },
+        {
+          "question": "为什么材料认为 Shell/批处理和 C/C++/Java 对这些任务各有局限？",
+          "answerable": true,
+          "answer": "草稿认为 Shell 主要适合文件与文本操作，而 C/C++/Java 的编译迭代可能让第一版程序耗时较长，因此在上述任务上不如 Python 方便。",
+          "draft_evidence": [
+            "Shell 主要适合文件与文本操作，而 C/C++/Java 的编译迭代可能让第一版程序耗时较长。"
+          ],
+          "reason": ""
+        },
+        {
+          "question": "Python 相比 Shell、C、Awk/Perl 分别有哪些文中明确给出的特点？",
+          "answerable": false,
+          "answer": "",
+          "draft_evidence": [
+            "Python 往往比 Shell 和 C/C++/Java 更方便。Shell 主要适合文件与文本操作，而 C/C++/Java 的编译迭代可能让第一版程序耗时较长。Python 可运行于 Windows、macOS 和 Unix，并提供适合大型程序的结构。",
+            "相比 C，Python 有更多错误检查，并内置灵活数组和字典。"
+          ],
+          "reason": "草稿能回答相对 Shell（更适合大型程序的结构）和相对 C（更多错误检查、灵活数组和字典）的内容，但完全没有提及 Awk/Perl 及“通用数据类型扩大适用问题域、至少同样容易”的对比，无法完整回答该问题。"
+        },
+        {
+          "question": "解释执行和交互式解释器如何帮助开发？",
+          "answerable": true,
+          "answer": "草稿指出解释执行省去了编译和链接，交互式解释器则适合试验功能、编写一次性程序、测试函数和进行计算。",
+          "draft_evidence": [
+            "解释执行省去了编译和链接，交互式解释器则适合试验功能、编写一次性程序、测试函数和进行计算。"
+          ],
+          "reason": ""
+        },
+        {
+          "question": "Python 程序通常更短的三个原因是什么？",
+          "answerable": true,
+          "answer": "三个原因是：高级数据类型可在一句中表达复杂操作、缩进代替括号完成分组、无需变量或参数声明。",
+          "draft_evidence": [
+            "Python 程序通常更短，原因是高级数据类型可在一句中表达复杂操作、缩进代替括号完成分组，而且无需变量或参数声明。"
+          ],
+          "reason": ""
+        },
+        {
+          "question": "Python 如何通过 C 扩展或嵌入连接外部能力？",
+          "answerable": true,
+          "answer": "草稿说明懂 C 的开发者可以添加内建函数或模块，用来加速关键操作或连接二进制库，也可以把解释器嵌入 C 应用作为命令语言。",
+          "draft_evidence": [
+            "懂 C 的开发者可以添加内建函数或模块，加速关键操作或连接二进制库，也可以把解释器嵌入 C 应用作为命令语言。"
+          ],
+          "reason": ""
+        },
+        {
+          "question": "Python 的名称来自哪里？",
+          "answerable": true,
+          "answer": "草稿称 Python 的名字来自 BBC 节目《Monty Python's Flying Circus》，与爬行动物无关。",
+          "draft_evidence": [
+            "Python 的名字来自 BBC 节目《Monty Python’s Flying Circus》，与爬行动物无关。"
+          ],
+          "reason": ""
+        },
+        {
+          "question": "教程接下来按什么路线展开？",
+          "answerable": true,
+          "answer": "草稿说明教程建议边读边操作解释器：下一章学习解释器机制，之后从表达式、语句和数据类型进入函数、模块、异常与用户自定义类。",
+          "draft_evidence": [
+            "教程建议边读边操作解释器：下一章学习解释器机制，之后从表达式、语句和数据类型进入函数、模块、异常与用户自定义类。"
+          ],
+          "reason": ""
+        }
+      ],
+      "error": null
+    }
+  },
+  "contracts": {
+    "good_qualified": false,
+    "literal_hard_gates": true,
+    "literal_unqualified": true,
+    "literal_processing_below_threshold": true,
+    "omitted_incomplete": false,
+    "omitted_review_question_unanswerable": false,
+    "hallucinated_unfaithful": true,
+    "good_structure_gt_literal": false,
+    "good_fluent_at_least_threshold": false,
+    "literal_fluent_at_least_threshold": true,
+    "good_processing_gt_literal": false,
+    "good_dimension_sum_gt_literal": false
+  },
+  "pass": false,
+  "errors": [
+    "good: evidence.processing.source[0] is not an input substring",
+    "omitted: evidence unexpected key: fluent_placeholder",
+    "contract failed: good_qualified",
+    "contract failed: omitted_incomplete",
+    "contract failed: omitted_review_question_unanswerable",
+    "contract failed: good_structure_gt_literal",
+    "contract failed: good_fluent_at_least_threshold",
+    "contract failed: good_processing_gt_literal",
+    "contract failed: good_dimension_sum_gt_literal"
+  ]
+}

@@ -17,9 +17,14 @@ from noteagent.chat.history import ConversationStore, start_turn
 from noteagent.chat.tools import build_chat_tools
 from noteagent.db import Base, create_engine_from_url, create_session_factory
 from noteagent.notes.repository import FileNoteRepository
-from noteagent.prompt_eval.cases import EvalCase
+from noteagent.prompt_eval.cases import EvalCase, case_rubric_version
+from noteagent.prompt_eval.judge import (
+    JUDGE_PROMPT_PATH,
+    judge_learning_note,
+    judge_prompt_sha256,
+)
 from noteagent.prompt_eval.report import case_filename, write_stage
-from noteagent.prompt_eval.score import RUBRIC_VERSION, score_note
+from noteagent.prompt_eval.score import score_note
 
 _logger = logging.getLogger(__name__)
 
@@ -45,6 +50,7 @@ class CaseRun:
     draft: dict | None = None
     assistant_final: str | None = None
     error: str | None = None
+    judge_error: str | None = None
 
 
 class _FakeRetrieval:
@@ -97,6 +103,9 @@ async def run_case(
     notes: FileNoteRepository,
     history: ConversationStore,
     drafts: DraftStore,
+    judge_model=None,
+    judge_model_name: str | None = None,
+    judge_prompt_path: Path = JUDGE_PROMPT_PATH,
 ) -> CaseRun:
     """One user turn: seed files, stream, collect tools/draft, score. No review."""
     _logger.info("eval case start id=%s seq=%02d", case.id, seq)
@@ -116,6 +125,20 @@ async def run_case(
     pending = drafts.get(record.id)
     draft = pending.as_dict() if pending is not None else None
     tools = _collect_tools(history, record.id)
+    semantic_result = None
+    judge_error: str | None = None
+    if case.task_mode == "learning_note" and draft is not None and judge_model is not None:
+        try:
+            semantic_result = await judge_learning_note(
+                judge_model,
+                model_name=judge_model_name or "unknown",
+                case=case,
+                draft=draft,
+                prompt_path=judge_prompt_path,
+            )
+        except Exception as exc:
+            judge_error = str(exc)
+            _logger.warning("eval Judge incomplete id=%s error=%s", case.id, judge_error)
     score = score_note(
         case,
         proposed=draft is not None,
@@ -123,6 +146,7 @@ async def run_case(
         action=None if draft is None else draft.get("action"),
         file_name=None if draft is None else draft.get("file_name"),
         content=None if draft is None else draft.get("content"),
+        semantic_result=semantic_result,
     )
     _logger.info(
         "eval case end id=%s propose=%s tools=%s behavior_pass=%s total=%s",
@@ -140,6 +164,7 @@ async def run_case(
         draft=draft,
         assistant_final=assistant_final,
         error=error,
+        judge_error=judge_error,
     )
 
 
@@ -150,6 +175,10 @@ async def run_eval(
     prompt_path: Path,
     settings: Settings,
     model,
+    judge_model=None,
+    judge_model_name: str | None = None,
+    judge_prompt_path: Path = JUDGE_PROMPT_PATH,
+    cases_sha256: str,
     prompt_display: str,
     cases_display: str,
     case_filter: list[str] | None = None,
@@ -157,6 +186,11 @@ async def run_eval(
 ) -> list[CaseRun]:
     """Run every case with a fresh temp notes dir. Reuse the same chat model."""
     started = datetime.now(timezone.utc)
+    effective_judge_name = (
+        judge_model_name
+        or settings.judge_model.strip()
+        or settings.chat_model.strip()
+    )
     prompt_text = prompt_path.read_text(encoding="utf-8")
     prompt_sha = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()
     runs: list[CaseRun] = []
@@ -169,14 +203,40 @@ async def run_eval(
                 settings=settings,
             )
             run = await run_case(
-                case, seq=seq, agent=agent, notes=notes, history=history, drafts=drafts
+                case,
+                seq=seq,
+                agent=agent,
+                notes=notes,
+                history=history,
+                drafts=drafts,
+                judge_model=judge_model,
+                judge_model_name=effective_judge_name if judge_model is not None else None,
+                judge_prompt_path=judge_prompt_path,
             )
             runs.append(run)
     finished = datetime.now(timezone.utc)
+    rubric_versions = {
+        run.case.id: case_rubric_version(run.case) for run in runs
+    }
+    distinct_rubric_versions = set(rubric_versions.values())
     config = {
-        "rubric_version": RUBRIC_VERSION,
+        "rubric_version": (
+            next(iter(distinct_rubric_versions))
+            if len(distinct_rubric_versions) == 1
+            else "mixed"
+        ),
+        "rubric_versions": rubric_versions,
         "chat_model": settings.chat_model,
         "prompt_sha256": prompt_sha,
+        "cases_sha256": cases_sha256,
+        "judge_model": effective_judge_name if judge_model is not None else None,
+        "judge_prompt_sha256": judge_prompt_sha256(judge_prompt_path),
+        "judge_independent": bool(
+            judge_model is not None and effective_judge_name != settings.chat_model
+        ),
+        "judge_failures": {
+            run.case.id: run.judge_error for run in runs if run.judge_error is not None
+        },
         "prompt_path": prompt_display,
         "cases_path": cases_display,
         "case_filter": case_filter,
@@ -184,8 +244,25 @@ async def run_eval(
         "started_at": started.isoformat(),
         "finished_at": finished.isoformat(),
         "case_ids": {run.case.id: case_filename(run.case.id) for run in runs},
+        "review_questions": {
+            "answered": sum(
+                run.score.review_questions_answered for run in runs
+            ),
+            "total": sum(len(run.case.review_questions) for run in runs),
+        },
     }
-    write_stage(dest, prompt_text=prompt_text, config=config, runs=runs)
+    judge_prompt_text = (
+        judge_prompt_path.read_text(encoding="utf-8")
+        if judge_model is not None
+        else None
+    )
+    write_stage(
+        dest,
+        prompt_text=prompt_text,
+        judge_prompt_text=judge_prompt_text,
+        config=config,
+        runs=runs,
+    )
     return runs
 
 

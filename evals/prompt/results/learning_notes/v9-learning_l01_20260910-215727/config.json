@@ -1,0 +1,28 @@
+{
+  "rubric_version": "v0.2",
+  "rubric_versions": {
+    "l01": "v0.2"
+  },
+  "chat_model": "deepseek-v4-flash",
+  "prompt_sha256": "73513ae2b2dae83aa3124633a239bec9fbc47eba9d0cc155ec5d30654ec14724",
+  "cases_sha256": "36c288f058f1481712c04249b38182cea7b2ce31807c9d30a05530ef966b04f2",
+  "judge_model": "deepseek-v4-flash",
+  "judge_prompt_sha256": "16dfbc0f0292924bb2513c9b8929255e200603098ea2a38c4248627c72110dde",
+  "judge_independent": false,
+  "judge_failures": {},
+  "prompt_path": "src/noteagent/chat/prompts/system.txt",
+  "cases_path": "evals/prompt/learning_notes.jsonl",
+  "case_filter": [
+    "l01"
+  ],
+  "label": "v9-learning",
+  "started_at": "2026-09-10T13:57:37.223118+00:00",
+  "finished_at": "2026-09-10T13:58:56.597782+00:00",
+  "case_ids": {
+    "l01": "l01.md"
+  },
+  "review_questions": {
+    "answered": 8,
+    "total": 8
+  }
+}

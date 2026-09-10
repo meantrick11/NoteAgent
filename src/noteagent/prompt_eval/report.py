@@ -96,12 +96,17 @@ def write_stage(
     dest: Path,
     *,
     prompt_text: str,
+    judge_prompt_text: str | None = None,
     config: dict,
     runs: list,
 ) -> None:
-    """Write config.json, system.txt, index.json, and one markdown file per case."""
+    """Write reproducible inputs, metadata, index, and one report per case."""
     dest.mkdir(parents=True, exist_ok=True)
     (dest / "system.txt").write_text(prompt_text, encoding="utf-8")
+    if judge_prompt_text is not None:
+        (dest / "judge_prompt.txt").write_text(
+            judge_prompt_text, encoding="utf-8"
+        )
     (dest / "config.json").write_text(
         json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
@@ -110,6 +115,9 @@ def write_stage(
         "case_filter": config.get("case_filter"),
         "label": config.get("label"),
         "sort": "worst_first",
+        "review_questions": config.get(
+            "review_questions", {"answered": 0, "total": 0}
+        ),
         "cases": [_index_row(run) for run in _sorted_runs(runs)],
     }
     (dest / "index.json").write_text(
@@ -137,6 +145,11 @@ def render_case_md(run, config: dict | None = None) -> str:
         f"- kind: `{case.kind}`",
         f"- style: `{case.style}`",
     ]
+    rubric_version = meta.get("rubric_versions", {}).get(
+        case.id, meta.get("rubric_version")
+    )
+    if rubric_version:
+        lines.append(f"- rubric_version: `{rubric_version}`")
     if meta.get("cases_path"):
         filt = meta.get("case_filter")
         filt_text = ",".join(filt) if filt else "all"
@@ -151,7 +164,54 @@ def render_case_md(run, config: dict | None = None) -> str:
         "",
         ]
     )
-    if not score.behavior_pass:
+    if case.task_mode == "learning_note":
+        lines.append(f"- 行为门: {'通过' if score.behavior_pass else '**失败**'}")
+        if not score.semantic_completed:
+            lines.append("- 语义评测未完成")
+            lines.append(f"- qualified: `{score.qualified}`")
+        else:
+            lines.append("- 语义评测: 已完成")
+            lines.append(f"- qualified: `{score.qualified}`")
+        lines.append("- 总分: —")
+        lines.append(
+            "- 复习问题: "
+            f"{score.review_questions_answered}/{len(case.review_questions)}"
+        )
+        if getattr(run, "judge_error", None):
+            lines.append(f"- Judge error: `{_cell(run.judge_error)}`")
+        for name in ("task_alignment", "faithful", "complete"):
+            value = score.hard_gates.get(name)
+            status = "未完成" if value is None else "通过" if value else "失败"
+            lines.append(f"- {name}: {status}")
+        for name in ("structure", "fluent", "form", "retrievable", "processing"):
+            value = score.dimensions.get(name)
+            lines.append(f"- {name}: {'未完成' if value is None else f'{value}/4'}")
+        if score.semantic_evidence:
+            lines.extend(["", "### 语义证据", ""])
+            for name, evidence in score.semantic_evidence.items():
+                source = "；".join(evidence.source)
+                draft = "；".join(evidence.draft)
+                lines.append(f"- {name} source: {_cell(source)}")
+                lines.append(f"- {name} draft: {_cell(draft)}")
+                lines.append(f"- {name} reason: {_cell(evidence.reason)}")
+        if score.review_question_assessments:
+            lines.extend(["", "### 复习问题验收", ""])
+            for index, assessment in enumerate(
+                score.review_question_assessments, start=1
+            ):
+                lines.append(f"#### {index}. {assessment.question}")
+                lines.append(f"- answerable: `{assessment.answerable}`")
+                lines.append(
+                    f"- answer: {_cell(assessment.answer) if assessment.answer else '（空）'}"
+                )
+                evidence = "；".join(assessment.draft_evidence)
+                lines.append(
+                    f"- evidence: {_cell(evidence) if evidence else '（无）'}"
+                )
+                lines.append(
+                    f"- reason: {_cell(assessment.reason) if assessment.reason else '（无）'}"
+                )
+    elif not score.behavior_pass:
         lines.append("- 行为门: **失败**")
         lines.append("- 正文: 未评正文")
         lines.append("- 总分: —")
@@ -240,11 +300,20 @@ def render_case_md(run, config: dict | None = None) -> str:
 
 
 def _sorted_runs(runs: list) -> list:
-    """Behavior failures first, then lowest total, then faithful / complete / structure."""
+    """Sort learning qualification explicitly while preserving legacy total order."""
 
     def key(run) -> tuple:
         score: NoteScore = run.score
-        if not score.behavior_pass or score.total is None:
+        if not score.behavior_pass:
+            return (0, 0.0, 0.0, 0.0, 0.0, run.seq)
+        if run.case.task_mode == "learning_note":
+            qualification_rank = {False: 0, None: 1, True: 2}[score.qualified]
+            dimension_sum = sum(
+                score.dimensions.get(name, 0)
+                for name in ("structure", "fluent", "form", "retrievable", "processing")
+            )
+            return (1, qualification_rank, dimension_sum, 0.0, 0.0, run.seq)
+        if score.total is None:
             return (0, 0.0, 0.0, 0.0, 0.0, run.seq)
         parents = score.parents
         return (
@@ -269,6 +338,14 @@ def _index_row(run) -> dict:
         "behavior_pass": score.behavior_pass,
         "total": score.total,
         "parents": score.parents,
+        "qualified": score.qualified,
+        "semantic_completed": score.semantic_completed,
+        "hard_gates": score.hard_gates,
+        "dimensions": score.dimensions,
+        "review_questions": {
+            "answered": score.review_questions_answered,
+            "total": len(run.case.review_questions),
+        },
     }
 
 

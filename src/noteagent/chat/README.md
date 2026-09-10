@@ -14,10 +14,10 @@ HTTP 聊天、`bind_tools` Agent、工具、**人审之后才写盘**。不直�
 | `context_budget.py` | `ContextBudget`、`budget_from_settings` | 窗口 W、压缩比例、stub 截断、`max_tool_hops` |
 | `context_tokens.py` | `estimate_tokens`、`prefix_until_tokens` | 字符/4 估算，无 tiktoken |
 | `context_compact.py` | `group_turns`、`select_turns_to_drop` 等 | 完整 Turn 边界压缩 |
-| `context_pack.py` | `build_pack` | Persistent + summary + 当前 Runtime；用户句若有编号/`##` 标题则注入「材料标题树」 |
+| `context_pack.py` | `build_pack` | Persistent + summary + 当前 Runtime；用户句若有编号/`##` 标题则注入「材料标题树」（覆盖与章节边界参考，不强制照抄原标题） |
 | `tools.py` | `build_chat_tools` | `list_files`、`read_file`、`search_*`、`propose_note`（无写盘；四动作）。契约：[docs/architecture/chat-tools.md](../../../docs/architecture/chat-tools.md) |
 | `schemas.py` | 请求/响应体 | 含 `ConversationOut`、`ConversationDetailOut`、`MessageOut`（`tool_steps`） |
-| [`prompts/`](prompts/README.md) | `system.txt` | 现行五要素提示（含一层目录相对路径）；归档 [`prompts/iterations/`](prompts/iterations/README.md) v1–v8 |
+| [`prompts/`](prompts/README.md) | `system.txt` | 现行五要素提示（v9 学习型笔记，七条质量）；归档 [`prompts/iterations/`](prompts/iterations/README.md) v1–v9 |
 
 ## 基础使用
 
@@ -61,7 +61,7 @@ HTTP：
 
 契约全文：[docs/architecture/context-management.md](../../../docs/architecture/context-management.md) §7.1。
 
-记笔记质量与意图门：[evals/](../../../evals/README.md)。准则：[docs/evaluations/](../../../docs/evaluations/README.md)。离线跑分：`python scripts/eval_notes.py --ids b06,n05`。
+记笔记质量与意图门：[evals/](../../../evals/README.md)。准则：[docs/evaluations/](../../../docs/evaluations/README.md)。离线跑分：`python scripts/eval_notes.py --ids b06,n05`；学习型：`python scripts/eval_notes.py --judge --cases evals/prompt/learning_notes.jsonl --ids l01`。
 
 ```bash
 uv run pytest tests/unit/test_chat_agent_context.py tests/unit/test_context_store.py tests/unit/test_context_pack.py tests/unit/test_citations.py tests/integration/test_app.py -q

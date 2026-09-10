@@ -57,3 +57,12 @@ def test_env_override_database_url(monkeypatch: pytest.MonkeyPatch):
     settings = Settings()
     assert settings.database_url.startswith("postgresql+psycopg://")
     assert settings.database_url.endswith("/noteagent")
+
+
+def test_judge_model_defaults_empty_and_reads_environment(monkeypatch: pytest.MonkeyPatch):
+    """Judge is opt-in and its model name is independently configurable."""
+    monkeypatch.delenv("JUDGE_MODEL", raising=False)
+    assert Settings(_env_file=None).judge_model == ""
+
+    monkeypatch.setenv("JUDGE_MODEL", "deepseek-judge")
+    assert Settings(_env_file=None).judge_model == "deepseek-judge"

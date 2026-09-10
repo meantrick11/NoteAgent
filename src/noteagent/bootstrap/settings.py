@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     deepseek_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="DEEPSEEK_API_KEY")
     deepseek_api_base: str | None = Field(default=None, validation_alias="DEEPSEEK_API_BASE")
     chat_model: str = Field(default="deepseek-v4-flash", validation_alias="CHAT_MODEL")
+    judge_model: str = Field(default="", validation_alias="JUDGE_MODEL")
 
     notes_dir: Path = Path("notes")
     chroma_dir: Path = Path("chromadb_persist")

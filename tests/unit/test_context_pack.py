@@ -176,4 +176,9 @@ def test_build_pack_injects_heading_tree():
     joined = "\n".join(m.content for m in pack.messages if isinstance(m.content, str))
     assert "材料标题树" in joined
     assert "2.1.1. 传入参数" in joined
-    assert "禁止合并或另造标题" in joined
+    assert "仅作当前用户任务范围内的信息覆盖与章节边界参考" in joined
+    assert "允许按用户任务翻译、重组并增加有正文依据的子标题" in joined
+    assert "仅需覆盖当前用户任务范围内各原标题对应的信息" in joined
+    assert "不得遗漏各原标题覆盖的信息" not in joined
+    assert "须原文用作标题" not in joined
+    assert "禁止另造标题" not in joined

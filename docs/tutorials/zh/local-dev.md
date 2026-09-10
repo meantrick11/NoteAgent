@@ -79,6 +79,7 @@ uv run python scripts/index_notes.py Agent.md
 | `DEEPSEEK_API_KEY` | 聊天模型密钥 |
 | `DEEPSEEK_API_BASE` | 可选，自定义 API 地址 |
 | `CHAT_MODEL` | 默认 `deepseek-v4-flash` |
+| `JUDGE_MODEL` | 仅离线评测；空则回退 `CHAT_MODEL` 并记 `judge_independent=false` |
 | `NOTES_DIR` | 笔记目录，默认 `notes` |
 | `CHROMA_DIR` | 向量库目录，默认 `chromadb_persist` |
 | `CHROMA_COLLECTION` | collection 名 |

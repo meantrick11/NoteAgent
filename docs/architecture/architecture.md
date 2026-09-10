@@ -12,7 +12,7 @@
 | [database.md](./database.md) | `conversations` / `messages` 列、索引、实例行 |
 | [retrieval.md](./retrieval.md) | 切块、Chroma 点、人写盘后同步、查询路径 |
 | [observability.md](./observability.md) | 日志三层、Agent/Index 轨迹、业务 logger、输出配置 |
-| [../evaluations/README.md](../evaluations/README.md) | 评测准则（笔记正文 v0.1）；黄金集在 evals/ |
+| [../evaluations/README.md](../evaluations/README.md) | 评测准则（笔记正文现行 v0.2；旧题仍走 v0.1）；黄金集在 evals/ |
 
 读者：实现与维护本仓库的开发者。范围：`src/noteagent/`、`notes/`、`scripts/index_notes.py`、PostgreSQL 会话库、Chroma 派生索引。评测不在请求路径上。
 
@@ -314,7 +314,7 @@ flowchart TD
 | `search_relative_from_chromadb` | `retrieval.search(query, top_k=3)` | 无 |
 | `propose_note` | 校验动作与文件是否存在后 `DraftStore.put` | 不写磁盘、不写 Chroma |
 
-提案动作：`append` / `create` / `replace` / `delete`。意图门在 [`prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt)：闲聊不提案；材料用意不明先问；记笔记必须先 `list_files`；覆盖必须先读全文。参数细则见 [chat-tools.md](./chat-tools.md)。
+提案动作：`append` / `create` / `replace` / `delete`。意图门在 [`prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt)（现行 v9）：闲聊不提案；材料用意不明先问；记笔记必须先 `list_files`；覆盖必须先读全文。默认“记下来/整理成笔记”按学习型笔记（七条质量，含知识加工增益）；只有用户显式要求完全忠实翻译、逐段翻译或保持原结构时才以原结构为骨架。质量细则见 [note-quality.md](../evaluations/note-quality.md)，不在请求路径上打分。参数细则见 [chat-tools.md](./chat-tools.md)。
 
 **为什么。** 模型一旦能直接写文件，人审卡片失去意义，错误草稿会立刻污染 `notes/`。四工具 schema 很小，每轮都带上，避免切错「聊天/Agent」模式后无法记笔记。意图放在提示词，与 `stream` 同一次请求完成。
 
@@ -333,7 +333,7 @@ flowchart TD
 | Runtime | 当前 Turn 的 tool_call 与工具**全文** | 仅本轮后续 hop | 否 |
 | DraftStore | 待审笔记全文（PG） | 一行工作区 | SSE 卡片；打开会话回湿 |
 
-[`build_pack`](../../src/noteagent/chat/context_pack.py) 拼：system、工具定义、summary、Persistent、当前 user、draft 一行、Runtime。当前 Turn 已写入的 stub **不**再装进 pack。包体积达到窗口触发比例时，[`context_compact.py`](../../src/noteagent/chat/context_compact.py) 只从**已完成** Turn 切一段做成摘要，拼到旧 `running_summary`，watermark 推到被切的最后一个已完成 `turn_id`。旧 `messages` 行不删。
+[`build_pack`](../../src/noteagent/chat/context_pack.py) 拼：system、工具定义、summary、Persistent、当前 user、draft 一行、Runtime。用户句若抽出编号/`##` 标题，会注入「材料标题树」作为当前任务范围内的覆盖与章节边界参考，不要求输出标题与原文逐字相同。当前 Turn 已写入的 stub **不**再装进 pack。包体积达到窗口触发比例时，[`context_compact.py`](../../src/noteagent/chat/context_compact.py) 只从**已完成** Turn 切一段做成摘要，拼到旧 `running_summary`，watermark 推到被切的最后一个已完成 `turn_id`。旧 `messages` 行不删。
 
 公式见 [context-management.md](./context-management.md)。
 
@@ -416,15 +416,15 @@ ORM：[`db/models.py`](../../src/noteagent/db/models.py)。连接：[`db/engine.
 | 内容 | 位置 |
 |------|------|
 | 准则与账本划分 | [docs/evaluations/](../evaluations/README.md) |
-| 笔记正文尺子 v0.1 | [docs/evaluations/note-quality.md](../evaluations/note-quality.md) |
+| 笔记正文尺子 | [docs/evaluations/note-quality.md](../evaluations/note-quality.md)（现行 v0.2；`cases.jsonl` 旧题仍按 v0.1 计 `total`） |
 | 黄金集 | 仓库根 [evals/](../../evals/README.md) |
 | 离线跑分产物 | [evals/prompt/results/](../../evals/prompt/results/README.md) |
 
-三本账互不合成一个 Agent 总分：笔记正文（v0.1 已写准则）、工具轨迹（以后）、RAG（以后）。v0.1 只服务离线迭代 [`system.txt`](../../src/noteagent/chat/prompts/system.txt)，不拦截草稿、不按分数自动再生成。
+三本账互不合成一个 Agent 总分：笔记正文（学习型走 v0.2；旧题仍用 v0.1）、工具轨迹（以后）、RAG（以后）。评测只服务离线迭代 [`system.txt`](../../src/noteagent/chat/prompts/system.txt)，不拦截草稿、不按分数自动再生成。现行生成提示词是 v9：在 `l01` 上硬门与复习题可通过，结构/加工未达合格线。
 
-**为什么。** 改提示词需要固定考题和可重复的尺子。若把打分接进 Agent，会变成「生成 → 打分 → 再生成」，与「LLM 只出提案、磁盘只走人类操作」冲突。
+**为什么。** 改提示词需要固定考题和可重复的尺子。若把打分接进 Agent，会变成「生成 → 打分 → 再生成」，与「LLM 只出提案、磁盘只走人类操作」冲突。v0.2 不得与 v0.1 直接比较总分或排名。
 
-**代码落点。** [`prompt_eval/`](../../src/noteagent/prompt_eval/README.md)、[`scripts/eval_notes.py`](../../scripts/eval_notes.py)。考题：[`evals/prompt/cases.jsonl`](../../evals/prompt/cases.jsonl)。`chat` 不得 import `prompt_eval`。
+**代码落点。** [`prompt_eval/`](../../src/noteagent/prompt_eval/README.md)、[`scripts/eval_notes.py`](../../scripts/eval_notes.py)、[`scripts/calibrate_learning_notes.py`](../../scripts/calibrate_learning_notes.py)。考题：[`evals/prompt/cases.jsonl`](../../evals/prompt/cases.jsonl)（v0.1）、[`evals/prompt/learning_notes.jsonl`](../../evals/prompt/learning_notes.jsonl)（v0.2）。`chat` 不得 import `prompt_eval`。
 
 ---
 

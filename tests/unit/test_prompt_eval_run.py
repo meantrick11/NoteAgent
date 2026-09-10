@@ -3,15 +3,28 @@
 import json
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 from langchain_core.messages import AIMessage
 
 from noteagent.bootstrap.settings import Settings
 from noteagent.notes.repository import FileNoteRepository
-from noteagent.prompt_eval.cases import EvalCase, load_cases
-from noteagent.prompt_eval.report import case_filename, result_dest, write_stage
-from noteagent.prompt_eval.run import CaseRun, ToolHop, build_eval_agent, run_case, seed_notes
-from noteagent.prompt_eval.score import RUBRIC_VERSION, score_note
+from noteagent.prompt_eval.cases import EvalCase, case_rubric_version, load_cases
+from noteagent.prompt_eval.report import (
+    _sorted_runs,
+    case_filename,
+    render_case_md,
+    result_dest,
+    write_stage,
+)
+from noteagent.prompt_eval.run import CaseRun, ToolHop, build_eval_agent, run_case, run_eval, seed_notes
+from noteagent.prompt_eval.score import (
+    RUBRIC_VERSION,
+    LearningNoteSemanticResult,
+    NoteScore,
+    SemanticEvidence,
+    score_note,
+)
 
 
 class ScriptedModel:
@@ -29,8 +42,83 @@ class ScriptedModel:
     def invoke(self, messages):
         return AIMessage(content="SUMCHUNK")
 
+
+class ScriptedJudge:
+    """Fake asynchronous Judge that returns one strict JSON response."""
+
+    def __init__(self, payload: dict):
+        self.payload = payload
+
+    async def ainvoke(self, messages):
+        return AIMessage(content=json.dumps(self.payload, ensure_ascii=False))
+
+
 _CASES = Path(__file__).resolve().parents[2] / "evals" / "prompt" / "cases.jsonl"
 _PROMPT = Path(__file__).resolve().parents[2] / "src" / "noteagent" / "chat" / "prompts" / "system.txt"
+
+_SEMANTIC_PAYLOAD = {
+    "hard_gates": {"task_alignment": True, "faithful": True, "complete": True},
+    "dimensions": {
+        "structure": 3,
+        "fluent": 4,
+        "form": 3,
+        "retrievable": 3,
+        "processing": 3,
+    },
+    "evidence": {
+        name: {
+            "source": [f"source-{name}"],
+            "draft": [f"draft-{name}"],
+            "reason": f"reason-{name}",
+        }
+        for name in (
+            "task_alignment",
+            "faithful",
+            "complete",
+            "structure",
+            "fluent",
+            "form",
+            "retrievable",
+            "processing",
+        )
+    },
+    "review_questions": [],
+}
+
+
+def _semantic_evidence() -> dict[str, SemanticEvidence]:
+    """Build typed semantic evidence from the shared payload template."""
+    return {
+        name: SemanticEvidence(**item)
+        for name, item in _SEMANTIC_PAYLOAD["evidence"].items()
+    }
+
+
+def _verifiable_semantic_payload(
+    source: str, draft: str, questions: list[str] | None = None
+) -> dict:
+    """Return semantic evidence copied from the supplied source and draft."""
+    return {
+        **_SEMANTIC_PAYLOAD,
+        "evidence": {
+            name: {
+                "source": [source],
+                "draft": [draft],
+                "reason": "草稿与来源片段支持该判定",
+            }
+            for name in _SEMANTIC_PAYLOAD["evidence"]
+        },
+        "review_questions": [
+            {
+                "question": question,
+                "answerable": True,
+                "answer": "草稿可回答",
+                "draft_evidence": [draft],
+                "reason": "",
+            }
+            for question in questions or []
+        ],
+    }
 
 
 def _settings() -> Settings:
@@ -112,6 +200,548 @@ async def test_seed_files_and_behavior_search(tmp_path: Path):
     assert run.score.total is None
 
 
+async def test_run_case_calls_scripted_judge_for_learning_draft(tmp_path: Path):
+    """A learning draft is judged and the semantic result reaches score_note."""
+    case = EvalCase(
+        id="l-scripted",
+        kind="quality",
+        user="整理为学习笔记。\n\nSource fact.",
+        expect_propose=True,
+        expect_tools_prefix=["list_files"],
+        task_mode="learning_note",
+        quality_thresholds={"structure": 3, "processing": 3},
+    )
+    model = ScriptedModel(
+        [
+            AIMessage(content="", tool_calls=[{"name": "list_files", "id": "c1", "args": {}}]),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "propose_note",
+                        "id": "c2",
+                        "args": {
+                            "action": "create",
+                            "file_name": "Learning.md",
+                            "content": "学习笔记",
+                            "reason": "new",
+                            "similar": "",
+                        },
+                    }
+                ],
+            ),
+            AIMessage(content="已提交草稿"),
+        ]
+    )
+    agent, notes, history, drafts = build_eval_agent(
+        tmp_path / "notes", model=model, prompt_path=_PROMPT, settings=_settings()
+    )
+
+    run = await run_case(
+        case,
+        seq=1,
+        agent=agent,
+        notes=notes,
+        history=history,
+        drafts=drafts,
+        judge_model=ScriptedJudge(
+            _verifiable_semantic_payload("Source fact.", "学习笔记")
+        ),
+        judge_model_name="judge-scripted",
+    )
+
+    assert run.judge_error is None
+    assert run.score.qualified is True
+    assert run.score.dimensions["processing"] == 3
+
+
+async def test_learning_behavior_failure_keeps_completed_semantic_audit(tmp_path: Path):
+    """A completed Judge result remains auditable when the behavior gate fails."""
+    case = EvalCase(
+        id="l-behavior-fail",
+        kind="quality",
+        user="整理为学习笔记。\n\nSource fact.",
+        expect_propose=True,
+        expect_tools_prefix=["search_relative_from_chromadb"],
+        task_mode="learning_note",
+    )
+    model = ScriptedModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "propose_note",
+                        "id": "c1",
+                        "args": {
+                            "action": "create",
+                            "file_name": "Learning.md",
+                            "content": "学习笔记",
+                            "reason": "new",
+                            "similar": "",
+                        },
+                    }
+                ],
+            ),
+            AIMessage(content="已提交草稿"),
+        ]
+    )
+    agent, notes, history, drafts = build_eval_agent(
+        tmp_path / "notes", model=model, prompt_path=_PROMPT, settings=_settings()
+    )
+
+    run = await run_case(
+        case,
+        seq=1,
+        agent=agent,
+        notes=notes,
+        history=history,
+        drafts=drafts,
+        judge_model=ScriptedJudge(
+            _verifiable_semantic_payload("Source fact.", "学习笔记")
+        ),
+        judge_model_name="judge-scripted",
+    )
+
+    assert run.judge_error is None
+    assert run.score.behavior_pass is False
+    assert run.score.qualified is False
+    assert run.score.total is None
+    assert run.score.metrics == []
+    assert all(value is None for value in run.score.parents.values())
+    assert run.score.semantic_completed is True
+    assert run.score.hard_gates == _SEMANTIC_PAYLOAD["hard_gates"]
+    assert run.score.dimensions == _SEMANTIC_PAYLOAD["dimensions"]
+    assert run.score.semantic_evidence["faithful"].source == ["Source fact."]
+
+
+def test_learning_report_marks_semantic_incomplete_and_completed():
+    """Learning reports distinguish absent Judge results from completed results."""
+    case = EvalCase(
+        id="l-report",
+        kind="quality",
+        user="整理。\n\nsource",
+        expect_propose=True,
+        task_mode="learning_note",
+        review_questions=["为什么？"],
+    )
+    draft = {"action": "create", "file_name": "Note.md", "content": "draft"}
+    incomplete = CaseRun(
+        seq=1,
+        case=case,
+        score=score_note(
+            case,
+            proposed=True,
+            tools=[],
+            action="create",
+            file_name="Note.md",
+            content="draft",
+        ),
+        draft=draft,
+        judge_error="invalid Judge JSON",
+    )
+    invalid_case = EvalCase(
+        id="l-report-invalid",
+        kind="quality",
+        user="整理。\n\nsource",
+        expect_propose=True,
+        task_mode="learning_note",
+        quality_thresholds={"unknown": 3},
+    )
+    invalid_threshold = CaseRun(
+        seq=1,
+        case=invalid_case,
+        score=score_note(
+            invalid_case,
+            proposed=True,
+            tools=[],
+            action="create",
+            file_name="Note.md",
+            content="draft",
+        ),
+        draft=draft,
+    )
+    semantic = LearningNoteSemanticResult(
+        _SEMANTIC_PAYLOAD["hard_gates"],
+        _SEMANTIC_PAYLOAD["dimensions"],
+        _semantic_evidence(),
+        [
+            SimpleNamespace(
+                question="为什么？",
+                answerable=True,
+                answer="因为 draft",
+                draft_evidence=["draft"],
+                reason="",
+            )
+        ],
+    )
+    completed = CaseRun(
+        seq=1,
+        case=case,
+        score=score_note(
+            case,
+            proposed=True,
+            tools=[],
+            action="create",
+            file_name="Note.md",
+            content="draft",
+            semantic_result=semantic,
+        ),
+        draft=draft,
+    )
+
+    incomplete_md = render_case_md(incomplete)
+    invalid_threshold_md = render_case_md(invalid_threshold)
+    completed_md = render_case_md(completed)
+
+    assert "语义评测未完成" in incomplete_md
+    assert "invalid Judge JSON" in incomplete_md
+    assert "总分: —" in incomplete_md
+    assert "语义评测未完成" in invalid_threshold_md
+    assert "语义评测: 已完成" not in invalid_threshold_md
+    assert "qualified: `False`" in invalid_threshold_md
+    assert "quality_thresholds unknown dimension 'unknown'" in invalid_threshold_md
+    assert "qualified: `True`" in completed_md
+    assert "语义评测: 已完成" in completed_md
+    assert "task_alignment: 通过" in completed_md
+    assert "processing: 3/4" in completed_md
+    assert "source-processing" in completed_md
+    assert "为什么？" in completed_md
+    assert "answerable: `True`" in completed_md
+    assert "因为 draft" in completed_md
+    assert "draft" in completed_md
+
+
+def test_learning_report_renders_semantic_evidence_reason():
+    """Semantic evidence reason appears in the report but is separate from substrings."""
+    case = EvalCase(
+        id="l-report-evidence",
+        kind="quality",
+        user="整理。\n\nsource",
+        expect_propose=True,
+        task_mode="learning_note",
+    )
+    run = CaseRun(
+        seq=1,
+        case=case,
+        score=score_note(
+            case,
+            proposed=True,
+            tools=[],
+            action="create",
+            file_name="Note.md",
+            content="draft",
+            semantic_result=LearningNoteSemanticResult(
+                _SEMANTIC_PAYLOAD["hard_gates"],
+                _SEMANTIC_PAYLOAD["dimensions"],
+                _semantic_evidence(),
+            ),
+        ),
+        draft={"action": "create", "file_name": "Note.md", "content": "draft"},
+    )
+
+    report = render_case_md(run)
+
+    assert "- faithful source: source-faithful" in report
+    assert "- faithful draft: draft-faithful" in report
+    assert "- faithful reason: reason-faithful" in report
+
+
+def test_learning_report_renders_every_review_assessment_field():
+    """An unanswerable question still shows empty answer/evidence and its reason."""
+    case = EvalCase(
+        id="l-report-question",
+        kind="quality",
+        user="整理。\n\nsource",
+        expect_propose=True,
+        task_mode="learning_note",
+        review_questions=["缺了什么？"],
+    )
+    semantic = LearningNoteSemanticResult(
+        _SEMANTIC_PAYLOAD["hard_gates"],
+        _SEMANTIC_PAYLOAD["dimensions"],
+        _semantic_evidence(),
+        [
+            SimpleNamespace(
+                question="缺了什么？",
+                answerable=False,
+                answer="",
+                draft_evidence=[],
+                reason="草稿未覆盖",
+            )
+        ],
+    )
+    run = CaseRun(
+        seq=1,
+        case=case,
+        score=score_note(
+            case,
+            proposed=True,
+            tools=[],
+            action="create",
+            file_name="Note.md",
+            content="draft",
+            semantic_result=semantic,
+        ),
+        draft={"action": "create", "file_name": "Note.md", "content": "draft"},
+    )
+
+    report = render_case_md(run)
+
+    assert "- answerable: `False`" in report
+    assert "- answer: （空）" in report
+    assert "- evidence: （无）" in report
+    assert "- reason: 草稿未覆盖" in report
+
+
+async def test_run_eval_records_same_model_as_not_independent(tmp_path: Path):
+    """Matching chat and Judge model names are recorded as non-independent."""
+    case = EvalCase(
+        id="l-config",
+        kind="quality",
+        user="整理。\n\nsource",
+        expect_propose=True,
+        task_mode="learning_note",
+        review_questions=["为什么？"],
+    )
+    model = ScriptedModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "propose_note",
+                        "id": "c1",
+                        "args": {
+                            "action": "create",
+                            "file_name": "Note.md",
+                            "content": "draft",
+                            "reason": "new",
+                            "similar": "",
+                        },
+                    }
+                ],
+            ),
+            AIMessage(content="ok"),
+        ]
+    )
+    settings = _settings()
+    settings.chat_model = "same-model"
+    settings.judge_model = "same-model"
+
+    await run_eval(
+        [case],
+        dest=tmp_path / "result",
+        prompt_path=_PROMPT,
+        settings=settings,
+        model=model,
+        judge_model=ScriptedJudge(
+            _verifiable_semantic_payload("source", "draft", ["为什么？"])
+        ),
+        cases_sha256="1" * 64,
+        prompt_display="system.txt",
+        cases_display="learning.jsonl",
+    )
+
+    config = json.loads((tmp_path / "result" / "config.json").read_text(encoding="utf-8"))
+    assert config["rubric_version"] == "v0.2"
+    assert config["rubric_versions"] == {"l-config": "v0.2"}
+    assert config["judge_model"] == "same-model"
+    assert config["judge_independent"] is False
+    assert len(config["judge_prompt_sha256"]) == 64
+    assert config["judge_failures"] == {}
+    assert config["cases_sha256"] == "1" * 64
+    assert config["review_questions"] == {"answered": 1, "total": 1}
+    assert (tmp_path / "result" / "judge_prompt.txt").read_text(encoding="utf-8")
+    index = json.loads((tmp_path / "result" / "index.json").read_text(encoding="utf-8"))
+    assert index["cases"][0]["semantic_completed"] is True
+    assert index["review_questions"] == {"answered": 1, "total": 1}
+    assert index["cases"][0]["review_questions"] == {"answered": 1, "total": 1}
+    report = (tmp_path / "result" / "l-config.md").read_text(encoding="utf-8")
+    assert "- rubric_version: `v0.2`" in report
+
+
+async def test_run_eval_records_effective_fallback_judge_model(tmp_path: Path):
+    """An enabled Judge records the explicit effective name when JUDGE_MODEL is empty."""
+    case = EvalCase(
+        id="l-fallback",
+        kind="quality",
+        user="整理。\n\nsource",
+        expect_propose=False,
+        task_mode="learning_note",
+    )
+    settings = _settings()
+    settings.chat_model = "chat-fallback"
+    settings.judge_model = ""
+
+    await run_eval(
+        [case],
+        dest=tmp_path / "result",
+        prompt_path=_PROMPT,
+        settings=settings,
+        model=ScriptedModel([AIMessage(content="不生成草稿")]),
+        judge_model=object(),
+        judge_model_name="chat-fallback",
+        cases_sha256="2" * 64,
+        prompt_display="system.txt",
+        cases_display="learning.jsonl",
+    )
+
+    config = json.loads((tmp_path / "result" / "config.json").read_text(encoding="utf-8"))
+    assert config["judge_model"] == "chat-fallback"
+    assert config["judge_independent"] is False
+
+
+def test_case_rubric_version_keeps_legacy_v01_and_learning_v02():
+    """Rubric selection depends only on the case task mode."""
+    legacy = EvalCase(id="legacy", kind="quality", user="source", expect_propose=False)
+    learning = EvalCase(
+        id="learning",
+        kind="quality",
+        user="source",
+        expect_propose=False,
+        task_mode="learning_note",
+    )
+
+    assert case_rubric_version(legacy) == "v0.1"
+    assert case_rubric_version(learning) == "v0.2"
+
+
+async def test_run_eval_records_legacy_rubric_v01(tmp_path: Path):
+    """A legacy-only run records v0.1 globally, by case, and in its report."""
+    case = EvalCase(
+        id="legacy-config",
+        kind="quality",
+        user="source",
+        expect_propose=False,
+    )
+
+    await run_eval(
+        [case],
+        dest=tmp_path / "legacy-result",
+        prompt_path=_PROMPT,
+        settings=_settings(),
+        model=ScriptedModel([AIMessage(content="不生成草稿")]),
+        cases_sha256="3" * 64,
+        prompt_display="system.txt",
+        cases_display="cases.jsonl",
+    )
+
+    config = json.loads(
+        (tmp_path / "legacy-result" / "config.json").read_text(encoding="utf-8")
+    )
+    assert config["rubric_version"] == "v0.1"
+    assert config["rubric_versions"] == {"legacy-config": "v0.1"}
+    report = (tmp_path / "legacy-result" / "legacy-config.md").read_text(
+        encoding="utf-8"
+    )
+    assert "- rubric_version: `v0.1`" in report
+
+
+async def test_run_eval_records_mixed_rubrics_and_per_case_reports(tmp_path: Path):
+    """A mixed run keeps each case version while marking the aggregate mixed."""
+    legacy = EvalCase(
+        id="legacy-mixed",
+        kind="quality",
+        user="legacy source",
+        expect_propose=False,
+    )
+    learning = EvalCase(
+        id="learning-mixed",
+        kind="quality",
+        user="learning source",
+        expect_propose=False,
+        task_mode="learning_note",
+    )
+
+    await run_eval(
+        [legacy, learning],
+        dest=tmp_path / "mixed-result",
+        prompt_path=_PROMPT,
+        settings=_settings(),
+        model=ScriptedModel(
+            [AIMessage(content="不生成草稿"), AIMessage(content="不生成草稿")]
+        ),
+        cases_sha256="4" * 64,
+        prompt_display="system.txt",
+        cases_display="mixed.jsonl",
+    )
+
+    config = json.loads(
+        (tmp_path / "mixed-result" / "config.json").read_text(encoding="utf-8")
+    )
+    assert config["rubric_version"] == "mixed"
+    assert config["rubric_versions"] == {
+        "legacy-mixed": "v0.1",
+        "learning-mixed": "v0.2",
+    }
+    legacy_report = (tmp_path / "mixed-result" / "legacy-mixed.md").read_text(
+        encoding="utf-8"
+    )
+    learning_report = (tmp_path / "mixed-result" / "learning-mixed.md").read_text(
+        encoding="utf-8"
+    )
+    assert "- rubric_version: `v0.1`" in legacy_report
+    assert "- rubric_version: `v0.2`" in learning_report
+
+
+def test_sorted_runs_orders_learning_status_then_dimension_sum():
+    """Learning runs sort by behavior, qualification state, score sum, then sequence."""
+    case = EvalCase(
+        id="learning",
+        kind="quality",
+        user="source",
+        expect_propose=True,
+        task_mode="learning_note",
+    )
+
+    def run(seq: int, qualified, dimension_sum: int, *, behavior_pass: bool = True):
+        dimensions = {name: 0 for name in _SEMANTIC_PAYLOAD["dimensions"]}
+        dimensions["processing"] = dimension_sum
+        return CaseRun(
+            seq=seq,
+            case=case,
+            score=NoteScore(
+                behavior_pass=behavior_pass,
+                total=None,
+                parents={},
+                metrics=[],
+                qualified=qualified,
+                dimensions=dimensions,
+            ),
+        )
+
+    ordered = _sorted_runs(
+        [
+            run(7, True, 4),
+            run(3, None, 0),
+            run(6, False, 3),
+            run(1, None, 0, behavior_pass=False),
+            run(5, False, 1),
+            run(8, True, 2),
+        ]
+    )
+
+    assert [item.seq for item in ordered] == [1, 5, 6, 3, 8, 7]
+
+
+def test_sorted_runs_keeps_legacy_total_ordering():
+    """Legacy runs retain lowest-total ordering after behavior failures."""
+    case = EvalCase(id="legacy", kind="quality", user="source", expect_propose=True)
+    low = CaseRun(
+        seq=2,
+        case=case,
+        score=NoteScore(True, 20.0, {"faithful": 20.0}, []),
+    )
+    high = CaseRun(
+        seq=1,
+        case=case,
+        score=NoteScore(True, 80.0, {"faithful": 80.0}, []),
+    )
+
+    assert _sorted_runs([high, low]) == [low, high]
+
+
 def test_write_stage_layout(tmp_path: Path):
     case = EvalCase(
         id="n00",
@@ -157,6 +787,7 @@ def test_write_stage_layout(tmp_path: Path):
         runs=[run],
     )
     assert (dest / "system.txt").read_text(encoding="utf-8") == "ROLE"
+    assert not (dest / "judge_prompt.txt").exists()
     assert (dest / "config.json").is_file()
     index = json.loads((dest / "index.json").read_text(encoding="utf-8"))
     assert index["cases_path"] == "evals/prompt/cases.jsonl"

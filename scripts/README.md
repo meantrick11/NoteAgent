@@ -9,6 +9,7 @@
 | `index_notes.py` | 按篇重建 Chroma（与审批后的 `index_note` 相同；collection 损坏时用） |
 | `sdk_smoke.py` | 用 `DEEPSEEK_API_KEY` ping 一次聊天 API |
 | `eval_notes.py` | 离线提示词评测：进程内 `ChatAgent`，结果写入 `evals/prompt/results/<jsonl 主文件名>/` |
+| `calibrate_learning_notes.py` | 用四个固定候选校准 v0.2 Judge（不生成草稿） |
 
 ## 基础使用
 
@@ -32,5 +33,7 @@ uv run python scripts/sdk_smoke.py
 ```bash
 python scripts/eval_notes.py --ids b06,n05
 python scripts/eval_notes.py --name v8 --ids n01,n03
-# 结果在 evals/prompt/results/cases/<标签_>题号_时间/ ；未设置密钥时退出码 1
+python scripts/eval_notes.py --name v9 --judge --cases evals/prompt/learning_notes.jsonl --ids l01
+python scripts/calibrate_learning_notes.py
+# 结果在 evals/prompt/results/<jsonl 主文件名>/<标签_>题号_时间/ ；未设置密钥时退出码 1
 ```

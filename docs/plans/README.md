@@ -22,4 +22,5 @@
 | [2026-09-09-chat-trace-cursor-flow.md](./2026-09-09-chat-trace-cursor-flow.md) | Cursor 式步骤流；英文汇总标题；live 可展开；Thinking 看推理 |
 | [2026-09-09-cite-pane-isolation.md](./2026-09-09-cite-pane-isolation.md) | 出处侧栏按会话快照；每条助手消息引用重排 1..n |
 | [2026-09-10-chat-trace-tense.md](./2026-09-10-chat-trace-tense.md) | 过程排时态：ing / Thought·Explored；generating 不再画成 Thinking；无工具结束藏排 |
+| [2026-09-10-learning-note-quality.md](./2026-09-10-learning-note-quality.md) | 学习型笔记 v0.2：语义硬门、知识加工增益、Judge 与 Prompt 迭代留痕 |
 | [draft-generation.md](./draft-generation.md) | 入库 Job / URL 源 / 自动索引设想，不是现行架构 |
