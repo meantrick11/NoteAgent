@@ -39,6 +39,7 @@ def _payload(**overrides) -> dict:
         "hard_gates": dict(_GATES),
         "dimensions": dict(_DIMENSIONS),
         "evidence": dict(_EVIDENCE),
+        "review_questions": [],
     }
     data.update(overrides)
     return data
@@ -69,15 +70,40 @@ def test_parse_judge_result_accepts_strict_json_and_json_fence():
     assert plain.hard_gates == _GATES
     assert plain.dimensions == _DIMENSIONS
     assert plain.evidence["faithful"]["source"] == ["source-faithful"]
+    assert plain.review_questions == []
 
 
 @pytest.mark.parametrize(
     "payload",
     [
         {"hard_gates": _GATES, "dimensions": _DIMENSIONS},
+        {"hard_gates": _GATES, "dimensions": _DIMENSIONS, "evidence": _EVIDENCE},
         _payload(hard_gates={"task_alignment": True, "faithful": True}),
         _payload(dimensions={**_DIMENSIONS, "processing": 5}),
         _payload(evidence={**_EVIDENCE, "faithful": {"source": [], "draft": []}}),
+        _payload(review_questions=[{"question": "Q"}]),
+        _payload(
+            review_questions=[
+                {
+                    "question": "Q",
+                    "answerable": True,
+                    "answer": "",
+                    "draft_evidence": [],
+                    "reason": "",
+                }
+            ]
+        ),
+        _payload(
+            review_questions=[
+                {
+                    "question": "Q",
+                    "answerable": False,
+                    "answer": "",
+                    "draft_evidence": [],
+                    "reason": "",
+                }
+            ]
+        ),
     ],
 )
 def test_parse_judge_result_rejects_missing_or_invalid_fields(payload: dict):
@@ -195,6 +221,93 @@ def test_learning_note_applies_only_configured_dimension_thresholds():
     assert passed.qualified is True
 
 
+def test_learning_note_requires_every_review_question_answerable():
+    """One unanswerable preset review question makes an otherwise strong note fail."""
+    assessment = {
+        "question": "为什么？",
+        "answerable": False,
+        "answer": "",
+        "draft_evidence": [],
+        "reason": "草稿未说明原因",
+    }
+    semantic = parse_judge_result(
+        json.dumps(_payload(review_questions=[assessment]), ensure_ascii=False)
+    )
+
+    result = score_note(
+        _case(review_questions=["为什么？"]),
+        proposed=True,
+        tools=[],
+        action="create",
+        file_name="Python.md",
+        content="笔记",
+        semantic_result=semantic,
+    )
+
+    assert result.qualified is False
+    assert result.review_questions_answered == 0
+    assert result.review_questions_total == 1
+
+
+def test_learning_note_rejects_missing_review_question_assessment():
+    """A semantic result cannot qualify by omitting a configured review question."""
+    semantic = parse_judge_result(json.dumps(_payload()))
+
+    result = score_note(
+        _case(review_questions=["为什么？"]),
+        proposed=True,
+        tools=[],
+        action="create",
+        file_name="Python.md",
+        content="笔记",
+        semantic_result=semantic,
+    )
+
+    assert result.qualified is False
+    assert result.review_questions_total == 1
+
+
+def test_learning_note_invalid_output_path_fails_behavior_gate():
+    """A semantically strong note cannot pass with an unsafe draft path."""
+    semantic = parse_judge_result(json.dumps(_payload()))
+
+    result = score_note(
+        _case(),
+        proposed=True,
+        tools=[],
+        action="create",
+        file_name="../Python.md",
+        content="笔记",
+        semantic_result=semantic,
+    )
+
+    assert result.behavior_pass is False
+    assert result.qualified is False
+    assert "路径不合法" in " ".join(result.behavior_evidence)
+
+
+def test_learning_note_literal_diagnostics_do_not_override_semantic_judge():
+    """Potentially noisy literal diagnostics stay auditable but do not veto semantics."""
+    semantic = parse_judge_result(json.dumps(_payload()))
+
+    result = score_note(
+        _case(),
+        proposed=True,
+        tools=[],
+        action="create",
+        file_name="Python.md",
+        content="草稿提到 /draft-only/path，但 Judge 已结合语义判定忠实。",
+        semantic_result=semantic,
+    )
+
+    assert result.behavior_pass is True
+    assert result.qualified is True
+    literal = next(
+        item for item in result.metrics if item.metric_id == "faithful.literals"
+    )
+    assert literal.score == 0
+
+
 class ScriptedJudge:
     """Fake LangChain-compatible Judge with one asynchronous reply."""
 
@@ -225,6 +338,164 @@ async def test_judge_learning_note_uses_scripted_model():
 
     assert result.hard_gates == _GATES
     assert model.messages
+
+
+async def test_retrievable_evidence_may_use_file_name():
+    """Retrievability may cite the draft file name outside review-question evidence."""
+    evidence = {
+        name: {"source": ["Source fact."], "draft": ["笔记"]}
+        for name in (*_GATES, *_DIMENSIONS)
+    }
+    evidence["retrievable"]["draft"] = ["Python.md"]
+    model = ScriptedJudge(json.dumps(_payload(evidence=evidence)))
+
+    result = await judge_learning_note(
+        model,
+        model_name="judge-scripted",
+        case=_case(),
+        draft={"file_name": "Python.md", "content": "笔记"},
+        prompt_path=_PROMPT,
+    )
+
+    assert result.evidence["retrievable"]["draft"] == ["Python.md"]
+
+
+async def test_judge_learning_note_validates_review_questions_in_order():
+    """Every preset question is assessed in the original order from draft evidence."""
+    questions = ["为什么？", "如何做？"]
+    assessments = [
+        {
+            "question": questions[0],
+            "answerable": True,
+            "answer": "因为草稿说明了原因",
+            "draft_evidence": ["草稿说明了原因"],
+            "reason": "",
+        },
+        {
+            "question": questions[1],
+            "answerable": False,
+            "answer": "",
+            "draft_evidence": [],
+            "reason": "草稿没有步骤",
+        },
+    ]
+    evidence = {
+        name: {"source": ["Source fact."], "draft": ["草稿说明了原因"]}
+        for name in (*_GATES, *_DIMENSIONS)
+    }
+    model = ScriptedJudge(
+        json.dumps(_payload(evidence=evidence, review_questions=assessments))
+    )
+
+    result = await judge_learning_note(
+        model,
+        model_name="judge-scripted",
+        case=_case(review_questions=questions),
+        draft={"file_name": "Python.md", "content": "草稿说明了原因"},
+        prompt_path=_PROMPT,
+    )
+
+    assert [item.question for item in result.review_questions] == questions
+    assert result.review_questions[0].answerable is True
+    assert result.review_questions[1].reason == "草稿没有步骤"
+
+
+@pytest.mark.parametrize(
+    ("assessments", "message"),
+    [
+        (
+            [
+                {
+                    "question": "如何做？",
+                    "answerable": True,
+                    "answer": "有答案",
+                    "draft_evidence": ["草稿证据"],
+                    "reason": "",
+                },
+                {
+                    "question": "为什么？",
+                    "answerable": True,
+                    "answer": "有答案",
+                    "draft_evidence": ["草稿证据"],
+                    "reason": "",
+                },
+            ],
+            "question mismatch",
+        ),
+        (
+            [
+                {
+                    "question": "为什么？",
+                    "answerable": True,
+                    "answer": "有答案",
+                    "draft_evidence": ["不在草稿里"],
+                    "reason": "",
+                },
+                {
+                    "question": "如何做？",
+                    "answerable": False,
+                    "answer": "",
+                    "draft_evidence": [],
+                    "reason": "无步骤",
+                },
+            ],
+            r"review_questions\[0\]\.draft_evidence\[0\]",
+        ),
+    ],
+)
+async def test_judge_learning_note_rejects_review_question_contract_errors(
+    assessments: list[dict], message: str
+):
+    """Wrong order and non-draft review evidence fail with an explicit field path."""
+    evidence = {
+        name: {"source": ["Source fact."], "draft": ["草稿证据"]}
+        for name in (*_GATES, *_DIMENSIONS)
+    }
+    model = ScriptedJudge(
+        json.dumps(_payload(evidence=evidence, review_questions=assessments))
+    )
+
+    with pytest.raises(JudgeResultError, match=message):
+        await judge_learning_note(
+            model,
+            model_name="judge-scripted",
+            case=_case(review_questions=["为什么？", "如何做？"]),
+            draft={"file_name": "Python.md", "content": "草稿证据"},
+            prompt_path=_PROMPT,
+        )
+
+
+async def test_judge_learning_note_requires_empty_assessments_without_questions():
+    """A case with no preset questions accepts only an empty assessment array."""
+    evidence = {
+        name: {"source": ["Source fact."], "draft": ["笔记"]}
+        for name in (*_GATES, *_DIMENSIONS)
+    }
+    model = ScriptedJudge(
+        json.dumps(
+            _payload(
+                evidence=evidence,
+                review_questions=[
+                    {
+                        "question": "额外问题",
+                        "answerable": True,
+                        "answer": "答案",
+                        "draft_evidence": ["笔记"],
+                        "reason": "",
+                    }
+                ],
+            )
+        )
+    )
+
+    with pytest.raises(JudgeResultError, match="review_questions length"):
+        await judge_learning_note(
+            model,
+            model_name="judge-scripted",
+            case=_case(),
+            draft={"file_name": "Python.md", "content": "笔记"},
+            prompt_path=_PROMPT,
+        )
 
 
 async def test_judge_learning_note_rejects_generic_unverifiable_evidence():

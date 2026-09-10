@@ -26,6 +26,9 @@ def _settings(*, judge_model: str) -> Settings:
 def test_eval_notes_judge_falls_back_to_chat_model(monkeypatch, tmp_path: Path, capsys):
     """--judge warns and proceeds with CHAT_MODEL when JUDGE_MODEL is empty."""
     captured = {}
+    cases_path = tmp_path / "evals" / "prompt" / "cases.jsonl"
+    cases_path.parent.mkdir(parents=True)
+    cases_path.write_text('{"id":"x"}\n', encoding="utf-8")
     monkeypatch.setattr(eval_notes, "project_root", lambda: tmp_path)
     monkeypatch.setattr(eval_notes, "Settings", lambda: _settings(judge_model=""))
     monkeypatch.setattr(eval_notes, "load_cases", lambda path, ids: [])
@@ -49,6 +52,7 @@ def test_eval_notes_judge_falls_back_to_chat_model(monkeypatch, tmp_path: Path, 
     assert exit_code == 0
     assert captured["judge_name"] == "chat-only"
     assert captured["judge_model_name"] == "chat-only"
+    assert len(captured["cases_sha256"]) == 64
     assert "judge_independent=false" in capsys.readouterr().err
 
 

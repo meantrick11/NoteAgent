@@ -3,6 +3,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 from langchain_core.messages import AIMessage
 
@@ -76,10 +77,13 @@ _SEMANTIC_PAYLOAD = {
             "processing",
         )
     },
+    "review_questions": [],
 }
 
 
-def _verifiable_semantic_payload(source: str, draft: str) -> dict:
+def _verifiable_semantic_payload(
+    source: str, draft: str, questions: list[str] | None = None
+) -> dict:
     """Return semantic evidence copied from the supplied source and draft."""
     return {
         **_SEMANTIC_PAYLOAD,
@@ -87,6 +91,16 @@ def _verifiable_semantic_payload(source: str, draft: str) -> dict:
             name: {"source": [source], "draft": [draft]}
             for name in _SEMANTIC_PAYLOAD["evidence"]
         },
+        "review_questions": [
+            {
+                "question": question,
+                "answerable": True,
+                "answer": "草稿可回答",
+                "draft_evidence": [draft],
+                "reason": "",
+            }
+            for question in questions or []
+        ],
     }
 
 
@@ -292,6 +306,7 @@ def test_learning_report_marks_semantic_incomplete_and_completed():
         user="整理。\n\nsource",
         expect_propose=True,
         task_mode="learning_note",
+        review_questions=["为什么？"],
     )
     draft = {"action": "create", "file_name": "Note.md", "content": "draft"}
     incomplete = CaseRun(
@@ -333,6 +348,15 @@ def test_learning_report_marks_semantic_incomplete_and_completed():
         _SEMANTIC_PAYLOAD["hard_gates"],
         _SEMANTIC_PAYLOAD["dimensions"],
         _SEMANTIC_PAYLOAD["evidence"],
+        [
+            SimpleNamespace(
+                question="为什么？",
+                answerable=True,
+                answer="因为 draft",
+                draft_evidence=["draft"],
+                reason="",
+            )
+        ],
     )
     completed = CaseRun(
         seq=1,
@@ -365,6 +389,57 @@ def test_learning_report_marks_semantic_incomplete_and_completed():
     assert "task_alignment: 通过" in completed_md
     assert "processing: 3/4" in completed_md
     assert "source-processing" in completed_md
+    assert "为什么？" in completed_md
+    assert "answerable: `True`" in completed_md
+    assert "因为 draft" in completed_md
+    assert "draft" in completed_md
+
+
+def test_learning_report_renders_every_review_assessment_field():
+    """An unanswerable question still shows empty answer/evidence and its reason."""
+    case = EvalCase(
+        id="l-report-question",
+        kind="quality",
+        user="整理。\n\nsource",
+        expect_propose=True,
+        task_mode="learning_note",
+        review_questions=["缺了什么？"],
+    )
+    semantic = LearningNoteSemanticResult(
+        _SEMANTIC_PAYLOAD["hard_gates"],
+        _SEMANTIC_PAYLOAD["dimensions"],
+        _SEMANTIC_PAYLOAD["evidence"],
+        [
+            SimpleNamespace(
+                question="缺了什么？",
+                answerable=False,
+                answer="",
+                draft_evidence=[],
+                reason="草稿未覆盖",
+            )
+        ],
+    )
+    run = CaseRun(
+        seq=1,
+        case=case,
+        score=score_note(
+            case,
+            proposed=True,
+            tools=[],
+            action="create",
+            file_name="Note.md",
+            content="draft",
+            semantic_result=semantic,
+        ),
+        draft={"action": "create", "file_name": "Note.md", "content": "draft"},
+    )
+
+    report = render_case_md(run)
+
+    assert "- answerable: `False`" in report
+    assert "- answer: （空）" in report
+    assert "- evidence: （无）" in report
+    assert "- reason: 草稿未覆盖" in report
 
 
 async def test_run_eval_records_same_model_as_not_independent(tmp_path: Path):
@@ -375,6 +450,7 @@ async def test_run_eval_records_same_model_as_not_independent(tmp_path: Path):
         user="整理。\n\nsource",
         expect_propose=True,
         task_mode="learning_note",
+        review_questions=["为什么？"],
     )
     model = ScriptedModel(
         [
@@ -407,7 +483,10 @@ async def test_run_eval_records_same_model_as_not_independent(tmp_path: Path):
         prompt_path=_PROMPT,
         settings=settings,
         model=model,
-        judge_model=ScriptedJudge(_verifiable_semantic_payload("source", "draft")),
+        judge_model=ScriptedJudge(
+            _verifiable_semantic_payload("source", "draft", ["为什么？"])
+        ),
+        cases_sha256="1" * 64,
         prompt_display="system.txt",
         cases_display="learning.jsonl",
     )
@@ -417,8 +496,13 @@ async def test_run_eval_records_same_model_as_not_independent(tmp_path: Path):
     assert config["judge_independent"] is False
     assert len(config["judge_prompt_sha256"]) == 64
     assert config["judge_failures"] == {}
+    assert config["cases_sha256"] == "1" * 64
+    assert config["review_questions"] == {"answered": 1, "total": 1}
+    assert (tmp_path / "result" / "judge_prompt.txt").read_text(encoding="utf-8")
     index = json.loads((tmp_path / "result" / "index.json").read_text(encoding="utf-8"))
     assert index["cases"][0]["semantic_completed"] is True
+    assert index["review_questions"] == {"answered": 1, "total": 1}
+    assert index["cases"][0]["review_questions"] == {"answered": 1, "total": 1}
 
 
 async def test_run_eval_records_effective_fallback_judge_model(tmp_path: Path):
@@ -442,6 +526,7 @@ async def test_run_eval_records_effective_fallback_judge_model(tmp_path: Path):
         model=ScriptedModel([AIMessage(content="不生成草稿")]),
         judge_model=object(),
         judge_model_name="chat-fallback",
+        cases_sha256="2" * 64,
         prompt_display="system.txt",
         cases_display="learning.jsonl",
     )
@@ -553,6 +638,7 @@ def test_write_stage_layout(tmp_path: Path):
         runs=[run],
     )
     assert (dest / "system.txt").read_text(encoding="utf-8") == "ROLE"
+    assert not (dest / "judge_prompt.txt").exists()
     assert (dest / "config.json").is_file()
     index = json.loads((dest / "index.json").read_text(encoding="utf-8"))
     assert index["cases_path"] == "evals/prompt/cases.jsonl"

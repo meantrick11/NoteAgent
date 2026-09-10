@@ -42,6 +42,7 @@ async def calibrate_learning_note(
             "dimensions": {},
             "qualified": False,
             "evidence": {},
+            "review_questions": [],
             "error": None,
         }
         try:
@@ -70,6 +71,16 @@ async def calibrate_learning_note(
                 dimensions=score.dimensions,
                 qualified=score.qualified,
                 evidence=score.semantic_evidence,
+                review_questions=[
+                    {
+                        "question": item.question,
+                        "answerable": item.answerable,
+                        "answer": item.answer,
+                        "draft_evidence": item.draft_evidence,
+                        "reason": item.reason,
+                    }
+                    for item in score.review_question_assessments
+                ],
             )
         except Exception as exc:
             candidate["error"] = str(exc)
@@ -133,6 +144,11 @@ def _evaluate_contracts(candidates: dict[str, dict], thresholds: dict[str, int])
         and literal["dimensions"].get("processing", 5) < processing_threshold,
         "omitted_incomplete": omitted["error"] is None
         and omitted["hard_gates"].get("complete") is False,
+        "omitted_review_question_unanswerable": omitted["error"] is None
+        and any(
+            item.get("answerable") is False
+            for item in omitted["review_questions"]
+        ),
         "hallucinated_unfaithful": hallucinated["error"] is None
         and hallucinated["hard_gates"].get("faithful") is False,
         "good_structure_gt_literal": _dimension_gt(good, literal, "structure"),

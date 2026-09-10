@@ -96,12 +96,17 @@ def write_stage(
     dest: Path,
     *,
     prompt_text: str,
+    judge_prompt_text: str | None = None,
     config: dict,
     runs: list,
 ) -> None:
-    """Write config.json, system.txt, index.json, and one markdown file per case."""
+    """Write reproducible inputs, metadata, index, and one report per case."""
     dest.mkdir(parents=True, exist_ok=True)
     (dest / "system.txt").write_text(prompt_text, encoding="utf-8")
+    if judge_prompt_text is not None:
+        (dest / "judge_prompt.txt").write_text(
+            judge_prompt_text, encoding="utf-8"
+        )
     (dest / "config.json").write_text(
         json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
@@ -110,6 +115,9 @@ def write_stage(
         "case_filter": config.get("case_filter"),
         "label": config.get("label"),
         "sort": "worst_first",
+        "review_questions": config.get(
+            "review_questions", {"answered": 0, "total": 0}
+        ),
         "cases": [_index_row(run) for run in _sorted_runs(runs)],
     }
     (dest / "index.json").write_text(
@@ -160,6 +168,10 @@ def render_case_md(run, config: dict | None = None) -> str:
             lines.append("- 语义评测: 已完成")
             lines.append(f"- qualified: `{score.qualified}`")
         lines.append("- 总分: —")
+        lines.append(
+            "- 复习问题: "
+            f"{score.review_questions_answered}/{len(case.review_questions)}"
+        )
         if getattr(run, "judge_error", None):
             lines.append(f"- Judge error: `{_cell(run.judge_error)}`")
         for name in ("task_alignment", "faithful", "complete"):
@@ -176,6 +188,23 @@ def render_case_md(run, config: dict | None = None) -> str:
                 draft = "；".join(evidence.get("draft", []))
                 lines.append(f"- {name} source: {_cell(source)}")
                 lines.append(f"- {name} draft: {_cell(draft)}")
+        if score.review_question_assessments:
+            lines.extend(["", "### 复习问题验收", ""])
+            for index, assessment in enumerate(
+                score.review_question_assessments, start=1
+            ):
+                lines.append(f"#### {index}. {assessment.question}")
+                lines.append(f"- answerable: `{assessment.answerable}`")
+                lines.append(
+                    f"- answer: {_cell(assessment.answer) if assessment.answer else '（空）'}"
+                )
+                evidence = "；".join(assessment.draft_evidence)
+                lines.append(
+                    f"- evidence: {_cell(evidence) if evidence else '（无）'}"
+                )
+                lines.append(
+                    f"- reason: {_cell(assessment.reason) if assessment.reason else '（无）'}"
+                )
     elif not score.behavior_pass:
         lines.append("- 行为门: **失败**")
         lines.append("- 正文: 未评正文")
@@ -307,6 +336,10 @@ def _index_row(run) -> dict:
         "semantic_completed": score.semantic_completed,
         "hard_gates": score.hard_gates,
         "dimensions": score.dimensions,
+        "review_questions": {
+            "answered": score.review_questions_answered,
+            "total": len(run.case.review_questions),
+        },
     }
 
 

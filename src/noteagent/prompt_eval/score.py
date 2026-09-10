@@ -99,12 +99,24 @@ class MetricScore:
 
 
 @dataclass
+class ReviewQuestionAssessment:
+    """One Judge decision about whether the draft supports a preset question."""
+
+    question: str
+    answerable: bool
+    answer: str
+    draft_evidence: list[str]
+    reason: str
+
+
+@dataclass
 class LearningNoteSemanticResult:
     """Validated Judge decisions, dimension scores, and source/draft evidence."""
 
     hard_gates: dict[str, bool]
     dimensions: dict[str, int]
     evidence: dict[str, dict[str, list[str]]]
+    review_questions: list[ReviewQuestionAssessment] = field(default_factory=list)
 
 
 @dataclass
@@ -120,6 +132,11 @@ class NoteScore:
     hard_gates: dict[str, bool] = field(default_factory=dict)
     dimensions: dict[str, int] = field(default_factory=dict)
     semantic_evidence: dict[str, dict[str, list[str]]] = field(default_factory=dict)
+    review_question_assessments: list[ReviewQuestionAssessment] = field(
+        default_factory=list
+    )
+    review_questions_answered: int = 0
+    review_questions_total: int = 0
     semantic_completed: bool = False
 
 
@@ -135,6 +152,11 @@ def score_note(
 ) -> NoteScore:
     """Run the behavior gate, then L1 body metrics when a draft exists and the gate passes."""
     gate_ok, gate_evidence = _behavior_gate(case, proposed=proposed, tools=tools, action=action)
+    if case.task_mode == "learning_note" and proposed:
+        path_check = _file_name_ok(file_name)
+        if path_check.score == 0:
+            gate_ok = False
+            gate_evidence.extend(path_check.evidence)
     if not gate_ok:
         learning = case.task_mode == "learning_note"
         return NoteScore(
@@ -158,6 +180,19 @@ def score_note(
                 dict(semantic_result.evidence)
                 if learning and semantic_result is not None
                 else {}
+            ),
+            review_question_assessments=(
+                list(semantic_result.review_questions)
+                if learning and semantic_result is not None
+                else []
+            ),
+            review_questions_answered=(
+                sum(item.answerable for item in semantic_result.review_questions)
+                if learning and semantic_result is not None
+                else 0
+            ),
+            review_questions_total=(
+                len(case.review_questions) if learning else 0
             ),
             semantic_completed=learning and semantic_result is not None,
         )
@@ -183,6 +218,7 @@ def score_note(
                 metrics=metrics,
                 behavior_evidence=gate_evidence + threshold_errors,
                 qualified=False if threshold_errors else None,
+                review_questions_total=len(case.review_questions),
             )
         gates_pass = all(
             semantic_result.hard_gates[name] for name in HARD_GATE_ORDER
@@ -191,16 +227,30 @@ def score_note(
             semantic_result.dimensions[name] >= threshold
             for name, threshold in case.quality_thresholds.items()
         )
+        questions_pass = len(semantic_result.review_questions) == len(
+            case.review_questions
+        ) and all(
+            assessment.question == question and assessment.answerable
+            for assessment, question in zip(
+                semantic_result.review_questions, case.review_questions
+            )
+        )
         return NoteScore(
             behavior_pass=True,
             total=None,
             parents=parents,
             metrics=metrics,
             behavior_evidence=gate_evidence + threshold_errors,
-            qualified=gates_pass and thresholds_pass,
+            qualified=gates_pass and thresholds_pass and questions_pass,
             hard_gates=dict(semantic_result.hard_gates),
             dimensions=dict(semantic_result.dimensions),
             semantic_evidence=dict(semantic_result.evidence),
+            review_question_assessments=list(semantic_result.review_questions),
+            review_questions_answered=sum(
+                assessment.answerable
+                for assessment in semantic_result.review_questions
+            ),
+            review_questions_total=len(case.review_questions),
             semantic_completed=True,
         )
     metrics = _score_body(case, action=action, file_name=file_name, content=content or "")

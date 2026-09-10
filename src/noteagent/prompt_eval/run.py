@@ -178,6 +178,7 @@ async def run_eval(
     judge_model=None,
     judge_model_name: str | None = None,
     judge_prompt_path: Path = JUDGE_PROMPT_PATH,
+    cases_sha256: str,
     prompt_display: str,
     cases_display: str,
     case_filter: list[str] | None = None,
@@ -218,6 +219,7 @@ async def run_eval(
         "rubric_version": RUBRIC_VERSION,
         "chat_model": settings.chat_model,
         "prompt_sha256": prompt_sha,
+        "cases_sha256": cases_sha256,
         "judge_model": effective_judge_name if judge_model is not None else None,
         "judge_prompt_sha256": judge_prompt_sha256(judge_prompt_path),
         "judge_independent": bool(
@@ -233,8 +235,25 @@ async def run_eval(
         "started_at": started.isoformat(),
         "finished_at": finished.isoformat(),
         "case_ids": {run.case.id: case_filename(run.case.id) for run in runs},
+        "review_questions": {
+            "answered": sum(
+                run.score.review_questions_answered for run in runs
+            ),
+            "total": sum(len(run.case.review_questions) for run in runs),
+        },
     }
-    write_stage(dest, prompt_text=prompt_text, config=config, runs=runs)
+    judge_prompt_text = (
+        judge_prompt_path.read_text(encoding="utf-8")
+        if judge_model is not None
+        else None
+    )
+    write_stage(
+        dest,
+        prompt_text=prompt_text,
+        judge_prompt_text=judge_prompt_text,
+        config=config,
+        runs=runs,
+    )
     return runs
 
 

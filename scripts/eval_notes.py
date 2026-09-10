@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import logging
 import shutil
 import sys
@@ -106,6 +107,7 @@ def main(argv: list[str] | None = None) -> int:
             model=model,
             judge_model=judge_model,
             judge_model_name=judge_model_name,
+            cases_sha256=_sha256(cases_path),
             prompt_display=prompt_display,
             cases_display=cases_display,
             case_filter=ids,
@@ -120,6 +122,11 @@ def main(argv: list[str] | None = None) -> int:
 def _effective_judge_model(settings: Settings) -> str:
     """Select JUDGE_MODEL when configured, otherwise CHAT_MODEL."""
     return settings.judge_model.strip() or settings.chat_model.strip()
+
+
+def _sha256(path: Path) -> str:
+    """Hash the actual JSONL input archived in result metadata."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _display_path(root: Path, path: Path) -> str:

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from langchain_core.messages import AIMessage
 
+from noteagent.prompt_eval.cases import load_cases
 from noteagent.prompt_eval.calibration import calibrate_learning_note
 
 
@@ -21,6 +22,7 @@ _PROMPT = (
     / "learning_note_judge.txt"
 )
 _NAMES = ("good", "literal", "omitted", "hallucinated")
+_QUESTIONS = load_cases(_CASES, ["l01"])[0].review_questions
 
 
 def _payload(
@@ -28,6 +30,7 @@ def _payload(
     gates: dict[str, bool] | None = None,
     dimensions: dict[str, int] | None = None,
     draft_evidence: str,
+    unanswerable: set[int] | None = None,
 ) -> dict:
     """Build one strict result whose evidence occurs in the fixed inputs."""
     hard_gates = gates or {
@@ -46,7 +49,23 @@ def _payload(
         name: {"source": ["Python"], "draft": [draft_evidence]}
         for name in (*hard_gates, *scores)
     }
-    return {"hard_gates": hard_gates, "dimensions": scores, "evidence": evidence}
+    missing = unanswerable or set()
+    review_questions = [
+        {
+            "question": question,
+            "answerable": index not in missing,
+            "answer": "可由草稿回答" if index not in missing else "",
+            "draft_evidence": [draft_evidence] if index not in missing else [],
+            "reason": "" if index not in missing else "草稿遗漏相关信息",
+        }
+        for index, question in enumerate(_QUESTIONS)
+    ]
+    return {
+        "hard_gates": hard_gates,
+        "dimensions": scores,
+        "evidence": evidence,
+        "review_questions": review_questions,
+    }
 
 
 def _passing_payloads() -> dict[str, dict]:
@@ -75,6 +94,7 @@ def _passing_payloads() -> dict[str, dict]:
         "omitted": _payload(
             gates={"task_alignment": True, "faithful": True, "complete": False},
             draft_evidence="Python",
+            unanswerable={5},
         ),
         "hallucinated": _payload(
             gates={"task_alignment": True, "faithful": False, "complete": True},
@@ -128,6 +148,7 @@ async def test_calibration_calls_all_candidates_and_passes_contract():
         "literal_unqualified": True,
         "literal_processing_below_threshold": True,
         "omitted_incomplete": True,
+        "omitted_review_question_unanswerable": True,
         "hallucinated_unfaithful": True,
         "good_structure_gt_literal": True,
         "good_fluent_gt_literal": True,
