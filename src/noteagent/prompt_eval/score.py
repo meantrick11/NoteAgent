@@ -103,12 +103,30 @@ def score_note(
     """Run the behavior gate, then L1 body metrics when a draft exists and the gate passes."""
     gate_ok, gate_evidence = _behavior_gate(case, proposed=proposed, tools=tools, action=action)
     if not gate_ok:
+        learning = case.task_mode == "learning_note"
         return NoteScore(
             behavior_pass=False,
             total=None,
             parents={key: None for key in PARENT_ORDER},
             metrics=[],
             behavior_evidence=gate_evidence,
+            qualified=False if learning else None,
+            hard_gates=(
+                dict(semantic_result.hard_gates)
+                if learning and semantic_result is not None
+                else {}
+            ),
+            dimensions=(
+                dict(semantic_result.dimensions)
+                if learning and semantic_result is not None
+                else {}
+            ),
+            semantic_evidence=(
+                dict(semantic_result.evidence)
+                if learning and semantic_result is not None
+                else {}
+            ),
+            semantic_completed=learning and semantic_result is not None,
         )
     if not proposed:
         return NoteScore(

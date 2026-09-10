@@ -105,6 +105,25 @@ def test_learning_note_without_judge_is_incomplete_not_behavior_failure():
     assert result.dimensions == {}
 
 
+def test_learning_behavior_failure_without_judge_is_unqualified_and_incomplete():
+    """Behavior failure rejects a learning run even when no Judge was available."""
+    result = score_note(
+        _case(expect_tools_prefix=["list_files"]),
+        proposed=True,
+        tools=[],
+        action="create",
+        file_name="Python.md",
+        content="笔记",
+    )
+
+    assert result.behavior_pass is False
+    assert result.qualified is False
+    assert result.semantic_completed is False
+    assert result.total is None
+    assert result.hard_gates == {}
+    assert result.dimensions == {}
+
+
 def test_learning_note_without_judge_rejects_invalid_threshold_configuration():
     """Threshold errors are reported even when semantic evaluation did not run."""
     result = score_note(

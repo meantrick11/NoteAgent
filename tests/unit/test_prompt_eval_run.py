@@ -224,6 +224,66 @@ async def test_run_case_calls_scripted_judge_for_learning_draft(tmp_path: Path):
     assert run.score.dimensions["processing"] == 3
 
 
+async def test_learning_behavior_failure_keeps_completed_semantic_audit(tmp_path: Path):
+    """A completed Judge result remains auditable when the behavior gate fails."""
+    case = EvalCase(
+        id="l-behavior-fail",
+        kind="quality",
+        user="整理为学习笔记。\n\nSource fact.",
+        expect_propose=True,
+        expect_tools_prefix=["search_relative_from_chromadb"],
+        task_mode="learning_note",
+    )
+    model = ScriptedModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "propose_note",
+                        "id": "c1",
+                        "args": {
+                            "action": "create",
+                            "file_name": "Learning.md",
+                            "content": "学习笔记",
+                            "reason": "new",
+                            "similar": "",
+                        },
+                    }
+                ],
+            ),
+            AIMessage(content="已提交草稿"),
+        ]
+    )
+    agent, notes, history, drafts = build_eval_agent(
+        tmp_path / "notes", model=model, prompt_path=_PROMPT, settings=_settings()
+    )
+
+    run = await run_case(
+        case,
+        seq=1,
+        agent=agent,
+        notes=notes,
+        history=history,
+        drafts=drafts,
+        judge_model=ScriptedJudge(
+            _verifiable_semantic_payload("Source fact.", "学习笔记")
+        ),
+        judge_model_name="judge-scripted",
+    )
+
+    assert run.judge_error is None
+    assert run.score.behavior_pass is False
+    assert run.score.qualified is False
+    assert run.score.total is None
+    assert run.score.metrics == []
+    assert all(value is None for value in run.score.parents.values())
+    assert run.score.semantic_completed is True
+    assert run.score.hard_gates == _SEMANTIC_PAYLOAD["hard_gates"]
+    assert run.score.dimensions == _SEMANTIC_PAYLOAD["dimensions"]
+    assert run.score.semantic_evidence["faithful"]["source"] == ["Source fact."]
+
+
 def test_learning_report_marks_semantic_incomplete_and_completed():
     """Learning reports distinguish absent Judge results from completed results."""
     case = EvalCase(
