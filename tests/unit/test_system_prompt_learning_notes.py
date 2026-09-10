@@ -74,6 +74,8 @@ def test_completeness_and_structure_are_limited_to_current_task_scope():
     assert "当前用户任务范围内" in structure
     assert "局部摘录或只保留某节" in prompt
     assert "不要求覆盖任务范围外的标题" in prompt
+    assert "普通学习型笔记可在不遗漏当前用户任务范围内各节信息" in prompt
+    assert "普通学习型笔记可在不遗漏各节信息" not in prompt
 
 
 def test_constraint_has_seven_rules_with_processing_gain_last():
