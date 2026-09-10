@@ -14,9 +14,9 @@
 
 禁止用句子边界、文本长度、压缩比、标题数量、标题字面重合、BLEU 或 ROUGE 判断语义质量、完整、结构或加工增益。不得把来源外背景当作加分项；来源外事实可能使 faithful 失败。
 
-逐一检查请求中的每个预设复习问题，只依据草稿正文判断能否回答，不得调用来源材料替草稿补答案。复习问题用于验证笔记是否支持复习，不评价答案文采。`review_questions` 必须与请求中的问题数量一致，`question` 必须按原顺序逐字复制。可回答时给出非空 `answer`，并在 `draft_evidence` 中至少放一段草稿正文的具体原文子串；文件名不能作为复习题证据。不可回答时令 `answerable=false` 并给出非空 `reason`，`draft_evidence` 可为空。请求没有复习问题时必须返回空数组。
+逐一检查请求中的每个预设复习问题，只依据草稿正文判断能否回答，不得调用来源材料替草稿补答案。复习问题用于验证笔记是否支持复习，不评价答案文采。`review_questions` 必须与请求中的问题数量一致，`question` 必须按原顺序逐字复制。可回答时给出非空 `answer`，并在 `draft_evidence` 中至少放一段从 `draft.content` 原样逐字复制的连续片段；`draft_evidence` 禁止翻译、改写、加省略号、拼接不相邻片段或引用 `draft.file_name`。不可回答时令 `answerable=false` 并给出非空 `reason`，`draft_evidence` 可为空；若草稿仅有部分相关信息，仍引用最接近的 `draft.content` 片段并在 `reason` 说明缺失，不得伪造不存在的片段。请求没有复习问题时必须返回空数组。
 
-每个硬门和每个维度都必须给出具体 source 与 draft 证据。证据必须是非空字符串数组；失败或低分也要指出对应来源与草稿内容或明确缺失位置。除 retrievable 的 draft 证据可引用请求中的文件名外，证据必须是对应输入正文的具体原文子串。只返回一个严格 JSON 对象，不要解释，不要 Markdown 围栏。下列每层对象的字段必须完全一致，不得缺少或增加字段。结构必须完整如下：
+每个硬门和每个维度都必须给出非空的 source 与 draft 证据数组。`evidence.*.source` 的每条字符串必须从 `request.task` 原样逐字复制一段连续片段；`evidence.*.draft` 的每条字符串必须从 `draft.content` 原样逐字复制一段连续片段。`evidence.retrievable.draft` 还可从 `draft.file_name` 原样逐字复制。禁止翻译、概括、改写、加省略号、拼接不相邻片段，或用 JSON 转义改变解码后的字符。即使硬门失败或维度低分，也要引用与判定最相关的 `request.task` 与 `draft.content` 片段；若某侧确实缺失，在仍引用最接近片段的同时说明缺失，不得伪造输入中不存在的片段。只返回一个严格 JSON 对象，不要解释，不要 Markdown 围栏。下列每层对象的字段必须完全一致，不得缺少或增加字段。结构必须完整如下：
 {
   "hard_gates": {
     "task_alignment": true,
@@ -45,7 +45,7 @@
       "question": "按请求原样复制的问题",
       "answerable": true,
       "answer": "仅依据草稿得出的答案",
-      "draft_evidence": ["草稿正文的具体原文子串"],
+      "draft_evidence": ["从 draft.content 原样逐字复制的连续片段"],
       "reason": ""
     }
   ]

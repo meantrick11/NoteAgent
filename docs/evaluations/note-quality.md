@@ -102,8 +102,8 @@
 离线报告必须记录数据集路径、case id、rubric 版本、Prompt hash、生成模型和时间。每个硬门与维度均保留：
 
 - 判定或 0–4 分值；
-- 来源证据；
-- 草稿证据；
+- 来源证据（`request.task` 原样逐字连续片段）；
+- 草稿证据（`draft.content` 原样逐字连续片段；`retrievable` 还可引用 `draft.file_name`）；
 - 缺失、冲突或无支持命题；
 - 未完成项及原因。
 
