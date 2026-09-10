@@ -104,6 +104,25 @@ def test_learning_note_without_judge_is_incomplete_not_behavior_failure():
     assert result.dimensions == {}
 
 
+def test_learning_note_without_judge_rejects_invalid_threshold_configuration():
+    """Threshold errors are reported even when semantic evaluation did not run."""
+    result = score_note(
+        _case(quality_thresholds={"unknown": 3}),
+        proposed=True,
+        tools=[],
+        action="create",
+        file_name="Python.md",
+        content="笔记",
+    )
+
+    assert result.qualified is False
+    assert result.total is None
+    assert any(
+        "quality_thresholds unknown dimension 'unknown'" in item
+        for item in result.behavior_evidence
+    )
+
+
 @pytest.mark.parametrize("failed_gate", list(_GATES))
 def test_learning_note_fails_when_any_hard_gate_fails(failed_gate: str):
     """No quality dimension can compensate for one failed hard gate."""

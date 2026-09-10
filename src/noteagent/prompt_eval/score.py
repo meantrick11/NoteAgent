@@ -122,18 +122,19 @@ def score_note(
             case, file_name=file_name, content=content or ""
         )
         parents = _parent_scores(metrics)
+        threshold_errors = _quality_threshold_errors(case.quality_thresholds)
         if semantic_result is None:
             return NoteScore(
                 behavior_pass=True,
                 total=None,
                 parents=parents,
                 metrics=metrics,
-                behavior_evidence=gate_evidence,
+                behavior_evidence=gate_evidence + threshold_errors,
+                qualified=False if threshold_errors else None,
             )
         gates_pass = all(
             semantic_result.hard_gates[name] for name in HARD_GATE_ORDER
         )
-        threshold_errors = _quality_threshold_errors(case.quality_thresholds)
         thresholds_pass = not threshold_errors and all(
             semantic_result.dimensions[name] >= threshold
             for name, threshold in case.quality_thresholds.items()
