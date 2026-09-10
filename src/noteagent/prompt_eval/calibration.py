@@ -140,6 +140,7 @@ def _evaluate_contracts(candidates: dict[str, dict], thresholds: dict[str, int])
     omitted = candidates["omitted"]
     hallucinated = candidates["hallucinated"]
     processing_threshold = thresholds.get("processing")
+    fluent_threshold = thresholds.get("fluent", 3)
     return {
         "good_qualified": good["error"] is None and good["qualified"] is True,
         "literal_hard_gates": literal["error"] is None
@@ -159,7 +160,12 @@ def _evaluate_contracts(candidates: dict[str, dict], thresholds: dict[str, int])
         "hallucinated_unfaithful": hallucinated["error"] is None
         and hallucinated["hard_gates"].get("faithful") is False,
         "good_structure_gt_literal": _dimension_gt(good, literal, "structure"),
-        "good_fluent_gt_literal": _dimension_gt(good, literal, "fluent"),
+        "good_fluent_at_least_threshold": _dimension_at_least(
+            good, "fluent", fluent_threshold
+        ),
+        "literal_fluent_at_least_threshold": _dimension_at_least(
+            literal, "fluent", fluent_threshold
+        ),
         "good_processing_gt_literal": _dimension_gt(good, literal, "processing"),
         "good_dimension_sum_gt_literal": good["error"] is None
         and literal["error"] is None
@@ -173,6 +179,15 @@ def _dimension_gt(good: dict, literal: dict, name: str) -> bool:
         good["error"] is None
         and literal["error"] is None
         and good["dimensions"].get(name, -1) > literal["dimensions"].get(name, -1)
+    )
+
+
+def _dimension_at_least(candidate: dict, name: str, threshold: int) -> bool:
+    """Require one candidate dimension to meet the configured quality threshold."""
+    return (
+        candidate["error"] is None
+        and type(threshold) is int
+        and candidate["dimensions"].get(name, -1) >= threshold
     )
 
 

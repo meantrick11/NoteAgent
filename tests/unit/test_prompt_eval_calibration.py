@@ -155,14 +155,74 @@ async def test_calibration_calls_all_candidates_and_passes_contract():
         "omitted_review_question_unanswerable": True,
         "hallucinated_unfaithful": True,
         "good_structure_gt_literal": True,
-        "good_fluent_gt_literal": True,
+        "good_fluent_at_least_threshold": True,
+        "literal_fluent_at_least_threshold": True,
         "good_processing_gt_literal": True,
         "good_dimension_sum_gt_literal": True,
     }
 
 
-async def test_calibration_requires_good_to_lead_literal_on_each_core_dimension():
-    """A higher total cannot hide a tie on structure, fluent, or processing."""
+async def test_calibration_accepts_equal_fluent_when_both_meet_threshold():
+    """Mechanical translation can be as fluent as good; structure and processing must lead."""
+    payloads = _passing_payloads()
+    payloads["literal"] = _payload(
+        dimensions={
+            "structure": 3,
+            "fluent": 4,
+            "form": 3,
+            "retrievable": 3,
+            "processing": 1,
+        },
+        draft_evidence="Python",
+    )
+    model = ScriptedJudge(payloads)
+
+    result = await calibrate_learning_note(
+        case_path=_CASES,
+        case_id="l01",
+        fixtures_dir=_FIXTURES,
+        judge_model=model,
+        judge_model_name="judge-scripted",
+        judge_prompt_path=_PROMPT,
+    )
+
+    assert result["contracts"]["good_fluent_at_least_threshold"] is True
+    assert result["contracts"]["literal_fluent_at_least_threshold"] is True
+    assert result["contracts"]["good_structure_gt_literal"] is True
+    assert result["contracts"]["good_processing_gt_literal"] is True
+    assert result["pass"] is True
+
+
+async def test_calibration_fails_when_fluent_below_threshold():
+    """Both candidates must meet the fluent quality threshold."""
+    payloads = _passing_payloads()
+    payloads["literal"] = _payload(
+        dimensions={
+            "structure": 3,
+            "fluent": 2,
+            "form": 3,
+            "retrievable": 3,
+            "processing": 1,
+        },
+        draft_evidence="Python",
+    )
+    model = ScriptedJudge(payloads)
+
+    result = await calibrate_learning_note(
+        case_path=_CASES,
+        case_id="l01",
+        fixtures_dir=_FIXTURES,
+        judge_model=model,
+        judge_model_name="judge-scripted",
+        judge_prompt_path=_PROMPT,
+    )
+
+    assert result["contracts"]["literal_fluent_at_least_threshold"] is False
+    assert result["pass"] is False
+
+
+async def test_calibration_requires_good_to_lead_literal_on_structure_and_processing():
+    """A higher total cannot hide a tie on structure or processing."""
     payloads = _passing_payloads()
     payloads["literal"] = _payload(
         dimensions={
@@ -187,6 +247,8 @@ async def test_calibration_requires_good_to_lead_literal_on_each_core_dimension(
 
     assert result["contracts"]["good_dimension_sum_gt_literal"] is True
     assert result["contracts"]["good_structure_gt_literal"] is False
+    assert result["contracts"]["good_fluent_at_least_threshold"] is True
+    assert result["contracts"]["literal_fluent_at_least_threshold"] is True
     assert result["pass"] is False
 
 

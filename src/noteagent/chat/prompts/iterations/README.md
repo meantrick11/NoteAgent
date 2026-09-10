@@ -31,3 +31,5 @@ python scripts/eval_notes.py --name v9 --judge --cases evals/prompt/learning_not
 ```
 
 Judge 留痕写入该次结果目录：`config.json` 记录生成模型、Judge 模型、生成 Prompt SHA-256、Judge 配置与 `judge_independent`；每题 Markdown 记录评分、理由及原文/草稿证据。Judge 缺失或解析失败时必须标记“未完成”，不得生成摊权后的分数。
+
+2026-09-10 用 deepseek-v4-flash 对四固定候选做同模型校准（`judge_independent=false`）：good/literal 的 fluent 均为 4，结构/加工/维度总和区分仍成立。校准契约已从「优秀 fluent 严格高于机械译文」改为双方 fluent 均须达阈值；优秀靠结构和加工增益领先。

@@ -61,7 +61,7 @@ hallucinated.md 因无来源命题被忠实硬门淘汰
 - `omitted.md` 文笔可读但缺关键内容，完整硬门失败；
 - `hallucinated.md` 可读但加入动态类型、GIL、异步优势等来源外结论，忠实硬门失败。
 
-可执行契约还要求 `good.md` 的 structure、fluent、processing 三项分别严格高于 `literal.md`。`literal.md` 必须低于 processing 阈值，但不限制它只能因 processing 一项而不合格。
+可执行契约还要求 `good.md` 的 structure、processing 严格高于 `literal.md`，且双方 fluent 均不低于 `quality_thresholds.fluent`（默认 3）；`good.md` 五维总和亦须高于 `literal.md`。`literal.md` 必须低于 processing 阈值，但不限制它只能因 processing 一项而不合格。2026-09-10 同模型校准（deepseek-v4-flash，`judge_independent=false`）表明机械译文可与优秀笔记同样流畅，故不再要求 fluent 严格领先。
 
 先用固定四候选执行 Judge 校准：
 
