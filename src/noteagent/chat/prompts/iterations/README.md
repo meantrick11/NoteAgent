@@ -13,7 +13,7 @@
 | v5 | 2026-09-01 | 五要素+六条 | [v5-2026-09-01-five-elements.txt](./v5-2026-09-01-five-elements.txt) | Role/Context/Task/Constraint/Example；Constraint 写入忠实/完整/结构/流畅/形态/可检索 |
 | v6 | 2026-09-01 | Markdown 写法 | [v6-2026-09-01-md-syntax.txt](./v6-2026-09-01-md-syntax.txt) | 形态合适：围栏代码、行内 code、`>` 引用、块间空行。与当时 `system.txt` 相同 |
 | v7 | 2026-09-01 | 写模式 | [v7-2026-09-01-replace-delete.txt](./v7-2026-09-01-replace-delete.txt) | `propose_note` 增加 replace（整文件覆盖）与 delete；模型先判断 append/create/replace/delete |
-| v8 | 2026-09-05 | 一层目录 | [v8-2026-09-05-one-level-folders.txt](./v8-2026-09-05-one-level-folders.txt) | `file_name` 可为 `Folder/Note.md`；list_files 带文件夹；禁止擅自 mkdir。与现行 `system.txt` 相同 |
+| v8 | 2026-09-05 | 一层目录 | [v8-2026-09-05-one-level-folders.txt](./v8-2026-09-05-one-level-folders.txt) | `file_name` 可为 `Folder/Note.md`；list_files 带文件夹；禁止擅自 mkdir。与当时 `system.txt` 相同 |
 | v9 | 2026-09-10 | 学习型笔记 | [v9-2026-09-10-learning-notes.txt](./v9-2026-09-10-learning-notes.txt) | 默认学习型笔记；语义忠实与覆盖；允许有依据的重组；新增知识加工增益。与现行 `system.txt` 字节一致 |
 
 加新版时：复制当时的 `system.txt` 为 `vN-日期-短名.txt`，在本表追加一行，不要改旧档。人工回归见 [evals/prompt/](../../../../../evals/prompt/README.md)。

@@ -41,6 +41,16 @@ def test_original_structure_requires_an_explicit_fidelity_request():
     assert "标题应翻译且编号可保留" in prompt
 
 
+def test_explicit_fidelity_mode_uses_first_six_rules_only():
+    """Literal fidelity must not fail the learning-only processing rule."""
+    prompt = _prompt()
+
+    assert "学习型笔记必须满足七条质量标准" in prompt
+    assert "完全忠实翻译、逐段翻译或保持原结构时，满足前六条" in prompt
+    assert "第 7 条“知识加工增益”不适用" in prompt
+    assert "不能因逐段忠实而否决" in prompt
+
+
 def test_quality_rules_define_semantic_fidelity_and_completeness():
     """The hard gates constrain claims and coverage rather than surface form."""
     prompt = _prompt()
@@ -50,8 +60,20 @@ def test_quality_rules_define_semantic_fidelity_and_completeness():
     assert "不按字数或句数" in prompt
     for unit in ("独立论点", "步骤", "例证", "专名", "限定/例外", "关系"):
         assert unit in prompt
-    assert "不得漏掉任何章节信息" in prompt
+    assert "不得漏掉当前用户任务范围内任何章节信息" in prompt
     assert "不得把无关章节混成错误结论" in prompt
+
+
+def test_completeness_and_structure_are_limited_to_current_task_scope():
+    """A requested excerpt must not inherit coverage duties from other sections."""
+    prompt = _prompt()
+    completeness = next(line for line in prompt.splitlines() if line.startswith("2. 完整"))
+    structure = next(line for line in prompt.splitlines() if line.startswith("3. 结构"))
+
+    assert "当前用户任务范围内" in completeness
+    assert "当前用户任务范围内" in structure
+    assert "局部摘录或只保留某节" in prompt
+    assert "不要求覆盖任务范围外的标题" in prompt
 
 
 def test_constraint_has_seven_rules_with_processing_gain_last():
@@ -66,6 +88,18 @@ def test_constraint_has_seven_rules_with_processing_gain_last():
     assert "说理、背景、动机、比较" in prompt
     assert "禁止零加工逐句转写" in prompt
     assert "禁止为了改写而改写" in prompt
+
+
+def test_example_contrasts_literal_translation_with_tradeoff_grouping():
+    """The example must demonstrate source-backed semantic processing."""
+    prompt = _prompt()
+
+    assert "学习型反例（逐句照译）" in prompt
+    assert "学习型正例（按“方案取舍”组织）" in prompt
+    assert "## 方案取舍" in prompt
+    assert "Shell 适合移动文件和修改文本数据，却不适合 GUI 应用或游戏" in prompt
+    assert "C/C++/Java 即使第一版程序也可能耗时" in prompt
+    assert "相比之下，Python 更易用，并能跨 Windows、macOS 和 Unix 运行" in prompt
 
 
 def test_v9_archive_is_byte_identical_to_production_prompt():
