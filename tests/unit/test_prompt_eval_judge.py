@@ -1,5 +1,6 @@
 """Learning-note Judge parsing and scoring contracts."""
 
+import copy
 import json
 from pathlib import Path
 
@@ -110,6 +111,67 @@ def test_parse_judge_result_rejects_missing_or_invalid_fields(payload: dict):
     """Missing fields, out-of-range scores, and empty evidence fail explicitly."""
     with pytest.raises(JudgeResultError):
         parse_judge_result(json.dumps(payload))
+
+
+@pytest.mark.parametrize(
+    ("path", "expected_error"),
+    [
+        ("result", "result unexpected key: private_extra"),
+        ("hard_gates", "hard_gates unexpected key: private_extra"),
+        ("dimensions", "dimensions unexpected key: private_extra"),
+        ("evidence", "evidence unexpected key: private_extra"),
+        (
+            "evidence.faithful",
+            "evidence.faithful unexpected key: private_extra",
+        ),
+        (
+            "review_questions[0]",
+            "review_questions[0] unexpected key: private_extra",
+        ),
+    ],
+)
+def test_parse_judge_result_rejects_unknown_keys_without_values(
+    path: str, expected_error: str
+):
+    """Every Judge object rejects extras while errors expose no private values."""
+    data = copy.deepcopy(_payload())
+    data["review_questions"] = [
+        {
+            "question": "私人测试问题",
+            "answerable": True,
+            "answer": "私人测试答案",
+            "draft_evidence": ["私人草稿证据"],
+            "reason": "",
+        }
+    ]
+    target = data
+    for part in path.split("."):
+        if part == "result":
+            continue
+        if part == "review_questions[0]":
+            target = data["review_questions"][0]
+        else:
+            target = target[part]
+    target["private_extra"] = "绝不能出现在异常里的私人值"
+
+    with pytest.raises(JudgeResultError) as caught:
+        parse_judge_result(json.dumps(data, ensure_ascii=False))
+
+    assert str(caught.value) == expected_error
+    assert "绝不能出现在异常里的私人值" not in str(caught.value)
+    assert "私人测试问题" not in str(caught.value)
+    assert "私人测试答案" not in str(caught.value)
+
+
+def test_parse_judge_result_keeps_clear_missing_field_path():
+    """Exact-key validation preserves the existing explicit required-field error."""
+    data = _payload()
+    del data["hard_gates"]["faithful"]
+
+    with pytest.raises(JudgeResultError) as caught:
+        parse_judge_result(json.dumps(data))
+
+    assert str(caught.value) == "missing field: hard_gates.faithful"
 
 
 def test_learning_note_without_judge_is_incomplete_not_behavior_failure():
@@ -463,6 +525,62 @@ async def test_judge_learning_note_rejects_review_question_contract_errors(
             draft={"file_name": "Python.md", "content": "草稿证据"},
             prompt_path=_PROMPT,
         )
+
+
+@pytest.mark.parametrize(
+    ("expected_questions", "assessments", "expected_error"),
+    [
+        (
+            ["私人问题甲"],
+            [],
+            "review_questions length mismatch",
+        ),
+        (
+            ["私人问题甲"],
+            [
+                {
+                    "question": "私人问题乙",
+                    "answerable": True,
+                    "answer": "私人答案",
+                    "draft_evidence": ["草稿证据"],
+                    "reason": "",
+                }
+            ],
+            "review_questions[0].question mismatch",
+        ),
+    ],
+)
+async def test_review_question_mismatch_errors_do_not_leak_text(
+    expected_questions: list[str],
+    assessments: list[dict],
+    expected_error: str,
+):
+    """Question count and text mismatches expose only a structural error path."""
+    evidence = {
+        name: {"source": ["Source fact."], "draft": ["草稿证据"]}
+        for name in (*_GATES, *_DIMENSIONS)
+    }
+    model = ScriptedJudge(
+        json.dumps(
+            _payload(evidence=evidence, review_questions=assessments),
+            ensure_ascii=False,
+        )
+    )
+
+    with pytest.raises(JudgeResultError) as caught:
+        await judge_learning_note(
+            model,
+            model_name="judge-scripted",
+            case=_case(review_questions=expected_questions),
+            draft={"file_name": "Python.md", "content": "草稿证据"},
+            prompt_path=_PROMPT,
+        )
+
+    error = str(caught.value)
+    assert error == expected_error
+    assert "私人问题甲" not in error
+    assert "私人问题乙" not in error
+    assert "私人答案" not in error
 
 
 async def test_judge_learning_note_requires_empty_assessments_without_questions():

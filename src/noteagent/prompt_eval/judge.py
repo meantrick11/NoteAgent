@@ -23,6 +23,14 @@ _logger = logging.getLogger(__name__)
 
 JUDGE_PROMPT_PATH = Path(__file__).with_name("prompts") / "learning_note_judge.txt"
 _JSON_FENCE = re.compile(r"^\s*```json\s*(.*?)\s*```\s*$", re.IGNORECASE | re.DOTALL)
+_RESULT_KEYS = frozenset(
+    {"hard_gates", "dimensions", "evidence", "review_questions"}
+)
+_EVIDENCE_KEYS = frozenset((*HARD_GATE_ORDER, *SEMANTIC_DIMENSION_ORDER))
+_EVIDENCE_ITEM_KEYS = frozenset({"source", "draft"})
+_REVIEW_QUESTION_KEYS = frozenset(
+    {"question", "answerable", "answer", "draft_evidence", "reason"}
+)
 
 
 class JudgeResultError(ValueError):
@@ -47,10 +55,16 @@ def parse_judge_result(raw: str) -> LearningNoteSemanticResult:
         raise JudgeResultError(f"invalid Judge JSON: {exc.msg}") from exc
     if not isinstance(data, dict):
         raise JudgeResultError("Judge result must be a JSON object")
+    _reject_unexpected_keys(data, _RESULT_KEYS, "result")
 
     gates = _required_mapping(data, "hard_gates")
     dimensions = _required_mapping(data, "dimensions")
     evidence = _required_mapping(data, "evidence")
+    _reject_unexpected_keys(gates, frozenset(HARD_GATE_ORDER), "hard_gates")
+    _reject_unexpected_keys(
+        dimensions, frozenset(SEMANTIC_DIMENSION_ORDER), "dimensions"
+    )
+    _reject_unexpected_keys(evidence, _EVIDENCE_KEYS, "evidence")
     review_questions = _required_value(data, "review_questions", "result")
     if not isinstance(review_questions, list):
         raise JudgeResultError("review_questions must be an array")
@@ -74,6 +88,9 @@ def parse_judge_result(raw: str) -> LearningNoteSemanticResult:
         item = _required_value(evidence, name, "evidence")
         if not isinstance(item, dict):
             raise JudgeResultError(f"evidence.{name} must be an object")
+        _reject_unexpected_keys(
+            item, _EVIDENCE_ITEM_KEYS, f"evidence.{name}"
+        )
         parsed_evidence[name] = {
             "source": _evidence_list(item, name, "source"),
             "draft": _evidence_list(item, name, "draft"),
@@ -184,13 +201,11 @@ def _validate_review_questions(
     """Match preset questions exactly and verify answer evidence against the draft."""
     actual = result.review_questions
     if len(actual) != len(expected):
-        raise JudgeResultError(
-            f"review_questions length must be {len(expected)}, got {len(actual)}"
-        )
+        raise JudgeResultError("review_questions length mismatch")
     for index, (assessment, question) in enumerate(zip(actual, expected)):
         if assessment.question != question:
             raise JudgeResultError(
-                f"review_questions[{index}].question mismatch: expected {question!r}"
+                f"review_questions[{index}].question mismatch"
             )
         for evidence_index, fragment in enumerate(assessment.draft_evidence):
             if fragment not in draft:
@@ -206,6 +221,7 @@ def _review_question(item: object, index: int) -> ReviewQuestionAssessment:
     path = f"review_questions[{index}]"
     if not isinstance(item, dict):
         raise JudgeResultError(f"{path} must be an object")
+    _reject_unexpected_keys(item, _REVIEW_QUESTION_KEYS, path)
     question = _required_value(item, "question", path)
     answerable = _required_value(item, "answerable", path)
     answer = _required_value(item, "answer", path)
@@ -247,6 +263,15 @@ def _required_mapping(data: dict, name: str) -> dict:
     if not isinstance(value, dict):
         raise JudgeResultError(f"{name} must be an object")
     return value
+
+
+def _reject_unexpected_keys(
+    data: dict, expected: frozenset[str], path: str
+) -> None:
+    """Reject one unknown key by structural path without exposing its value."""
+    unexpected = sorted(set(data) - expected)
+    if unexpected:
+        raise JudgeResultError(f"{path} unexpected key: {unexpected[0]}")
 
 
 def _required_value(data: dict, name: str, parent: str):
