@@ -35,10 +35,14 @@ _HEDGE = ("通常", "可能", "往往", "建议", "默认", "usually", "may ", "
 _STRONG = ("一定", "必须", "总是", "绝对", "只能", "must always", "always must")
 _ATX = re.compile(r"^(#{1,6})\s+(\S.*)$")
 _NUMBERED = re.compile(r"^(\d+(?:\.\d+)*)\.?\s+\S")
+# Absolute paths: slash only after whitespace / open bracket or quote (or string start);
+# allow + @ ~ % = and Unicode in segments; dots only inside segments (e.g. python3.14).
+_PATH_SEGMENT = r"[^/\s，。；、,;:.]+(?:\.[^/\s，。；、,;:]+)*"
 _LITERAL = re.compile(
-    r"(?<![A-Za-z])(?:/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*)|(?:python\d+\.\d+)|"
-    r"(?:sys\.argv(?:\[\d+\])?)|(?:UTF-8)|(?:Control-[A-Z])|(?:py\.exe)|(?:quit\(\))|"
-    r"(?:functools\.wraps)|(?:@decorator)",
+    rf"(?<![^\s\(\[\"'])/(?:{_PATH_SEGMENT}(?:/{_PATH_SEGMENT})*)"
+    rf"(?=\.(?:[\s，。；、,;:]|$|\)|\]|\"|\')|(?:[\s，。；、,;:]|$|\)|\]|\"|\'))|"
+    r"(?:python\d+\.\d+)|(?:sys\.argv(?:\[\d+\])?)|(?:UTF-8)|(?:Control-[A-Z])|(?:py\.exe)|"
+    r"(?:quit\(\))|(?:functools\.wraps)|(?:@decorator)",
     re.I,
 )
 _COMMAND = re.compile(

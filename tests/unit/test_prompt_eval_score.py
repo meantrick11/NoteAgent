@@ -146,6 +146,32 @@ def test_literals_unix_absolute_path_still_detected():
     assert any("python3.99" in item for item in invented.raw["extra"])
 
 
+def test_literals_path_plus_variants_are_distinguishable():
+    """Paths with + must not be truncated; blue vs green must differ."""
+    material = "Deploy to /srv/app+blue or /srv/app+green."
+    faithful = _literals(material, "部署到 /srv/app+blue 或 /srv/app+green。")
+    assert faithful.score == 10
+    assert "/srv/app+blue" in faithful.raw["source"]
+    assert "/srv/app+green" in faithful.raw["source"]
+
+    invented = _literals(material, "部署到 /srv/app+blue 或 /srv/app+red。")
+    assert invented.score == 0
+    extra = invented.raw.get("extra", [])
+    assert any("app+red" in item for item in extra)
+    assert not any("app+green" in item for item in extra)
+
+
+def test_literals_trailing_period_matches_bare_path():
+    """Sentence-ending period after a path must not make it a different literal."""
+    material = "The binary lives at /usr/bin."
+    content = "可执行文件位于 /usr/bin。"
+    result = _literals(material, content)
+    assert result.score == 10
+    assert "/usr/bin" in result.raw["source"]
+    assert "/usr/bin" in result.raw["draft"]
+    assert "/usr/bin." not in result.raw["source"]
+
+
 def test_behavior_fail_does_not_score_body():
     case = _n01()
     result = score_note(
