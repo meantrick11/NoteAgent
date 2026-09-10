@@ -70,7 +70,14 @@ async def calibrate_learning_note(
                 hard_gates=score.hard_gates,
                 dimensions=score.dimensions,
                 qualified=score.qualified,
-                evidence=score.semantic_evidence,
+                evidence={
+                    name: {
+                        "source": item.source,
+                        "draft": item.draft,
+                        "reason": item.reason,
+                    }
+                    for name, item in score.semantic_evidence.items()
+                },
                 review_questions=[
                     {
                         "question": item.question,

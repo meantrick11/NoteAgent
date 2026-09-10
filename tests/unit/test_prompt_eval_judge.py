@@ -9,7 +9,7 @@ from langchain_core.messages import AIMessage
 
 from noteagent.prompt_eval.cases import EvalCase
 from noteagent.prompt_eval.judge import JudgeResultError, judge_learning_note, parse_judge_result
-from noteagent.prompt_eval.score import LearningNoteSemanticResult, score_note
+from noteagent.prompt_eval.score import LearningNoteSemanticResult, SemanticEvidence, score_note
 
 
 _PROMPT = (
@@ -29,9 +29,21 @@ _DIMENSIONS = {
     "processing": 3,
 }
 _EVIDENCE = {
-    name: {"source": [f"source-{name}"], "draft": [f"draft-{name}"]}
+    name: {
+        "source": [f"source-{name}"],
+        "draft": [f"draft-{name}"],
+        "reason": f"reason-{name}",
+    }
     for name in (*_GATES, *_DIMENSIONS)
 }
+
+
+def _semantic_evidence() -> dict[str, SemanticEvidence]:
+    """Build typed semantic evidence for direct LearningNoteSemanticResult use."""
+    return {
+        name: SemanticEvidence(**item)
+        for name, item in _EVIDENCE.items()
+    }
 
 
 def _payload(**overrides) -> dict:
@@ -39,7 +51,7 @@ def _payload(**overrides) -> dict:
     data = {
         "hard_gates": dict(_GATES),
         "dimensions": dict(_DIMENSIONS),
-        "evidence": dict(_EVIDENCE),
+        "evidence": copy.deepcopy(_EVIDENCE),
         "review_questions": [],
     }
     data.update(overrides)
@@ -70,7 +82,8 @@ def test_parse_judge_result_accepts_strict_json_and_json_fence():
     assert plain == fenced
     assert plain.hard_gates == _GATES
     assert plain.dimensions == _DIMENSIONS
-    assert plain.evidence["faithful"]["source"] == ["source-faithful"]
+    assert plain.evidence["faithful"].source == ["source-faithful"]
+    assert plain.evidence["faithful"].reason == "reason-faithful"
     assert plain.review_questions == []
 
 
@@ -81,7 +94,23 @@ def test_parse_judge_result_accepts_strict_json_and_json_fence():
         {"hard_gates": _GATES, "dimensions": _DIMENSIONS, "evidence": _EVIDENCE},
         _payload(hard_gates={"task_alignment": True, "faithful": True}),
         _payload(dimensions={**_DIMENSIONS, "processing": 5}),
-        _payload(evidence={**_EVIDENCE, "faithful": {"source": [], "draft": []}}),
+        _payload(evidence={**_EVIDENCE, "faithful": {"source": [], "draft": [], "reason": "x"}}),
+        _payload(
+            evidence={
+                **_EVIDENCE,
+                "faithful": {"source": ["source-faithful"], "draft": ["draft-faithful"]},
+            }
+        ),
+        _payload(
+            evidence={
+                **_EVIDENCE,
+                "faithful": {
+                    "source": ["source-faithful"],
+                    "draft": ["draft-faithful"],
+                    "reason": "",
+                },
+            }
+        ),
         _payload(review_questions=[{"question": "Q"}]),
         _payload(
             review_questions=[
@@ -163,6 +192,28 @@ def test_parse_judge_result_rejects_unknown_keys_without_values(
     assert "私人测试答案" not in str(caught.value)
 
 
+def test_parse_judge_result_requires_evidence_reason():
+    """Every hard gate and dimension evidence object must include a non-empty reason."""
+    data = _payload()
+    del data["evidence"]["faithful"]["reason"]
+
+    with pytest.raises(JudgeResultError) as caught:
+        parse_judge_result(json.dumps(data))
+
+    assert str(caught.value) == "missing field: evidence.faithful.reason"
+
+
+def test_parse_judge_result_rejects_empty_evidence_reason():
+    """Evidence reason must be a non-empty string even when gates fail."""
+    data = _payload()
+    data["evidence"]["faithful"]["reason"] = "   "
+
+    with pytest.raises(JudgeResultError) as caught:
+        parse_judge_result(json.dumps(data))
+
+    assert str(caught.value) == "evidence.faithful.reason must be a non-empty string"
+
+
 def test_parse_judge_result_keeps_clear_missing_field_path():
     """Exact-key validation preserves the existing explicit required-field error."""
     data = _payload()
@@ -237,7 +288,7 @@ def test_learning_note_fails_when_any_hard_gate_fails(failed_gate: str):
     """No quality dimension can compensate for one failed hard gate."""
     gates = dict(_GATES)
     gates[failed_gate] = False
-    semantic = LearningNoteSemanticResult(gates, dict(_DIMENSIONS), dict(_EVIDENCE))
+    semantic = LearningNoteSemanticResult(gates, dict(_DIMENSIONS), _semantic_evidence())
 
     result = score_note(
         _case(),
@@ -258,7 +309,7 @@ def test_learning_note_applies_only_configured_dimension_thresholds():
     """Configured thresholds determine qualification after all gates pass."""
     dimensions = dict(_DIMENSIONS)
     dimensions["processing"] = 2
-    semantic = LearningNoteSemanticResult(_GATES, dimensions, _EVIDENCE)
+    semantic = LearningNoteSemanticResult(_GATES, dimensions, _semantic_evidence())
 
     failed = score_note(
         _case(),
@@ -385,7 +436,11 @@ class ScriptedJudge:
 async def test_judge_learning_note_uses_scripted_model():
     """Judge accepts evidence copied exactly from the source and draft."""
     evidence = {
-        name: {"source": ["Source fact."], "draft": ["笔记"]}
+        name: {
+            "source": ["Source fact."],
+            "draft": ["笔记"],
+            "reason": "任务与草稿片段支持该判定",
+        }
         for name in (*_GATES, *_DIMENSIONS)
     }
     model = ScriptedJudge(json.dumps(_payload(evidence=evidence)))
@@ -405,7 +460,11 @@ async def test_judge_learning_note_uses_scripted_model():
 async def test_retrievable_evidence_may_use_file_name():
     """Retrievability may cite the draft file name outside review-question evidence."""
     evidence = {
-        name: {"source": ["Source fact."], "draft": ["笔记"]}
+        name: {
+            "source": ["Source fact."],
+            "draft": ["笔记"],
+            "reason": "任务与草稿片段支持该判定",
+        }
         for name in (*_GATES, *_DIMENSIONS)
     }
     evidence["retrievable"]["draft"] = ["Python.md"]
@@ -419,7 +478,7 @@ async def test_retrievable_evidence_may_use_file_name():
         prompt_path=_PROMPT,
     )
 
-    assert result.evidence["retrievable"]["draft"] == ["Python.md"]
+    assert result.evidence["retrievable"].draft == ["Python.md"]
 
 
 async def test_judge_learning_note_validates_review_questions_in_order():
@@ -442,7 +501,11 @@ async def test_judge_learning_note_validates_review_questions_in_order():
         },
     ]
     evidence = {
-        name: {"source": ["Source fact."], "draft": ["草稿说明了原因"]}
+        name: {
+            "source": ["Source fact."],
+            "draft": ["草稿说明了原因"],
+            "reason": "草稿片段直接说明原因",
+        }
         for name in (*_GATES, *_DIMENSIONS)
     }
     model = ScriptedJudge(
@@ -510,7 +573,11 @@ async def test_judge_learning_note_rejects_review_question_contract_errors(
 ):
     """Wrong order and non-draft review evidence fail with an explicit field path."""
     evidence = {
-        name: {"source": ["Source fact."], "draft": ["草稿证据"]}
+        name: {
+            "source": ["Source fact."],
+            "draft": ["草稿证据"],
+            "reason": "草稿证据支持判定",
+        }
         for name in (*_GATES, *_DIMENSIONS)
     }
     model = ScriptedJudge(
@@ -557,7 +624,11 @@ async def test_review_question_mismatch_errors_do_not_leak_text(
 ):
     """Question count and text mismatches expose only a structural error path."""
     evidence = {
-        name: {"source": ["Source fact."], "draft": ["草稿证据"]}
+        name: {
+            "source": ["Source fact."],
+            "draft": ["草稿证据"],
+            "reason": "草稿证据支持判定",
+        }
         for name in (*_GATES, *_DIMENSIONS)
     }
     model = ScriptedJudge(
@@ -586,7 +657,11 @@ async def test_review_question_mismatch_errors_do_not_leak_text(
 async def test_judge_learning_note_requires_empty_assessments_without_questions():
     """A case with no preset questions accepts only an empty assessment array."""
     evidence = {
-        name: {"source": ["Source fact."], "draft": ["笔记"]}
+        name: {
+            "source": ["Source fact."],
+            "draft": ["笔记"],
+            "reason": "任务与草稿片段支持该判定",
+        }
         for name in (*_GATES, *_DIMENSIONS)
     }
     model = ScriptedJudge(
@@ -645,7 +720,7 @@ def test_learning_note_invalid_threshold_is_reported_without_raising(
     thresholds: dict, expected_error: str
 ):
     """Invalid quality threshold configuration makes qualification false."""
-    semantic = LearningNoteSemanticResult(_GATES, dict(_DIMENSIONS), dict(_EVIDENCE))
+    semantic = LearningNoteSemanticResult(_GATES, dict(_DIMENSIONS), _semantic_evidence())
 
     result = score_note(
         _case(quality_thresholds=thresholds),

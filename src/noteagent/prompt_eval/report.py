@@ -184,10 +184,11 @@ def render_case_md(run, config: dict | None = None) -> str:
         if score.semantic_evidence:
             lines.extend(["", "### 语义证据", ""])
             for name, evidence in score.semantic_evidence.items():
-                source = "；".join(evidence.get("source", []))
-                draft = "；".join(evidence.get("draft", []))
+                source = "；".join(evidence.source)
+                draft = "；".join(evidence.draft)
                 lines.append(f"- {name} source: {_cell(source)}")
                 lines.append(f"- {name} draft: {_cell(draft)}")
+                lines.append(f"- {name} reason: {_cell(evidence.reason)}")
         if score.review_question_assessments:
             lines.extend(["", "### 复习问题验收", ""])
             for index, assessment in enumerate(

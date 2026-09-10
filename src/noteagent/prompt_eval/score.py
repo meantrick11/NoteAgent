@@ -110,12 +110,21 @@ class ReviewQuestionAssessment:
 
 
 @dataclass
+class SemanticEvidence:
+    """One hard-gate or dimension evidence bundle with a human-readable rationale."""
+
+    source: list[str]
+    draft: list[str]
+    reason: str
+
+
+@dataclass
 class LearningNoteSemanticResult:
     """Validated Judge decisions, dimension scores, and source/draft evidence."""
 
     hard_gates: dict[str, bool]
     dimensions: dict[str, int]
-    evidence: dict[str, dict[str, list[str]]]
+    evidence: dict[str, SemanticEvidence]
     review_questions: list[ReviewQuestionAssessment] = field(default_factory=list)
 
 
@@ -131,7 +140,7 @@ class NoteScore:
     qualified: bool | None = None
     hard_gates: dict[str, bool] = field(default_factory=dict)
     dimensions: dict[str, int] = field(default_factory=dict)
-    semantic_evidence: dict[str, dict[str, list[str]]] = field(default_factory=dict)
+    semantic_evidence: dict[str, SemanticEvidence] = field(default_factory=dict)
     review_question_assessments: list[ReviewQuestionAssessment] = field(
         default_factory=list
     )

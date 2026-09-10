@@ -16,7 +16,7 @@
 
 逐一检查请求中的每个预设复习问题，只依据草稿正文判断能否回答，不得调用来源材料替草稿补答案。复习问题用于验证笔记是否支持复习，不评价答案文采。`review_questions` 必须与请求中的问题数量一致，`question` 必须按原顺序逐字复制。可回答时给出非空 `answer`，并在 `draft_evidence` 中至少放一段从 `draft.content` 原样逐字复制的连续片段；`draft_evidence` 禁止翻译、改写、加省略号、拼接不相邻片段或引用 `draft.file_name`。不可回答时令 `answerable=false` 并给出非空 `reason`，`draft_evidence` 可为空；若草稿仅有部分相关信息，仍引用最接近的 `draft.content` 片段并在 `reason` 说明缺失，不得伪造不存在的片段。请求没有复习问题时必须返回空数组。
 
-每个硬门和每个维度都必须给出非空的 source 与 draft 证据数组。`evidence.*.source` 的每条字符串必须从 `request.task` 原样逐字复制一段连续片段；`evidence.*.draft` 的每条字符串必须从 `draft.content` 原样逐字复制一段连续片段。`evidence.retrievable.draft` 还可从 `draft.file_name` 原样逐字复制。禁止翻译、概括、改写、加省略号、拼接不相邻片段，或用 JSON 转义改变解码后的字符。即使硬门失败或维度低分，也要引用与判定最相关的 `request.task` 与 `draft.content` 片段；若某侧确实缺失，在仍引用最接近片段的同时说明缺失，不得伪造输入中不存在的片段。只返回一个严格 JSON 对象，不要解释，不要 Markdown 围栏。下列每层对象的字段必须完全一致，不得缺少或增加字段。结构必须完整如下：
+每个硬门和每个维度都必须给出非空的 source、draft 证据数组和 `reason`。`evidence.*.source` 的每条字符串必须从 `request.task` 原样逐字复制一段连续片段；`evidence.*.draft` 的每条字符串必须从 `draft.content` 原样逐字复制一段连续片段，仅 `evidence.retrievable.draft` 还可从 `draft.file_name` 原样逐字复制。禁止翻译、概括、改写、加省略号、拼接不相邻片段，或用 JSON 转义改变解码后的字符。`reason` 用自然语言解释证据如何支持评分，或说明缺失/冲突；不得用 `reason` 代替 source 或 draft 证据，也不得伪造输入中不存在的片段。硬门失败或维度低分时，source 引用与判定最相关的来源要求片段，draft 引用最接近的现有草稿片段，具体缺失或冲突写入 `reason`。只返回一个严格 JSON 对象，不要解释，不要 Markdown 围栏。下列每层对象的字段必须完全一致，不得缺少或增加字段。结构必须完整如下：
 {
   "hard_gates": {
     "task_alignment": true,
@@ -31,14 +31,14 @@
     "processing": 0
   },
   "evidence": {
-    "task_alignment": {"source": ["..."], "draft": ["..."]},
-    "faithful": {"source": ["..."], "draft": ["..."]},
-    "complete": {"source": ["..."], "draft": ["..."]},
-    "structure": {"source": ["..."], "draft": ["..."]},
-    "fluent": {"source": ["..."], "draft": ["..."]},
-    "form": {"source": ["..."], "draft": ["..."]},
-    "retrievable": {"source": ["..."], "draft": ["..."]},
-    "processing": {"source": ["..."], "draft": ["..."]}
+    "task_alignment": {"source": ["..."], "draft": ["..."], "reason": "..."},
+    "faithful": {"source": ["..."], "draft": ["..."], "reason": "..."},
+    "complete": {"source": ["..."], "draft": ["..."], "reason": "..."},
+    "structure": {"source": ["..."], "draft": ["..."], "reason": "..."},
+    "fluent": {"source": ["..."], "draft": ["..."], "reason": "..."},
+    "form": {"source": ["..."], "draft": ["..."], "reason": "..."},
+    "retrievable": {"source": ["..."], "draft": ["..."], "reason": "..."},
+    "processing": {"source": ["..."], "draft": ["..."], "reason": "..."}
   },
   "review_questions": [
     {

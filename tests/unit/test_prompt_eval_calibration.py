@@ -46,7 +46,11 @@ def _payload(
         "processing": 3,
     }
     evidence = {
-        name: {"source": ["Python"], "draft": [draft_evidence]}
+        name: {
+            "source": ["Python"],
+            "draft": [draft_evidence],
+            "reason": f"{name} 证据支持该判定",
+        }
         for name in (*hard_gates, *scores)
     }
     missing = unanswerable or set()

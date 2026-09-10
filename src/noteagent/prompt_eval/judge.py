@@ -17,6 +17,7 @@ from noteagent.prompt_eval.score import (
     SEMANTIC_DIMENSION_ORDER,
     LearningNoteSemanticResult,
     ReviewQuestionAssessment,
+    SemanticEvidence,
 )
 
 _logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ _RESULT_KEYS = frozenset(
     {"hard_gates", "dimensions", "evidence", "review_questions"}
 )
 _EVIDENCE_KEYS = frozenset((*HARD_GATE_ORDER, *SEMANTIC_DIMENSION_ORDER))
-_EVIDENCE_ITEM_KEYS = frozenset({"source", "draft"})
+_EVIDENCE_ITEM_KEYS = frozenset({"source", "draft", "reason"})
 _REVIEW_QUESTION_KEYS = frozenset(
     {"question", "answerable", "answer", "draft_evidence", "reason"}
 )
@@ -83,7 +84,7 @@ def parse_judge_result(raw: str) -> LearningNoteSemanticResult:
             raise JudgeResultError(f"dimensions.{name} must be an integer from 0 to 4")
         parsed_dimensions[name] = value
 
-    parsed_evidence: dict[str, dict[str, list[str]]] = {}
+    parsed_evidence: dict[str, SemanticEvidence] = {}
     for name in (*HARD_GATE_ORDER, *SEMANTIC_DIMENSION_ORDER):
         item = _required_value(evidence, name, "evidence")
         if not isinstance(item, dict):
@@ -91,10 +92,11 @@ def parse_judge_result(raw: str) -> LearningNoteSemanticResult:
         _reject_unexpected_keys(
             item, _EVIDENCE_ITEM_KEYS, f"evidence.{name}"
         )
-        parsed_evidence[name] = {
-            "source": _evidence_list(item, name, "source"),
-            "draft": _evidence_list(item, name, "draft"),
-        }
+        parsed_evidence[name] = SemanticEvidence(
+            source=_evidence_list(item, name, "source"),
+            draft=_evidence_list(item, name, "draft"),
+            reason=_evidence_reason(item, name),
+        )
     parsed_review_questions = [
         _review_question(item, index)
         for index, item in enumerate(review_questions)
@@ -183,7 +185,8 @@ def _validate_evidence_substrings(
     inputs = {"source": source, "draft": draft}
     for metric, evidence in result.evidence.items():
         for side, input_text in inputs.items():
-            for index, fragment in enumerate(evidence[side]):
+            fragments = evidence.source if side == "source" else evidence.draft
+            for index, fragment in enumerate(fragments):
                 file_name_match = (
                     metric == "retrievable"
                     and side == "draft"
@@ -293,3 +296,12 @@ def _evidence_list(item: dict, name: str, side: str) -> list[str]:
             f"evidence.{name}.{side} must be a non-empty string array"
         )
     return list(value)
+
+
+def _evidence_reason(item: dict, name: str) -> str:
+    """Validate one non-empty rationale for how evidence supports the score."""
+    path = f"evidence.{name}.reason"
+    value = _required_value(item, "reason", f"evidence.{name}")
+    if not isinstance(value, str) or not value.strip():
+        raise JudgeResultError(f"{path} must be a non-empty string")
+    return value

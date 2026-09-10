@@ -104,6 +104,7 @@
 - 判定或 0–4 分值；
 - 来源证据（`request.task` 原样逐字连续片段）；
 - 草稿证据（`draft.content` 原样逐字连续片段；`retrievable` 还可引用 `draft.file_name`）；
+- `reason`（解释证据如何支持评分，或说明缺失/冲突；不得代替 source/draft 子串）；
 - 缺失、冲突或无支持命题；
 - 未完成项及原因。
 

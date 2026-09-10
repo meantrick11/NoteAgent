@@ -22,6 +22,7 @@ from noteagent.prompt_eval.score import (
     RUBRIC_VERSION,
     LearningNoteSemanticResult,
     NoteScore,
+    SemanticEvidence,
     score_note,
 )
 
@@ -65,7 +66,11 @@ _SEMANTIC_PAYLOAD = {
         "processing": 3,
     },
     "evidence": {
-        name: {"source": [f"source-{name}"], "draft": [f"draft-{name}"]}
+        name: {
+            "source": [f"source-{name}"],
+            "draft": [f"draft-{name}"],
+            "reason": f"reason-{name}",
+        }
         for name in (
             "task_alignment",
             "faithful",
@@ -81,6 +86,14 @@ _SEMANTIC_PAYLOAD = {
 }
 
 
+def _semantic_evidence() -> dict[str, SemanticEvidence]:
+    """Build typed semantic evidence from the shared payload template."""
+    return {
+        name: SemanticEvidence(**item)
+        for name, item in _SEMANTIC_PAYLOAD["evidence"].items()
+    }
+
+
 def _verifiable_semantic_payload(
     source: str, draft: str, questions: list[str] | None = None
 ) -> dict:
@@ -88,7 +101,11 @@ def _verifiable_semantic_payload(
     return {
         **_SEMANTIC_PAYLOAD,
         "evidence": {
-            name: {"source": [source], "draft": [draft]}
+            name: {
+                "source": [source],
+                "draft": [draft],
+                "reason": "草稿与来源片段支持该判定",
+            }
             for name in _SEMANTIC_PAYLOAD["evidence"]
         },
         "review_questions": [
@@ -295,7 +312,7 @@ async def test_learning_behavior_failure_keeps_completed_semantic_audit(tmp_path
     assert run.score.semantic_completed is True
     assert run.score.hard_gates == _SEMANTIC_PAYLOAD["hard_gates"]
     assert run.score.dimensions == _SEMANTIC_PAYLOAD["dimensions"]
-    assert run.score.semantic_evidence["faithful"]["source"] == ["Source fact."]
+    assert run.score.semantic_evidence["faithful"].source == ["Source fact."]
 
 
 def test_learning_report_marks_semantic_incomplete_and_completed():
@@ -347,7 +364,7 @@ def test_learning_report_marks_semantic_incomplete_and_completed():
     semantic = LearningNoteSemanticResult(
         _SEMANTIC_PAYLOAD["hard_gates"],
         _SEMANTIC_PAYLOAD["dimensions"],
-        _SEMANTIC_PAYLOAD["evidence"],
+        _semantic_evidence(),
         [
             SimpleNamespace(
                 question="为什么？",
@@ -395,6 +412,41 @@ def test_learning_report_marks_semantic_incomplete_and_completed():
     assert "draft" in completed_md
 
 
+def test_learning_report_renders_semantic_evidence_reason():
+    """Semantic evidence reason appears in the report but is separate from substrings."""
+    case = EvalCase(
+        id="l-report-evidence",
+        kind="quality",
+        user="整理。\n\nsource",
+        expect_propose=True,
+        task_mode="learning_note",
+    )
+    run = CaseRun(
+        seq=1,
+        case=case,
+        score=score_note(
+            case,
+            proposed=True,
+            tools=[],
+            action="create",
+            file_name="Note.md",
+            content="draft",
+            semantic_result=LearningNoteSemanticResult(
+                _SEMANTIC_PAYLOAD["hard_gates"],
+                _SEMANTIC_PAYLOAD["dimensions"],
+                _semantic_evidence(),
+            ),
+        ),
+        draft={"action": "create", "file_name": "Note.md", "content": "draft"},
+    )
+
+    report = render_case_md(run)
+
+    assert "- faithful source: source-faithful" in report
+    assert "- faithful draft: draft-faithful" in report
+    assert "- faithful reason: reason-faithful" in report
+
+
 def test_learning_report_renders_every_review_assessment_field():
     """An unanswerable question still shows empty answer/evidence and its reason."""
     case = EvalCase(
@@ -408,7 +460,7 @@ def test_learning_report_renders_every_review_assessment_field():
     semantic = LearningNoteSemanticResult(
         _SEMANTIC_PAYLOAD["hard_gates"],
         _SEMANTIC_PAYLOAD["dimensions"],
-        _SEMANTIC_PAYLOAD["evidence"],
+        _semantic_evidence(),
         [
             SimpleNamespace(
                 question="缺了什么？",
