@@ -40,6 +40,12 @@ def test_learning_notes_source_keeps_representative_original_passages():
     source = load_cases(_LEARNING_CASES, ["l01"])[0].user
     passages = [
         "If you do much work on computers, eventually you find that there’s some task you’d like to automate.",
+        "shell scripts are best at moving around files and changing text data, not well-suited for GUI applications or games",
+        "it can take a lot of development time to get even a first-draft program",
+        "Python allows you to split your program into modules that can be reused in other Python programs",
+        "It comes with a large collection of standard modules",
+        "Python is an interpreted language",
+        "because no compilation and linking is necessary",
         "the high-level data types allow you to express complex operations in a single statement",
         "statement grouping is done by indentation instead of beginning and ending brackets",
         "no variable or argument declarations are necessary",
@@ -94,29 +100,80 @@ def test_literal_fixture_keeps_only_source_heading_and_paragraph_sequence():
     literal = (_FIXTURES / "literal.md").read_text(encoding="utf-8")
     headings = re.findall(r"^#{1,6} .+$", literal, flags=re.MULTILINE)
     paragraphs = [block for block in literal.split("\n\n") if not block.startswith("#")]
+    topic_evidence = [
+        "移动文件和修改文本数据",
+        "GUI 应用或游戏",
+        "第一版程序",
+        "拆成模块",
+        "标准模块",
+        "不需要编译和链接",
+        "高级数据类型让你能用一条语句表达复杂操作",
+        "语句分组通过缩进完成",
+        "不需要变量或参数声明",
+        "添加新的内建函数或模块",
+        "Monty Python’s Flying Circus",
+        "表达式、语句和数据类型",
+        "异常和用户自定义类",
+    ]
+    semantic_subheadings = [
+        "为什么会需要 Python",
+        "选择 Python 的对比依据",
+        "支撑开发效率的能力",
+        "模块与标准库",
+        "解释执行与交互",
+        "代码为何通常更短、更易读",
+        "与 C 连接：扩展与嵌入",
+        "名称与学习路线",
+    ]
 
     assert headings == ["## 1. 激发你的兴趣"]
     assert len(paragraphs) >= 12
     assert paragraphs[0].startswith("如果你经常使用计算机")
     assert paragraphs[-1].startswith("教程其余部分")
+    assert all(evidence in literal for evidence in topic_evidence)
+    assert all(heading not in literal for heading in semantic_subheadings)
 
 
 def test_omitted_fixture_excludes_a_declared_must_concept():
     """The omitted candidate demonstrably drops the C-extension concept."""
     case = load_cases(_LEARNING_CASES, ["l01"])[0]
     omitted = (_FIXTURES / "omitted.md").read_text(encoding="utf-8")
+    retained_topics = [
+        "自动化",
+        "Shell",
+        "C/C++/Java",
+        "模块",
+        "标准模块",
+        "解释型语言",
+        "高级数据类型",
+        "Monty Python’s Flying Circus",
+        "表达式、语句和数据类型",
+        "函数、模块、异常和用户自定义类",
+    ]
 
     assert any(concept.startswith("用 C 添加内建函数") for concept in case.must_concepts)
     assert "内建函数或模块" not in omitted
     assert "嵌入 C 应用" not in omitted
+    assert all(topic in omitted for topic in retained_topics)
 
 
 def test_hallucinated_fixture_contains_a_forbidden_claim():
     """The hallucinated candidate contains a claim forbidden by l01."""
     case = load_cases(_LEARNING_CASES, ["l01"])[0]
     hallucinated = (_FIXTURES / "hallucinated.md").read_text(encoding="utf-8")
+    retained_topics = [
+        "批量替换文本",
+        "Shell",
+        "C/C++/Java",
+        "可复用模块",
+        "标准库",
+        "解释执行",
+        "Python 程序通常更短",
+        "Monty Python’s Flying Circus",
+    ]
 
     assert any(claim in hallucinated for claim in case.forbidden_claims)
+    assert all(topic in hallucinated for topic in retained_topics)
 
 
 @pytest.mark.parametrize(
