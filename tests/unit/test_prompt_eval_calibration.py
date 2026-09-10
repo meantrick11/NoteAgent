@@ -1,6 +1,7 @@
 """Executable learning-note Judge calibration contracts without network access."""
 
 import json
+import shutil
 from pathlib import Path
 
 from langchain_core.messages import AIMessage
@@ -118,6 +119,9 @@ async def test_calibration_calls_all_candidates_and_passes_contract():
     assert model.calls == list(_NAMES)
     assert result["pass"] is True
     assert result["errors"] == []
+    assert all(
+        len(result["candidates"][name]["fixture_sha256"]) == 64 for name in _NAMES
+    )
     assert result["contracts"] == {
         "good_qualified": True,
         "literal_hard_gates": True,
@@ -125,8 +129,40 @@ async def test_calibration_calls_all_candidates_and_passes_contract():
         "literal_processing_below_threshold": True,
         "omitted_incomplete": True,
         "hallucinated_unfaithful": True,
+        "good_structure_gt_literal": True,
+        "good_fluent_gt_literal": True,
+        "good_processing_gt_literal": True,
         "good_dimension_sum_gt_literal": True,
     }
+
+
+async def test_calibration_requires_good_to_lead_literal_on_each_core_dimension():
+    """A higher total cannot hide a tie on structure, fluent, or processing."""
+    payloads = _passing_payloads()
+    payloads["literal"] = _payload(
+        dimensions={
+            "structure": 4,
+            "fluent": 3,
+            "form": 0,
+            "retrievable": 0,
+            "processing": 1,
+        },
+        draft_evidence="Python",
+    )
+    model = ScriptedJudge(payloads)
+
+    result = await calibrate_learning_note(
+        case_path=_CASES,
+        case_id="l01",
+        fixtures_dir=_FIXTURES,
+        judge_model=model,
+        judge_model_name="judge-scripted",
+        judge_prompt_path=_PROMPT,
+    )
+
+    assert result["contracts"]["good_dimension_sum_gt_literal"] is True
+    assert result["contracts"]["good_structure_gt_literal"] is False
+    assert result["pass"] is False
 
 
 async def test_calibration_reports_bad_order_and_hard_gate():
@@ -173,4 +209,28 @@ async def test_calibration_continues_after_one_judge_parse_failure():
     assert model.calls == list(_NAMES)
     assert result["pass"] is False
     assert "invalid Judge JSON" in result["candidates"]["literal"]["error"]
+    assert result["candidates"]["hallucinated"]["error"] is None
+
+
+async def test_calibration_continues_when_one_fixture_is_missing(tmp_path: Path):
+    """A fixture read error belongs to that candidate and later candidates still run."""
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    for name in ("good", "omitted", "hallucinated"):
+        shutil.copyfile(_FIXTURES / f"{name}.md", fixtures / f"{name}.md")
+    model = ScriptedJudge(_passing_payloads())
+
+    result = await calibrate_learning_note(
+        case_path=_CASES,
+        case_id="l01",
+        fixtures_dir=fixtures,
+        judge_model=model,
+        judge_model_name="judge-scripted",
+        judge_prompt_path=_PROMPT,
+    )
+
+    assert model.calls == ["good", "omitted", "hallucinated"]
+    assert result["pass"] is False
+    assert result["candidates"]["literal"]["error"]
+    assert result["candidates"]["literal"]["fixture_sha256"] is None
     assert result["candidates"]["hallucinated"]["error"] is None

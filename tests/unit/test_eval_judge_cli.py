@@ -1,6 +1,7 @@
 """Judge model selection and calibration CLI tests without network access."""
 
 import json
+import shutil
 from pathlib import Path
 
 from pydantic import SecretStr
@@ -75,7 +76,10 @@ def test_calibration_cli_archives_effective_model_and_hashes(
         captured.update(kwargs)
         return {
             "case_id": "l01",
-            "candidates": {},
+            "candidates": {
+                name: {"fixture_sha256": "a" * 64}
+                for name in ("good", "literal", "omitted", "hallucinated")
+            },
             "contracts": {"sample": True},
             "pass": True,
             "errors": [],
@@ -138,7 +142,10 @@ def test_calibration_cli_marks_separate_judge_independent(
     async def fake_calibrate(**kwargs):
         return {
             "case_id": "l01",
-            "candidates": {},
+            "candidates": {
+                name: {"fixture_sha256": "a" * 64}
+                for name in ("good", "literal", "omitted", "hallucinated")
+            },
             "contracts": {},
             "pass": True,
             "errors": [],
@@ -155,3 +162,49 @@ def test_calibration_cli_marks_separate_judge_independent(
     assert config["judge_model"] == "separate-judge"
     assert config["judge_independent"] is True
     assert "judge_independent=false" not in capsys.readouterr().err
+
+
+def test_calibration_cli_archives_missing_fixture_failure_and_exits_one(
+    monkeypatch, tmp_path: Path
+):
+    """A failed calibration still writes null hash metadata and returns exit 1."""
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    source_fixtures = _ROOT / "evals" / "prompt" / "fixtures" / "learning_notes"
+    for name in ("good", "omitted", "hallucinated"):
+        shutil.copyfile(source_fixtures / f"{name}.md", fixtures / f"{name}.md")
+    results = tmp_path / "results"
+    monkeypatch.setattr(calibrate_learning_notes, "project_root", lambda: _ROOT)
+    monkeypatch.setattr(calibrate_learning_notes, "RESULTS_ROOT", results)
+    monkeypatch.setattr(
+        calibrate_learning_notes,
+        "Settings",
+        lambda: _settings(judge_model="separate-judge"),
+    )
+    monkeypatch.setattr(calibrate_learning_notes, "setup_logging", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        calibrate_learning_notes,
+        "create_judge_model",
+        lambda settings, model_name=None: object(),
+    )
+
+    async def fake_calibrate(**kwargs):
+        return {
+            "case_id": "l01",
+            "candidates": {"literal": {"error": "fixture missing"}},
+            "contracts": {},
+            "pass": False,
+            "errors": ["literal: fixture missing"],
+        }
+
+    monkeypatch.setattr(
+        calibrate_learning_notes, "calibrate_learning_note", fake_calibrate
+    )
+
+    exit_code = calibrate_learning_notes.main(["--fixtures", str(fixtures)])
+
+    assert exit_code == 1
+    dest = next(results.iterdir())
+    config = json.loads((dest / "config.json").read_text(encoding="utf-8"))
+    assert config["fixture_sha256"]["literal.md"] is None
+    assert "literal: fixture missing" in config["errors"]

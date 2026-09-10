@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
         "case_path": _display_path(root, case_path),
         "case_file_sha256": _sha256(case_path),
         "fixture_sha256": {
-            f"{name}.md": _sha256(fixtures_dir / f"{name}.md")
+            f"{name}.md": result["candidates"].get(name, {}).get("fixture_sha256")
             for name in CANDIDATE_NAMES
         },
         "judge_model": judge_model_name,

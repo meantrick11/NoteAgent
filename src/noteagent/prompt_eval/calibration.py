@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from pathlib import Path
 
@@ -34,9 +35,9 @@ async def calibrate_learning_note(
     )
     for name in CANDIDATE_NAMES:
         fixture_path = fixtures_dir / f"{name}.md"
-        content = fixture_path.read_text(encoding="utf-8")
         candidate = {
             "fixture": fixture_path.name,
+            "fixture_sha256": None,
             "hard_gates": {},
             "dimensions": {},
             "qualified": False,
@@ -44,6 +45,10 @@ async def calibrate_learning_note(
             "error": None,
         }
         try:
+            content = fixture_path.read_text(encoding="utf-8")
+            candidate["fixture_sha256"] = hashlib.sha256(
+                fixture_path.read_bytes()
+            ).hexdigest()
             semantic = await judge_learning_note(
                 judge_model,
                 model_name=judge_model_name,
@@ -130,10 +135,22 @@ def _evaluate_contracts(candidates: dict[str, dict], thresholds: dict[str, int])
         and omitted["hard_gates"].get("complete") is False,
         "hallucinated_unfaithful": hallucinated["error"] is None
         and hallucinated["hard_gates"].get("faithful") is False,
+        "good_structure_gt_literal": _dimension_gt(good, literal, "structure"),
+        "good_fluent_gt_literal": _dimension_gt(good, literal, "fluent"),
+        "good_processing_gt_literal": _dimension_gt(good, literal, "processing"),
         "good_dimension_sum_gt_literal": good["error"] is None
         and literal["error"] is None
         and _dimension_sum(good) > _dimension_sum(literal),
     }
+
+
+def _dimension_gt(good: dict, literal: dict, name: str) -> bool:
+    """Require one good-candidate dimension to strictly exceed literal."""
+    return (
+        good["error"] is None
+        and literal["error"] is None
+        and good["dimensions"].get(name, -1) > literal["dimensions"].get(name, -1)
+    )
 
 
 def _dimension_sum(candidate: dict) -> int:

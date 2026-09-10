@@ -61,6 +61,8 @@ hallucinated.md 因无来源命题被忠实硬门淘汰
 - `omitted.md` 文笔可读但缺关键内容，完整硬门失败；
 - `hallucinated.md` 可读但加入动态类型、GIL、异步优势等来源外结论，忠实硬门失败。
 
+可执行契约还要求 `good.md` 的 structure、fluent、processing 三项分别严格高于 `literal.md`。`literal.md` 必须低于 processing 阈值，但不限制它只能因 processing 一项而不合格。
+
 先用固定四候选执行 Judge 校准：
 
 ```bash
