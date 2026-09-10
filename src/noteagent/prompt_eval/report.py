@@ -265,11 +265,20 @@ def render_case_md(run, config: dict | None = None) -> str:
 
 
 def _sorted_runs(runs: list) -> list:
-    """Behavior failures first, then lowest total, then faithful / complete / structure."""
+    """Sort learning qualification explicitly while preserving legacy total order."""
 
     def key(run) -> tuple:
         score: NoteScore = run.score
-        if not score.behavior_pass or score.total is None:
+        if not score.behavior_pass:
+            return (0, 0.0, 0.0, 0.0, 0.0, run.seq)
+        if run.case.task_mode == "learning_note":
+            qualification_rank = {False: 0, None: 1, True: 2}[score.qualified]
+            dimension_sum = sum(
+                score.dimensions.get(name, 0)
+                for name in ("structure", "fluent", "form", "retrievable", "processing")
+            )
+            return (1, qualification_rank, dimension_sum, 0.0, 0.0, run.seq)
+        if score.total is None:
             return (0, 0.0, 0.0, 0.0, 0.0, run.seq)
         parents = score.parents
         return (

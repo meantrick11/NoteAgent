@@ -9,11 +9,18 @@ from langchain_core.messages import AIMessage
 from noteagent.bootstrap.settings import Settings
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.prompt_eval.cases import EvalCase, load_cases
-from noteagent.prompt_eval.report import case_filename, render_case_md, result_dest, write_stage
+from noteagent.prompt_eval.report import (
+    _sorted_runs,
+    case_filename,
+    render_case_md,
+    result_dest,
+    write_stage,
+)
 from noteagent.prompt_eval.run import CaseRun, ToolHop, build_eval_agent, run_case, run_eval, seed_notes
 from noteagent.prompt_eval.score import (
     RUBRIC_VERSION,
     LearningNoteSemanticResult,
+    NoteScore,
     score_note,
 )
 
@@ -70,6 +77,17 @@ _SEMANTIC_PAYLOAD = {
         )
     },
 }
+
+
+def _verifiable_semantic_payload(source: str, draft: str) -> dict:
+    """Return semantic evidence copied from the supplied source and draft."""
+    return {
+        **_SEMANTIC_PAYLOAD,
+        "evidence": {
+            name: {"source": [source], "draft": [draft]}
+            for name in _SEMANTIC_PAYLOAD["evidence"]
+        },
+    }
 
 
 def _settings() -> Settings:
@@ -195,7 +213,9 @@ async def test_run_case_calls_scripted_judge_for_learning_draft(tmp_path: Path):
         notes=notes,
         history=history,
         drafts=drafts,
-        judge_model=ScriptedJudge(_SEMANTIC_PAYLOAD),
+        judge_model=ScriptedJudge(
+            _verifiable_semantic_payload("Source fact.", "学习笔记")
+        ),
         judge_model_name="judge-scripted",
     )
 
@@ -300,7 +320,7 @@ async def test_run_eval_records_same_model_as_not_independent(tmp_path: Path):
         prompt_path=_PROMPT,
         settings=settings,
         model=model,
-        judge_model=ScriptedJudge(_SEMANTIC_PAYLOAD),
+        judge_model=ScriptedJudge(_verifiable_semantic_payload("source", "draft")),
         prompt_display="system.txt",
         cases_display="learning.jsonl",
     )
@@ -310,6 +330,63 @@ async def test_run_eval_records_same_model_as_not_independent(tmp_path: Path):
     assert config["judge_independent"] is False
     assert len(config["judge_prompt_sha256"]) == 64
     assert config["judge_failures"] == {}
+
+
+def test_sorted_runs_orders_learning_status_then_dimension_sum():
+    """Learning runs sort by behavior, qualification state, score sum, then sequence."""
+    case = EvalCase(
+        id="learning",
+        kind="quality",
+        user="source",
+        expect_propose=True,
+        task_mode="learning_note",
+    )
+
+    def run(seq: int, qualified, dimension_sum: int, *, behavior_pass: bool = True):
+        dimensions = {name: 0 for name in _SEMANTIC_PAYLOAD["dimensions"]}
+        dimensions["processing"] = dimension_sum
+        return CaseRun(
+            seq=seq,
+            case=case,
+            score=NoteScore(
+                behavior_pass=behavior_pass,
+                total=None,
+                parents={},
+                metrics=[],
+                qualified=qualified,
+                dimensions=dimensions,
+            ),
+        )
+
+    ordered = _sorted_runs(
+        [
+            run(7, True, 4),
+            run(3, None, 0),
+            run(6, False, 3),
+            run(1, None, 0, behavior_pass=False),
+            run(5, False, 1),
+            run(8, True, 2),
+        ]
+    )
+
+    assert [item.seq for item in ordered] == [1, 5, 6, 3, 8, 7]
+
+
+def test_sorted_runs_keeps_legacy_total_ordering():
+    """Legacy runs retain lowest-total ordering after behavior failures."""
+    case = EvalCase(id="legacy", kind="quality", user="source", expect_propose=True)
+    low = CaseRun(
+        seq=2,
+        case=case,
+        score=NoteScore(True, 20.0, {"faithful": 20.0}, []),
+    )
+    high = CaseRun(
+        seq=1,
+        case=case,
+        score=NoteScore(True, 80.0, {"faithful": 80.0}, []),
+    )
+
+    assert _sorted_runs([high, low]) == [low, high]
 
 
 def test_write_stage_layout(tmp_path: Path):

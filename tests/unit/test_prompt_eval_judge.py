@@ -167,8 +167,12 @@ class ScriptedJudge:
 
 
 async def test_judge_learning_note_uses_scripted_model():
-    """Judge performs one independent model call and returns parsed semantics."""
-    model = ScriptedJudge(json.dumps(_payload()))
+    """Judge accepts evidence copied exactly from the source and draft."""
+    evidence = {
+        name: {"source": ["Source fact."], "draft": ["笔记"]}
+        for name in (*_GATES, *_DIMENSIONS)
+    }
+    model = ScriptedJudge(json.dumps(_payload(evidence=evidence)))
 
     result = await judge_learning_note(
         model,
@@ -180,3 +184,48 @@ async def test_judge_learning_note_uses_scripted_model():
 
     assert result.hard_gates == _GATES
     assert model.messages
+
+
+async def test_judge_learning_note_rejects_generic_unverifiable_evidence():
+    """Generic Judge prose not present in either input fails at its evidence path."""
+    model = ScriptedJudge(json.dumps(_payload()))
+
+    with pytest.raises(
+        JudgeResultError,
+        match=r"evidence\.task_alignment\.source\[0\]",
+    ):
+        await judge_learning_note(
+            model,
+            model_name="judge-scripted",
+            case=_case(),
+            draft={"file_name": "Python.md", "content": "笔记"},
+            prompt_path=_PROMPT,
+        )
+
+
+@pytest.mark.parametrize(
+    ("thresholds", "expected_error"),
+    [
+        ({"unknown": 3}, "unknown dimension 'unknown'"),
+        ({"structure": "3"}, "structure must be an integer"),
+        ({"structure": 5}, "structure must be from 0 to 4"),
+    ],
+)
+def test_learning_note_invalid_threshold_is_reported_without_raising(
+    thresholds: dict, expected_error: str
+):
+    """Invalid quality threshold configuration makes qualification false."""
+    semantic = LearningNoteSemanticResult(_GATES, dict(_DIMENSIONS), dict(_EVIDENCE))
+
+    result = score_note(
+        _case(quality_thresholds=thresholds),
+        proposed=True,
+        tools=[],
+        action="create",
+        file_name="Python.md",
+        content="笔记",
+        semantic_result=semantic,
+    )
+
+    assert result.qualified is False
+    assert any(expected_error in item for item in result.behavior_evidence)

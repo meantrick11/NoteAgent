@@ -120,6 +120,11 @@ async def judge_learning_note(
         if not isinstance(content, str):
             raise JudgeResultError("Judge response content must be text")
         result = parse_judge_result(content)
+        _validate_evidence_substrings(
+            result,
+            source=case.user,
+            draft=str(draft.get("content") or ""),
+        )
     except Exception:
         elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
         _logger.exception(
@@ -137,6 +142,20 @@ async def judge_learning_note(
         elapsed_ms,
     )
     return result
+
+
+def _validate_evidence_substrings(
+    result: LearningNoteSemanticResult, *, source: str, draft: str
+) -> None:
+    """Require every Judge evidence fragment to occur verbatim in its input."""
+    inputs = {"source": source, "draft": draft}
+    for metric, evidence in result.evidence.items():
+        for side, input_text in inputs.items():
+            for index, fragment in enumerate(evidence[side]):
+                if fragment not in input_text:
+                    raise JudgeResultError(
+                        f"evidence.{metric}.{side}[{index}] is not an input substring"
+                    )
 
 
 def _required_mapping(data: dict, name: str) -> dict:

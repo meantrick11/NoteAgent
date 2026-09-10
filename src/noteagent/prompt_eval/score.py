@@ -133,7 +133,8 @@ def score_note(
         gates_pass = all(
             semantic_result.hard_gates[name] for name in HARD_GATE_ORDER
         )
-        thresholds_pass = all(
+        threshold_errors = _quality_threshold_errors(case.quality_thresholds)
+        thresholds_pass = not threshold_errors and all(
             semantic_result.dimensions[name] >= threshold
             for name, threshold in case.quality_thresholds.items()
         )
@@ -142,7 +143,7 @@ def score_note(
             total=None,
             parents=parents,
             metrics=metrics,
-            behavior_evidence=gate_evidence,
+            behavior_evidence=gate_evidence + threshold_errors,
             qualified=gates_pass and thresholds_pass,
             hard_gates=dict(semantic_result.hard_gates),
             dimensions=dict(semantic_result.dimensions),
@@ -181,6 +182,19 @@ def _score_learning_deterministic(
         _spacing(content),
         *_retrievable(case, file_name),
     ]
+
+
+def _quality_threshold_errors(thresholds: dict) -> list[str]:
+    """Return explicit learning-note threshold configuration errors."""
+    errors: list[str] = []
+    for name, threshold in thresholds.items():
+        if name not in SEMANTIC_DIMENSION_ORDER:
+            errors.append(f"quality_thresholds unknown dimension '{name}'")
+        elif type(threshold) is not int:
+            errors.append(f"quality_thresholds.{name} must be an integer")
+        elif not 0 <= threshold <= 4:
+            errors.append(f"quality_thresholds.{name} must be from 0 to 4")
+    return errors
 
 
 def _behavior_gate(
