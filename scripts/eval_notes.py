@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--judge",
         action="store_true",
-        help="Run the semantic Judge; requires JUDGE_MODEL",
+        help="Run semantic Judge; falls back to CHAT_MODEL when JUDGE_MODEL is empty",
     )
     parser.add_argument("--force", action="store_true", help="Overwrite an existing result folder")
     args = parser.parse_args(argv)
@@ -67,9 +67,13 @@ def main(argv: list[str] | None = None) -> int:
     if not settings.deepseek_api_key.get_secret_value().strip():
         print("DEEPSEEK_API_KEY is not set", file=sys.stderr)
         return 1
+    judge_model_name = _effective_judge_model(settings) if args.judge else None
     if args.judge and not settings.judge_model.strip():
-        print("JUDGE_MODEL is not set", file=sys.stderr)
-        return 1
+        print(
+            f"WARNING: JUDGE_MODEL is empty; using CHAT_MODEL={judge_model_name} "
+            "(judge_independent=false)",
+            file=sys.stderr,
+        )
 
     level = getattr(logging, settings.log_level.upper(), logging.DEBUG)
     setup_logging(settings.log_dir, level=level)
@@ -83,12 +87,16 @@ def main(argv: list[str] | None = None) -> int:
         ids or "all",
         prompt_path,
         settings.chat_model,
-        settings.judge_model if args.judge else "disabled",
+        judge_model_name or "disabled",
     )
     prompt_display = _display_path(root, prompt_path)
     cases_display = _display_path(root, cases_path)
     model = create_chat_model(settings)
-    judge_model = create_judge_model(settings) if args.judge else None
+    judge_model = (
+        create_judge_model(settings, model_name=judge_model_name)
+        if judge_model_name is not None
+        else None
+    )
     asyncio.run(
         run_eval(
             cases,
@@ -97,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
             settings=settings,
             model=model,
             judge_model=judge_model,
+            judge_model_name=judge_model_name,
             prompt_display=prompt_display,
             cases_display=cases_display,
             case_filter=ids,
@@ -106,6 +115,11 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("eval done dest=%s", dest)
     print(dest)
     return 0
+
+
+def _effective_judge_model(settings: Settings) -> str:
+    """Select JUDGE_MODEL when configured, otherwise CHAT_MODEL."""
+    return settings.judge_model.strip() or settings.chat_model.strip()
 
 
 def _display_path(root: Path, path: Path) -> str:

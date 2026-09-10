@@ -61,4 +61,12 @@ hallucinated.md 因无来源命题被忠实硬门淘汰
 - `omitted.md` 文笔可读但缺关键内容，完整硬门失败；
 - `hallucinated.md` 可读但加入动态类型、GIL、异步优势等来源外结论，忠实硬门失败。
 
-边界：该数据集只校准“长篇教程 / 技术文章 → 中文学习型笔记”，不替代行为题，不进入用户私人笔记，也不证明对所有教程已经泛化。可用 `python scripts/eval_notes.py --judge --cases evals/prompt/learning_notes.jsonl --ids l01` 启用 Judge；需配置非空 `JUDGE_MODEL`。不得用字符比、句子边界或标题数量代替上述语义契约。
+先用固定四候选执行 Judge 校准：
+
+```bash
+python scripts/calibrate_learning_notes.py
+```
+
+通过后，再用 `python scripts/eval_notes.py --judge --cases evals/prompt/learning_notes.jsonl --ids l01` 评估生成结果。两条命令都优先使用 `JUDGE_MODEL`；未配置时会明确警告并回退到 `CHAT_MODEL`，同时归档 `judge_independent=false`。同模型结果只用于初步自检，正式版本比较应固定一个与生成模型不同的独立 Judge 模型。
+
+边界：该数据集只校准“长篇教程 / 技术文章 → 中文学习型笔记”，不替代行为题，不进入用户私人笔记，也不证明对所有教程已经泛化。不得用字符比、句子边界或标题数量代替上述语义契约。

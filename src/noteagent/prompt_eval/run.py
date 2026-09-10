@@ -176,6 +176,7 @@ async def run_eval(
     settings: Settings,
     model,
     judge_model=None,
+    judge_model_name: str | None = None,
     judge_prompt_path: Path = JUDGE_PROMPT_PATH,
     prompt_display: str,
     cases_display: str,
@@ -184,6 +185,11 @@ async def run_eval(
 ) -> list[CaseRun]:
     """Run every case with a fresh temp notes dir. Reuse the same chat model."""
     started = datetime.now(timezone.utc)
+    effective_judge_name = (
+        judge_model_name
+        or settings.judge_model.strip()
+        or settings.chat_model.strip()
+    )
     prompt_text = prompt_path.read_text(encoding="utf-8")
     prompt_sha = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()
     runs: list[CaseRun] = []
@@ -203,7 +209,7 @@ async def run_eval(
                 history=history,
                 drafts=drafts,
                 judge_model=judge_model,
-                judge_model_name=settings.judge_model or None,
+                judge_model_name=effective_judge_name if judge_model is not None else None,
                 judge_prompt_path=judge_prompt_path,
             )
             runs.append(run)
@@ -212,10 +218,10 @@ async def run_eval(
         "rubric_version": RUBRIC_VERSION,
         "chat_model": settings.chat_model,
         "prompt_sha256": prompt_sha,
-        "judge_model": settings.judge_model if judge_model is not None else None,
+        "judge_model": effective_judge_name if judge_model is not None else None,
         "judge_prompt_sha256": judge_prompt_sha256(judge_prompt_path),
         "judge_independent": bool(
-            judge_model is not None and settings.judge_model != settings.chat_model
+            judge_model is not None and effective_judge_name != settings.chat_model
         ),
         "judge_failures": {
             run.case.id: run.judge_error for run in runs if run.judge_error is not None

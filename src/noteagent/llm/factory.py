@@ -13,11 +13,14 @@ def create_chat_model(settings: Settings) -> BaseChatModel:
     return _create_deepseek_model(settings, settings.chat_model, purpose="chat")
 
 
-def create_judge_model(settings: Settings) -> BaseChatModel:
-    """Create the independently configured DeepSeek Judge model."""
-    if not settings.judge_model.strip():
-        raise ValueError("JUDGE_MODEL is not set")
-    return _create_deepseek_model(settings, settings.judge_model, purpose="Judge")
+def create_judge_model(
+    settings: Settings, model_name: str | None = None
+) -> BaseChatModel:
+    """Create a Judge using an explicit effective name or JUDGE_MODEL."""
+    effective_name = (model_name or settings.judge_model).strip()
+    if not effective_name:
+        raise ValueError("Judge model name is not set")
+    return _create_deepseek_model(settings, effective_name, purpose="Judge")
 
 
 def _create_deepseek_model(

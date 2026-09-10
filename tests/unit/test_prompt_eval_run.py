@@ -421,6 +421,36 @@ async def test_run_eval_records_same_model_as_not_independent(tmp_path: Path):
     assert index["cases"][0]["semantic_completed"] is True
 
 
+async def test_run_eval_records_effective_fallback_judge_model(tmp_path: Path):
+    """An enabled Judge records the explicit effective name when JUDGE_MODEL is empty."""
+    case = EvalCase(
+        id="l-fallback",
+        kind="quality",
+        user="整理。\n\nsource",
+        expect_propose=False,
+        task_mode="learning_note",
+    )
+    settings = _settings()
+    settings.chat_model = "chat-fallback"
+    settings.judge_model = ""
+
+    await run_eval(
+        [case],
+        dest=tmp_path / "result",
+        prompt_path=_PROMPT,
+        settings=settings,
+        model=ScriptedModel([AIMessage(content="不生成草稿")]),
+        judge_model=object(),
+        judge_model_name="chat-fallback",
+        prompt_display="system.txt",
+        cases_display="learning.jsonl",
+    )
+
+    config = json.loads((tmp_path / "result" / "config.json").read_text(encoding="utf-8"))
+    assert config["judge_model"] == "chat-fallback"
+    assert config["judge_independent"] is False
+
+
 def test_sorted_runs_orders_learning_status_then_dimension_sum():
     """Learning runs sort by behavior, qualification state, score sum, then sequence."""
     case = EvalCase(

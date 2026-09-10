@@ -36,4 +36,12 @@ python scripts/eval_notes.py --ids b06,n05
 
 学习型笔记先过任务匹配、忠实、完整三道硬门，任一失败都不能给出合格结论。四候选的人工排序契约是 `good > literal > omitted`，而 `hallucinated` 必须因无来源命题被忠实硬门淘汰。
 
-校准 fixture 是版本化的评测固定输入，不是用户笔记，也不应被运行时读取。学习型评测可用 `--judge` 启用语义 Judge；缺失或解析失败会明确标为未完成。字符比、句子边界重合度和标题数量均不能用作语义质量代理。单个 Python 教程样本只用于第一阶段校准，不表示对所有教程的泛化能力。
+运行固定候选校准：
+
+```bash
+python scripts/calibrate_learning_notes.py
+```
+
+校准 fixture 是版本化的评测固定输入，不是用户笔记，也不应被运行时读取。学习型评测可用 `--judge` 启用语义 Judge；缺失或解析失败会明确标为未完成。未配置 `JUDGE_MODEL` 时，校准和 `--judge` 会警告并使用 `CHAT_MODEL`，且记录 `judge_independent=false`；这种同模型结果只适合初步自检。正式 Prompt 比较应固定一个与 `CHAT_MODEL` 不同的 `JUDGE_MODEL`。
+
+字符比、句子边界重合度和标题数量均不能用作语义质量代理。单个 Python 教程样本只用于第一阶段校准，不表示对所有教程的泛化能力。
