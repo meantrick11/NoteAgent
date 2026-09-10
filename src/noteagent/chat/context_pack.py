@@ -46,7 +46,8 @@ def source_heading_tree_line(text: str) -> str | None:
     if not headings:
         return None
     return (
-        "材料标题树（须原文用作 ##/###，禁止合并或另造标题）：\n"
+        "材料标题树（覆盖范围与章节边界参考；允许按用户任务翻译、重组并增加有正文依据的子标题；"
+        "不得遗漏各原标题覆盖的信息）：\n"
         + "\n".join(headings)
     )
 

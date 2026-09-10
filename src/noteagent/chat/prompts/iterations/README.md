@@ -2,7 +2,7 @@
 
 运行时只读上一级 [`system.txt`](../system.txt)。本目录是归档，**不要**改 `ChatAgent` 去加载这里的文件。
 
-从 `system.txt` 入库到现在一共 **8 版**。
+从 `system.txt` 入库到现在一共 **9 版**。
 
 | 版 | 日期 | 来源 | 文件 | 改了什么 |
 |----|------|------|------|----------|
@@ -14,5 +14,20 @@
 | v6 | 2026-09-01 | Markdown 写法 | [v6-2026-09-01-md-syntax.txt](./v6-2026-09-01-md-syntax.txt) | 形态合适：围栏代码、行内 code、`>` 引用、块间空行。与当时 `system.txt` 相同 |
 | v7 | 2026-09-01 | 写模式 | [v7-2026-09-01-replace-delete.txt](./v7-2026-09-01-replace-delete.txt) | `propose_note` 增加 replace（整文件覆盖）与 delete；模型先判断 append/create/replace/delete |
 | v8 | 2026-09-05 | 一层目录 | [v8-2026-09-05-one-level-folders.txt](./v8-2026-09-05-one-level-folders.txt) | `file_name` 可为 `Folder/Note.md`；list_files 带文件夹；禁止擅自 mkdir。与现行 `system.txt` 相同 |
+| v9 | 2026-09-10 | 学习型笔记 | [v9-2026-09-10-learning-notes.txt](./v9-2026-09-10-learning-notes.txt) | 默认学习型笔记；语义忠实与覆盖；允许有依据的重组；新增知识加工增益。与现行 `system.txt` 字节一致 |
 
 加新版时：复制当时的 `system.txt` 为 `vN-日期-短名.txt`，在本表追加一行，不要改旧档。人工回归见 [evals/prompt/](../../../../../evals/prompt/README.md)。
+
+## v8 问题与 v9 修正
+
+v8 在 `Whetting Your Appetite` 样本上退化为逐段译文：忠实、完整被原标题、句段数量等表面形式化；系统提示与运行时材料标题树形成双重硬约束，要求原标题原样成为输出标题并禁止另造标题，压制了语义分组和关系显式化。
+
+v9 将普通“记下来/整理成笔记”和“翻译并整理为笔记”定义为学习型笔记，只有显式要求完全忠实翻译、逐段翻译或保持原结构时才沿用原结构。完整度改按语义单元覆盖判断，标题树只标记覆盖范围与章节边界；新增第七条“知识加工增益”，同时保留工具、人审、写模式、引用、Markdown 与安全约束。
+
+评测集固定为 [`evals/prompt/learning_notes.jsonl`](../../../../../evals/prompt/learning_notes.jsonl)。运行：
+
+```bash
+python scripts/eval_notes.py --name v9 --judge --cases evals/prompt/learning_notes.jsonl --ids l01 --prompt src/noteagent/chat/prompts/system.txt
+```
+
+Judge 留痕写入该次结果目录：`config.json` 记录生成模型、Judge 模型、生成 Prompt SHA-256、Judge 配置与 `judge_independent`；每题 Markdown 记录评分、理由及原文/草稿证据。Judge 缺失或解析失败时必须标记“未完成”，不得生成摊权后的分数。
