@@ -153,9 +153,9 @@ def render_case_md(run, config: dict | None = None) -> str:
     )
     if case.task_mode == "learning_note":
         lines.append(f"- 行为门: {'通过' if score.behavior_pass else '**失败**'}")
-        if score.qualified is None:
+        if not score.semantic_completed:
             lines.append("- 语义评测未完成")
-            lines.append("- qualified: `None`")
+            lines.append(f"- qualified: `{score.qualified}`")
         else:
             lines.append("- 语义评测: 已完成")
             lines.append(f"- qualified: `{score.qualified}`")
@@ -304,6 +304,7 @@ def _index_row(run) -> dict:
         "total": score.total,
         "parents": score.parents,
         "qualified": score.qualified,
+        "semantic_completed": score.semantic_completed,
         "hard_gates": score.hard_gates,
         "dimensions": score.dimensions,
     }

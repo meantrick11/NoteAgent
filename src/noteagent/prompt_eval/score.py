@@ -87,6 +87,7 @@ class NoteScore:
     hard_gates: dict[str, bool] = field(default_factory=dict)
     dimensions: dict[str, int] = field(default_factory=dict)
     semantic_evidence: dict[str, dict[str, list[str]]] = field(default_factory=dict)
+    semantic_completed: bool = False
 
 
 def score_note(
@@ -149,6 +150,7 @@ def score_note(
             hard_gates=dict(semantic_result.hard_gates),
             dimensions=dict(semantic_result.dimensions),
             semantic_evidence=dict(semantic_result.evidence),
+            semantic_completed=True,
         )
     metrics = _score_body(case, action=action, file_name=file_name, content=content or "")
     parents = _parent_scores(metrics)

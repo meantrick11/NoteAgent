@@ -99,6 +99,7 @@ def test_learning_note_without_judge_is_incomplete_not_behavior_failure():
 
     assert result.behavior_pass is True
     assert result.qualified is None
+    assert result.semantic_completed is False
     assert result.total is None
     assert result.hard_gates == {}
     assert result.dimensions == {}
@@ -116,6 +117,7 @@ def test_learning_note_without_judge_rejects_invalid_threshold_configuration():
     )
 
     assert result.qualified is False
+    assert result.semantic_completed is False
     assert result.total is None
     assert any(
         "quality_thresholds unknown dimension 'unknown'" in item
@@ -141,6 +143,7 @@ def test_learning_note_fails_when_any_hard_gate_fails(failed_gate: str):
     )
 
     assert result.qualified is False
+    assert result.semantic_completed is True
     assert result.total is None
 
 
@@ -247,4 +250,5 @@ def test_learning_note_invalid_threshold_is_reported_without_raising(
     )
 
     assert result.qualified is False
+    assert result.semantic_completed is True
     assert any(expected_error in item for item in result.behavior_evidence)

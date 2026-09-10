@@ -248,6 +248,27 @@ def test_learning_report_marks_semantic_incomplete_and_completed():
         draft=draft,
         judge_error="invalid Judge JSON",
     )
+    invalid_case = EvalCase(
+        id="l-report-invalid",
+        kind="quality",
+        user="整理。\n\nsource",
+        expect_propose=True,
+        task_mode="learning_note",
+        quality_thresholds={"unknown": 3},
+    )
+    invalid_threshold = CaseRun(
+        seq=1,
+        case=invalid_case,
+        score=score_note(
+            invalid_case,
+            proposed=True,
+            tools=[],
+            action="create",
+            file_name="Note.md",
+            content="draft",
+        ),
+        draft=draft,
+    )
     semantic = LearningNoteSemanticResult(
         _SEMANTIC_PAYLOAD["hard_gates"],
         _SEMANTIC_PAYLOAD["dimensions"],
@@ -269,12 +290,18 @@ def test_learning_report_marks_semantic_incomplete_and_completed():
     )
 
     incomplete_md = render_case_md(incomplete)
+    invalid_threshold_md = render_case_md(invalid_threshold)
     completed_md = render_case_md(completed)
 
     assert "语义评测未完成" in incomplete_md
     assert "invalid Judge JSON" in incomplete_md
     assert "总分: —" in incomplete_md
+    assert "语义评测未完成" in invalid_threshold_md
+    assert "语义评测: 已完成" not in invalid_threshold_md
+    assert "qualified: `False`" in invalid_threshold_md
+    assert "quality_thresholds unknown dimension 'unknown'" in invalid_threshold_md
     assert "qualified: `True`" in completed_md
+    assert "语义评测: 已完成" in completed_md
     assert "task_alignment: 通过" in completed_md
     assert "processing: 3/4" in completed_md
     assert "source-processing" in completed_md
@@ -330,6 +357,8 @@ async def test_run_eval_records_same_model_as_not_independent(tmp_path: Path):
     assert config["judge_independent"] is False
     assert len(config["judge_prompt_sha256"]) == 64
     assert config["judge_failures"] == {}
+    index = json.loads((tmp_path / "result" / "index.json").read_text(encoding="utf-8"))
+    assert index["cases"][0]["semantic_completed"] is True
 
 
 def test_sorted_runs_orders_learning_status_then_dimension_sum():
