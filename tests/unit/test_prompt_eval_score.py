@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from noteagent.prompt_eval.cases import load_cases
-from noteagent.prompt_eval.score import _literals, score_note
+from noteagent.prompt_eval.score import _extract_literals, _literals, score_note
 
 _CASES = Path(__file__).resolve().parents[2] / "evals" / "prompt" / "cases.jsonl"
 
@@ -117,6 +117,50 @@ def test_create_h1_in_body_scores_zero():
         content="# 解释器\n\n" + _N01_BODY,
     )
     assert _metric(result, "structure.h1").score == 0
+
+
+def test_extract_literals_path_wrappers_and_punctuation():
+    """Paths after (, \", or before !/? extract the same /usr/bin literal."""
+    assert _extract_literals("run (/usr/bin) now") == ["/usr/bin"]
+    assert _extract_literals('see "/usr/bin" here') == ["/usr/bin"]
+    assert _extract_literals("use /usr/bin!") == ["/usr/bin"]
+    assert _extract_literals("The binary lives at /usr/bin.") == ["/usr/bin"]
+
+
+def test_extract_literals_skips_io_and_keeps_rich_paths():
+    """I/O is not a path; versions, +/@/~/%/= and Unicode segments stay intact."""
+    assert _extract_literals("file I/O, system calls") == []
+    text = (
+        "/usr/local/bin/python3.14 /srv/app+blue /srv/x@y "
+        "/srv/a~b /srv/p%q /srv/r=s /用户/文档"
+    )
+    assert _extract_literals(text) == [
+        "/usr/local/bin/python3.14",
+        "/srv/app+blue",
+        "/srv/x@y",
+        "/srv/a~b",
+        "/srv/p%q",
+        "/srv/r=s",
+        "/用户/文档",
+        "python3.14",
+    ]
+
+
+def test_extract_literals_path_case_is_preserved():
+    """Unix path matching is case-sensitive; fixed identifiers still lower-case."""
+    upper = _extract_literals("Deploy to /srv/App and python3.14")
+    lower = _extract_literals("Deploy to /srv/app and python3.14")
+    assert upper == ["/srv/App", "python3.14"]
+    assert lower == ["/srv/app", "python3.14"]
+    assert set(upper) != set(lower)
+
+
+def test_literals_path_case_sensitive():
+    """Draft must not swap /srv/App for /srv/app without scoring extra."""
+    material = "Deploy to /srv/App."
+    result = _literals(material, "部署到 /srv/app。")
+    assert result.score == 0
+    assert any("/srv/app" in item for item in result.raw.get("extra", []))
 
 
 def test_literals_io_slash_not_treated_as_path():

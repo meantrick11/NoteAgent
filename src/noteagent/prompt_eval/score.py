@@ -35,16 +35,44 @@ _HEDGE = ("通常", "可能", "往往", "建议", "默认", "usually", "may ", "
 _STRONG = ("一定", "必须", "总是", "绝对", "只能", "must always", "always must")
 _ATX = re.compile(r"^(#{1,6})\s+(\S.*)$")
 _NUMBERED = re.compile(r"^(\d+(?:\.\d+)*)\.?\s+\S")
-# Absolute paths: slash only after whitespace / open bracket or quote (or string start);
-# allow + @ ~ % = and Unicode in segments; dots only inside segments (e.g. python3.14).
-_PATH_SEGMENT = r"[^/\s，。；、,;:.]+(?:\.[^/\s，。；、,;:]+)*"
-_LITERAL = re.compile(
-    rf"(?<![^\s\(\[\"'])/(?:{_PATH_SEGMENT}(?:/{_PATH_SEGMENT})*)"
-    rf"(?=\.(?:[\s，。；、,;:]|$|\)|\]|\"|\')|(?:[\s，。；、,;:]|$|\)|\]|\"|\'))|"
-    r"(?:python\d+\.\d+)|(?:sys\.argv(?:\[\d+\])?)|(?:UTF-8)|(?:Control-[A-Z])|(?:py\.exe)|"
-    r"(?:quit\(\))|(?:functools\.wraps)|(?:@decorator)",
+# Chars that may precede an absolute-path slash (or string start).
+_PATH_PREFIX = frozenset(" \t\n\r([{\"'")
+# Chars that end a path body; sentence periods are stripped afterward via rstrip.
+_PATH_STOP = frozenset(" \t\n\r，。；、,;:)]}\"'!?")
+_FIXED_LITERAL = re.compile(
+    r"python\d+\.\d+|sys\.argv(?:\[\d+\])?|UTF-8|Control-[A-Z]|py\.exe|"
+    r"quit\(\)|functools\.wraps|@decorator",
     re.I,
 )
+
+
+def _extract_literals(text: str) -> list[str]:
+    """Return path and fixed-identifier literals found in *text*.
+
+    Unix paths keep original case; other fixed identifiers are lowercased.
+    Paths start at string begin or after whitespace / an open bracket or quote;
+    the body runs until whitespace or common Chinese/English separators.
+    """
+    found: list[str] = []
+    index = 0
+    length = len(text)
+    while index < length:
+        if text[index] != "/":
+            index += 1
+            continue
+        if index > 0 and text[index - 1] not in _PATH_PREFIX:
+            index += 1
+            continue
+        start = index
+        index += 1
+        while index < length and text[index] not in _PATH_STOP:
+            index += 1
+        path = text[start:index].rstrip(".")
+        if len(path) > 1:
+            found.append(path)
+    for match in _FIXED_LITERAL.finditer(text):
+        found.append(match.group(0).lower())
+    return found
 _COMMAND = re.compile(
     r"python\s+-[cm]\b|import\s+\w+|quit\(\)|#\s*-\*-\s*coding:",
     re.I,
@@ -288,8 +316,8 @@ def _faithful(material: str, content: str) -> list[MetricScore]:
 
 def _literals(material: str, content: str) -> MetricScore:
     """Invented paths / versions / identifiers in the draft score 0."""
-    src = {item.lower() for item in _LITERAL.findall(material)}
-    dst = {item.lower() for item in _LITERAL.findall(content)}
+    src = set(_extract_literals(material))
+    dst = set(_extract_literals(content))
     extra = sorted(dst - src)
     if extra:
         return MetricScore(
