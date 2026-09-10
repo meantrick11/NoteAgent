@@ -23,6 +23,7 @@ from noteagent.prompt_eval.score import (
 _logger = logging.getLogger(__name__)
 
 JUDGE_PROMPT_PATH = Path(__file__).with_name("prompts") / "learning_note_judge.txt"
+JUDGE_MAX_ATTEMPTS = 3
 _JSON_FENCE = re.compile(r"^\s*```json\s*(.*?)\s*```\s*$", re.IGNORECASE | re.DOTALL)
 _RESULT_KEYS = frozenset(
     {"hard_gates", "dimensions", "evidence", "review_questions"}
@@ -117,7 +118,7 @@ async def judge_learning_note(
     draft: dict,
     prompt_path: Path = JUDGE_PROMPT_PATH,
 ) -> LearningNoteSemanticResult:
-    """Call the Judge once and parse its response without logging private text."""
+    """Call the Judge and parse its response, retrying contract errors only."""
     started = time.perf_counter()
     _logger.info("Judge start model=%s case_id=%s", model_name, case.id)
     prompt = prompt_path.read_text(encoding="utf-8")
@@ -135,47 +136,73 @@ async def judge_learning_note(
             "content": draft.get("content"),
         },
     }
-    try:
-        response = await model.ainvoke(
-            [
-                SystemMessage(content=prompt),
-                HumanMessage(
-                    content=json.dumps(request, ensure_ascii=False, separators=(",", ":"))
-                ),
-            ]
-        )
-        content = getattr(response, "content", None)
-        if not isinstance(content, str):
-            raise JudgeResultError("Judge response content must be text")
-        result = parse_judge_result(content)
-        _validate_evidence_substrings(
-            result,
-            source=case.user,
-            draft=str(draft.get("content") or ""),
-            file_name=str(draft.get("file_name") or ""),
-        )
-        _validate_review_questions(
-            result,
-            expected=case.review_questions,
-            draft=str(draft.get("content") or ""),
-        )
-    except Exception:
+    last_contract_error: JudgeResultError | None = None
+    for attempt in range(1, JUDGE_MAX_ATTEMPTS + 1):
+        try:
+            response = await model.ainvoke(
+                [
+                    SystemMessage(content=prompt),
+                    HumanMessage(
+                        content=json.dumps(
+                            request, ensure_ascii=False, separators=(",", ":")
+                        )
+                    ),
+                ]
+            )
+            content = getattr(response, "content", None)
+            if not isinstance(content, str):
+                raise JudgeResultError("Judge response content must be text")
+            result = parse_judge_result(content)
+            _validate_evidence_substrings(
+                result,
+                source=case.user,
+                draft=str(draft.get("content") or ""),
+                file_name=str(draft.get("file_name") or ""),
+            )
+            _validate_review_questions(
+                result,
+                expected=case.review_questions,
+                draft=str(draft.get("content") or ""),
+            )
+        except JudgeResultError as exc:
+            last_contract_error = exc
+            _logger.warning(
+                "Judge contract failed model=%s case_id=%s attempt=%s/%s error=%s",
+                model_name,
+                case.id,
+                attempt,
+                JUDGE_MAX_ATTEMPTS,
+                exc,
+            )
+            if attempt < JUDGE_MAX_ATTEMPTS:
+                continue
+            elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+            _logger.exception(
+                "Judge failed model=%s case_id=%s elapsed_ms=%s",
+                model_name,
+                case.id,
+                elapsed_ms,
+            )
+            raise
+        except Exception:
+            elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+            _logger.exception(
+                "Judge failed model=%s case_id=%s elapsed_ms=%s",
+                model_name,
+                case.id,
+                elapsed_ms,
+            )
+            raise
         elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-        _logger.exception(
-            "Judge failed model=%s case_id=%s elapsed_ms=%s",
+        _logger.info(
+            "Judge end model=%s case_id=%s attempt=%s elapsed_ms=%s success=true",
             model_name,
             case.id,
+            attempt,
             elapsed_ms,
         )
-        raise
-    elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-    _logger.info(
-        "Judge end model=%s case_id=%s elapsed_ms=%s success=true",
-        model_name,
-        case.id,
-        elapsed_ms,
-    )
-    return result
+        return result
+    raise last_contract_error or JudgeResultError("Judge returned no result")
 
 
 def _validate_evidence_substrings(

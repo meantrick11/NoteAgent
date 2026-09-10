@@ -15,8 +15,8 @@ from noteagent.bootstrap.settings import Settings, project_root
 from noteagent.llm.factory import create_judge_model
 from noteagent.observability.logging import setup_logging
 from noteagent.prompt_eval.calibration import CANDIDATE_NAMES, calibrate_learning_note
+from noteagent.prompt_eval.cases import LEARNING_RUBRIC_VERSION
 from noteagent.prompt_eval.judge import JUDGE_PROMPT_PATH, judge_prompt_sha256
-from noteagent.prompt_eval.score import RUBRIC_VERSION
 
 DEFAULT_CASES = Path("evals/prompt/learning_notes.jsonl")
 DEFAULT_FIXTURES = Path("evals/prompt/fixtures/learning_notes")
@@ -81,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     finished = datetime.now(timezone.utc)
     config = {
-        "rubric_version": RUBRIC_VERSION,
+        "rubric_version": LEARNING_RUBRIC_VERSION,
         "case_id": args.case_id,
         "case_path": _display_path(root, case_path),
         "case_file_sha256": _sha256(case_path),

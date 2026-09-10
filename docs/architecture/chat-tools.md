@@ -204,7 +204,7 @@ HTTP：`POST /chat/review`，body [`ReviewRequest`](../../src/noteagent/chat/sch
 | [`chat/agent.py`](../../src/noteagent/chat/agent.py) | hop 循环、SSE draft、`review` |
 | [`chat/router.py`](../../src/noteagent/chat/router.py) | `GET /conversations/{id}`、`POST /chat`、`POST /chat/review` |
 | [`chat/schemas.py`](../../src/noteagent/chat/schemas.py) | `ReviewRequest`、`ConversationDetailOut` |
-| [`prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt) | 意图门与质量约束 |
+| [`prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt) | 意图门与七条质量约束（现行 v9） |
 | [`web/templates/home.html`](../../src/noteagent/web/templates/home.html) | 审批卡片 |
 | [`notes/repository.py`](../../src/noteagent/notes/repository.py) | 真正 IO |
 | [retrieval.md](./retrieval.md) | 切块、Chroma、审批后同步（不在本文展开） |

@@ -8,7 +8,12 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from noteagent.prompt_eval.cases import EvalCase
-from noteagent.prompt_eval.judge import JudgeResultError, judge_learning_note, parse_judge_result
+from noteagent.prompt_eval.judge import (
+    JUDGE_MAX_ATTEMPTS,
+    JudgeResultError,
+    judge_learning_note,
+    parse_judge_result,
+)
 from noteagent.prompt_eval.score import LearningNoteSemanticResult, SemanticEvidence, score_note
 
 
@@ -422,15 +427,22 @@ def test_learning_note_literal_diagnostics_do_not_override_semantic_judge():
 
 
 class ScriptedJudge:
-    """Fake LangChain-compatible Judge with one asynchronous reply."""
+    """Fake LangChain-compatible Judge with one or more asynchronous replies."""
 
-    def __init__(self, content: str):
-        self.content = content
+    def __init__(self, content: str | list[str]):
+        self.replies = [content] if isinstance(content, str) else list(content)
         self.messages = None
+        self.calls = 0
+        self._last = None
 
     async def ainvoke(self, messages):
         self.messages = messages
-        return AIMessage(content=self.content)
+        self.calls += 1
+        if self.replies:
+            self._last = self.replies.pop(0)
+        if self._last is None:
+            raise AssertionError("ScriptedJudge has no remaining replies")
+        return AIMessage(content=self._last)
 
 
 async def test_judge_learning_note_uses_scripted_model():
@@ -706,6 +718,34 @@ async def test_judge_learning_note_rejects_generic_unverifiable_evidence():
             draft={"file_name": "Python.md", "content": "笔记"},
             prompt_path=_PROMPT,
         )
+
+    assert model.calls == JUDGE_MAX_ATTEMPTS
+
+
+async def test_judge_learning_note_retries_until_contract_passes():
+    """A later attempt is used when early replies violate the evidence contract."""
+    invalid = json.dumps(_payload())
+    evidence = {
+        name: {
+            "source": ["Source fact."],
+            "draft": ["笔记"],
+            "reason": "任务与草稿片段支持该判定",
+        }
+        for name in (*_GATES, *_DIMENSIONS)
+    }
+    valid = json.dumps(_payload(evidence=evidence))
+    model = ScriptedJudge([invalid, valid])
+
+    result = await judge_learning_note(
+        model,
+        model_name="judge-scripted",
+        case=_case(),
+        draft={"file_name": "Python.md", "content": "笔记"},
+        prompt_path=_PROMPT,
+    )
+
+    assert model.calls == 2
+    assert result.hard_gates == _GATES
 
 
 @pytest.mark.parametrize(

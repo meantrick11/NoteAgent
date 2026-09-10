@@ -1,0 +1,76 @@
+{
+  "case_id": "l01",
+  "candidates": {
+    "good": {
+      "fixture": "good.md",
+      "fixture_sha256": "043faac4393f5707b2f66558c9a37b89db78d8f02107d892686ab7a08124e767",
+      "hard_gates": {},
+      "dimensions": {},
+      "qualified": false,
+      "evidence": {},
+      "review_questions": [],
+      "error": "evidence.task_alignment.source[1] is not an input substring"
+    },
+    "literal": {
+      "fixture": "literal.md",
+      "fixture_sha256": "c31e0739dd4308610fd919564273cb9d65769aaadf5ebed6b3e8af2e1192d800",
+      "hard_gates": {},
+      "dimensions": {},
+      "qualified": false,
+      "evidence": {},
+      "review_questions": [],
+      "error": "evidence.faithful.source[0] is not an input substring"
+    },
+    "omitted": {
+      "fixture": "omitted.md",
+      "fixture_sha256": "e20159057881de37e6f417ffc382626bd2d5a241604c8cdfc32fe7bd35126bf6",
+      "hard_gates": {},
+      "dimensions": {},
+      "qualified": false,
+      "evidence": {},
+      "review_questions": [],
+      "error": "evidence.task_alignment.source[1] is not an input substring"
+    },
+    "hallucinated": {
+      "fixture": "hallucinated.md",
+      "fixture_sha256": "d56c4b3b0888676c90cdd6f8e0c48e6198851c86492bf117c17fdfcc2f25b310",
+      "hard_gates": {},
+      "dimensions": {},
+      "qualified": false,
+      "evidence": {},
+      "review_questions": [],
+      "error": "evidence.complete.source[3] is not an input substring"
+    }
+  },
+  "contracts": {
+    "good_qualified": false,
+    "literal_hard_gates": false,
+    "literal_unqualified": false,
+    "literal_processing_below_threshold": false,
+    "omitted_incomplete": false,
+    "omitted_review_question_unanswerable": false,
+    "hallucinated_unfaithful": false,
+    "good_structure_gt_literal": false,
+    "good_fluent_gt_literal": false,
+    "good_processing_gt_literal": false,
+    "good_dimension_sum_gt_literal": false
+  },
+  "pass": false,
+  "errors": [
+    "good: evidence.task_alignment.source[1] is not an input substring",
+    "literal: evidence.faithful.source[0] is not an input substring",
+    "omitted: evidence.task_alignment.source[1] is not an input substring",
+    "hallucinated: evidence.complete.source[3] is not an input substring",
+    "contract failed: good_qualified",
+    "contract failed: literal_hard_gates",
+    "contract failed: literal_unqualified",
+    "contract failed: literal_processing_below_threshold",
+    "contract failed: omitted_incomplete",
+    "contract failed: omitted_review_question_unanswerable",
+    "contract failed: hallucinated_unfaithful",
+    "contract failed: good_structure_gt_literal",
+    "contract failed: good_fluent_gt_literal",
+    "contract failed: good_processing_gt_literal",
+    "contract failed: good_dimension_sum_gt_literal"
+  ]
+}

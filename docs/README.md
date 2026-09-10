@@ -13,24 +13,29 @@
 3. **[architecture/chat-tools.md](architecture/chat-tools.md)** — 四工具参数、人审动作。
 4. **[architecture/context-management.md](architecture/context-management.md)** — 上下文装配公式、压缩、stub。
 5. **[architecture/database.md](architecture/database.md)** — PostgreSQL 两表列与实例。
-6. **[evaluations/README.md](evaluations/README.md)** — 评测准则与账本划分（笔记正文 v0.1；工具 / RAG 以后）。数据不在这里。
+6. **[evaluations/README.md](evaluations/README.md)** — 评测准则与账本划分（笔记正文现行 v0.2；旧 `cases.jsonl` 仍走 v0.1；工具 / RAG 以后）。数据不在这里。
 7. **[architecture/retrieval.md](architecture/retrieval.md)** — 切块、Chroma 点、人写盘后同步、查询。
 8. **[architecture/observability.md](architecture/observability.md)** — 日志三层、Agent/Index 轨迹、业务 logger。
 9. **[roadmap/versions.md](roadmap/versions.md)** — V1–V3 版本目标、小版本功能和验收要求。
-10. **`src/noteagent/**/README.md`** — 与代码同步的包说明。
+10. `src/noteagent/**/README.md` — 与代码同步的包说明。
 11. **[evals/](../evals/README.md)** — 黄金集（考题）；跑分结果在 [evals/prompt/results/](../evals/prompt/results/README.md)，不进 pytest。
 12. **[plans/](plans/README.md)** — 已做过的实现切片；另含未写入代码的入库 Job 设想。
 13. **[architecture/DESIGN.md](architecture/DESIGN.md)** — 屏幕/音频采集旧稿。不要按它写代码。
 
+
+
 ## 目录
 
-| 目录 | 里面有什么 |
-|------|------------|
-| [tutorials/](tutorials/README.md) | 运行与开发教程（按层级 × 语言） |
-| [architecture/](architecture/README.md) | 架构书与附件（含 frontend）；DESIGN 与画布见该目录说明 |
-| [roadmap/](roadmap/versions.md) | V1–V3 产品迭代要求与阶段验收标准 |
-| [design/](design/README.md) | 子系统设计文档索引 |
-| [plans/](plans/README.md) | 实现规格与入库设想 |
-| [decisions/](decisions/README.md) | ADR，目前可空 |
-| [evaluations/](evaluations/README.md) | 评测准则（笔记正文 v0.1；工具 / RAG 以后）；黄金集在 [evals/](../evals/README.md) |
-| [references/](references/README.md) | 外部摘录，不是契约 |
+
+| 目录                                      | 里面有什么                                                         |
+| --------------------------------------- | ------------------------------------------------------------- |
+| [tutorials/](tutorials/README.md)       | 运行与开发教程（按层级 × 语言）                                             |
+| [architecture/](architecture/README.md) | 架构书与附件（含 frontend）；DESIGN 与画布见该目录说明                           |
+| [roadmap/](roadmap/versions.md)         | V1–V3 产品迭代要求与阶段验收标准                                           |
+| [design/](design/README.md)             | 子系统设计文档索引                                                     |
+| [plans/](plans/README.md)               | 实现规格与入库设想                                                     |
+| [decisions/](decisions/README.md)       | ADR，目前可空                                                      |
+| [evaluations/](evaluations/README.md)   | 评测准则（笔记正文现行 v0.2；旧题仍走 v0.1；工具 / RAG 以后）；黄金集在 [evals/](../evals/README.md) |
+| [references/](references/README.md)     | 外部摘录，不是契约                                                     |
+
+

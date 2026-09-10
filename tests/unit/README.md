@@ -22,7 +22,10 @@
 | `test_chat_agent_context.py` | stub 入库、跨 Turn 无全文工具、hop 上限、压缩、token 分片、工具后 `generating`、tool hop `think` |
 | `test_citations.py` | `source_id` 登记、sanitize 丢假号、用到的引用按出现顺序重排 1..n |
 | `test_prompt_eval_score.py` | v0.1 L1：标题树、发明标题、锚点、create 正文 H1 |
-| `test_prompt_eval_run.py` | 脚本化 Agent、seed_files、`n00.md` / `index.json` 布局 |
+| `test_prompt_eval_learning_notes.py` | v0.2 学习型字段与资格判定 |
+| `test_prompt_eval_judge.py` | Judge JSON 契约与重试 |
+| `test_prompt_eval_calibration.py` | 四候选校准契约 |
+| `test_prompt_eval_run.py` | 脚本化 Agent、seed_files、`n00.md` / `index.json` 布局、rubric 版本 |
 
 ## 基础使用
 

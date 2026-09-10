@@ -17,14 +17,14 @@ from noteagent.chat.history import ConversationStore, start_turn
 from noteagent.chat.tools import build_chat_tools
 from noteagent.db import Base, create_engine_from_url, create_session_factory
 from noteagent.notes.repository import FileNoteRepository
-from noteagent.prompt_eval.cases import EvalCase
+from noteagent.prompt_eval.cases import EvalCase, case_rubric_version
 from noteagent.prompt_eval.judge import (
     JUDGE_PROMPT_PATH,
     judge_learning_note,
     judge_prompt_sha256,
 )
 from noteagent.prompt_eval.report import case_filename, write_stage
-from noteagent.prompt_eval.score import RUBRIC_VERSION, score_note
+from noteagent.prompt_eval.score import score_note
 
 _logger = logging.getLogger(__name__)
 
@@ -215,8 +215,17 @@ async def run_eval(
             )
             runs.append(run)
     finished = datetime.now(timezone.utc)
+    rubric_versions = {
+        run.case.id: case_rubric_version(run.case) for run in runs
+    }
+    distinct_rubric_versions = set(rubric_versions.values())
     config = {
-        "rubric_version": RUBRIC_VERSION,
+        "rubric_version": (
+            next(iter(distinct_rubric_versions))
+            if len(distinct_rubric_versions) == 1
+            else "mixed"
+        ),
+        "rubric_versions": rubric_versions,
         "chat_model": settings.chat_model,
         "prompt_sha256": prompt_sha,
         "cases_sha256": cases_sha256,

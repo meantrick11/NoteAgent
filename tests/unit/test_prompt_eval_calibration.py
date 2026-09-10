@@ -4,6 +4,7 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
 from langchain_core.messages import AIMessage
 
 from noteagent.prompt_eval.cases import load_cases
@@ -152,6 +153,8 @@ async def test_calibration_calls_all_candidates_and_passes_contract():
         "literal_unqualified": True,
         "literal_processing_below_threshold": True,
         "omitted_incomplete": True,
+        "omitted_task_aligned": True,
+        "omitted_faithful": True,
         "omitted_review_question_unanswerable": True,
         "hallucinated_unfaithful": True,
         "good_structure_gt_literal": True,
@@ -219,6 +222,42 @@ async def test_calibration_fails_when_fluent_below_threshold():
 
     assert result["contracts"]["literal_fluent_at_least_threshold"] is False
     assert result["pass"] is False
+
+
+@pytest.mark.parametrize(
+    ("gate", "contract"),
+    [
+        ("task_alignment", "omitted_task_aligned"),
+        ("faithful", "omitted_faithful"),
+    ],
+)
+async def test_calibration_rejects_omitted_candidate_failing_other_hard_gate(
+    gate: str, contract: str
+):
+    """Omission calibration fails if omitted also violates alignment or faithfulness."""
+    payloads = _passing_payloads()
+    payloads["omitted"] = _payload(
+        gates={
+            "task_alignment": gate != "task_alignment",
+            "faithful": gate != "faithful",
+            "complete": False,
+        },
+        draft_evidence="Python",
+        unanswerable={5},
+    )
+
+    result = await calibrate_learning_note(
+        case_path=_CASES,
+        case_id="l01",
+        fixtures_dir=_FIXTURES,
+        judge_model=ScriptedJudge(payloads),
+        judge_model_name="judge-scripted",
+        judge_prompt_path=_PROMPT,
+    )
+
+    assert result["contracts"][contract] is False
+    assert result["pass"] is False
+    assert f"contract failed: {contract}" in result["errors"]
 
 
 async def test_calibration_requires_good_to_lead_literal_on_structure_and_processing():
@@ -293,7 +332,9 @@ async def test_calibration_continues_after_one_judge_parse_failure():
         judge_prompt_path=_PROMPT,
     )
 
-    assert model.calls == list(_NAMES)
+    assert model.calls[0] == "good"
+    assert model.calls.count("literal") == 3
+    assert model.calls[-2:] == ["omitted", "hallucinated"]
     assert result["pass"] is False
     assert "invalid Judge JSON" in result["candidates"]["literal"]["error"]
     assert result["candidates"]["hallucinated"]["error"] is None

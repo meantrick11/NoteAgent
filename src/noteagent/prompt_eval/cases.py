@@ -9,6 +9,9 @@ from pathlib import Path
 
 _logger = logging.getLogger(__name__)
 
+LEGACY_RUBRIC_VERSION = "v0.1"
+LEARNING_RUBRIC_VERSION = "v0.2"
+
 
 @dataclass
 class EvalCase:
@@ -34,6 +37,13 @@ class EvalCase:
     forbidden_claims: list[str] = field(default_factory=list)
     review_questions: list[str] = field(default_factory=list)
     quality_thresholds: dict[str, int] = field(default_factory=dict)
+
+
+def case_rubric_version(case: EvalCase) -> str:
+    """Return the scoring rubric assigned to one eval case."""
+    if case.task_mode == "learning_note":
+        return LEARNING_RUBRIC_VERSION
+    return LEGACY_RUBRIC_VERSION
 
 
 def load_cases(path: Path, ids: list[str] | None = None) -> list[EvalCase]:

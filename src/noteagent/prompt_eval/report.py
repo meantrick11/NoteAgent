@@ -145,6 +145,11 @@ def render_case_md(run, config: dict | None = None) -> str:
         f"- kind: `{case.kind}`",
         f"- style: `{case.style}`",
     ]
+    rubric_version = meta.get("rubric_versions", {}).get(
+        case.id, meta.get("rubric_version")
+    )
+    if rubric_version:
+        lines.append(f"- rubric_version: `{rubric_version}`")
     if meta.get("cases_path"):
         filt = meta.get("case_filter")
         filt_text = ",".join(filt) if filt else "all"

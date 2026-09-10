@@ -152,6 +152,10 @@ def _evaluate_contracts(candidates: dict[str, dict], thresholds: dict[str, int])
         and literal["dimensions"].get("processing", 5) < processing_threshold,
         "omitted_incomplete": omitted["error"] is None
         and omitted["hard_gates"].get("complete") is False,
+        "omitted_task_aligned": omitted["error"] is None
+        and omitted["hard_gates"].get("task_alignment") is True,
+        "omitted_faithful": omitted["error"] is None
+        and omitted["hard_gates"].get("faithful") is True,
         "omitted_review_question_unanswerable": omitted["error"] is None
         and any(
             item.get("answerable") is False

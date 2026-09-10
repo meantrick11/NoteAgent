@@ -32,8 +32,6 @@ python scripts/eval_notes.py --name v9 --judge --cases evals/prompt/learning_not
 
 Judge 留痕写入该次结果目录：`config.json` 记录生成模型、Judge 模型、生成 Prompt SHA-256、Judge 配置与 `judge_independent`；每题 Markdown 记录评分、理由及原文/草稿证据。Judge 缺失或解析失败时必须标记“未完成”，不得生成摊权后的分数。
 
-2026-09-10 用 deepseek-v4-flash 对四固定候选做同模型校准（`judge_independent=false`）：good/literal 的 fluent 均为 4，结构/加工/维度总和区分仍成立。校准契约已从「优秀 fluent 严格高于机械译文」改为双方 fluent 均须达阈值；优秀靠结构和加工增益领先。
+2026-09-10 用 deepseek-v4-flash 对四固定候选做同模型校准（`judge_independent=false`）：good/literal 的 fluent 均可为 4，结构/加工/维度总和区分仍成立。校准契约已从「优秀 fluent 严格高于机械译文」改为双方 fluent 均须达阈值；优秀靠结构和加工增益领先。早期失败跑次（非逐字证据、协议外字段）按设计留痕，未放宽契约。通过结果在 [`evals/prompt/results/learning_notes/calibration_l01_20260910-135238-835257/`](../../../../../evals/prompt/results/learning_notes/calibration_l01_20260910-135238-835257/)。正式 Prompt 比较仍应固定与生成模型不同的独立 `JUDGE_MODEL`。
 
-同日复跑显示该模型不适合作为稳定的严格 Judge：四个候选中两个完成，另两个分别返回了非逐字证据和协议外字段，校准按设计失败并留痕。后续正式比较应固定更擅长结构化输出的独立 `JUDGE_MODEL`，不能通过放宽证据或 JSON 契约掩盖模型不稳定。
-
-v9 对 `l01` 的两次无 Judge 真实生成都不再只有原文单一标题，而是按自动化需求、方案取舍、语言能力和学习路线增加语义小节；其中一次仍较多沿用原段落顺序。因此当前只能确认生成方向改善，不能在独立 Judge 完成前宣称知识加工增益稳定达到 3/4。
+v9 对 `l01` 的 `--judge` 实跑（[`v9-learning_l01_20260910-215727`](../../../../../evals/prompt/results/learning_notes/v9-learning_l01_20260910-215727/)）：行为门通过，三道硬门通过，复习题 8/8；`qualified=false`（structure 2/4、processing 1/4、fluent 4/4）。草稿仍是按原文顺序的译文。v9 是现行生成提示词，不是已合格版本。

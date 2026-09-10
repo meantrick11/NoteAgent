@@ -1,0 +1,34 @@
+{
+  "rubric_version": "v0.2",
+  "case_id": "l01",
+  "case_path": "evals/prompt/learning_notes.jsonl",
+  "case_file_sha256": "36c288f058f1481712c04249b38182cea7b2ce31807c9d30a05530ef966b04f2",
+  "fixture_sha256": {
+    "good.md": "043faac4393f5707b2f66558c9a37b89db78d8f02107d892686ab7a08124e767",
+    "literal.md": "c31e0739dd4308610fd919564273cb9d65769aaadf5ebed6b3e8af2e1192d800",
+    "omitted.md": "e20159057881de37e6f417ffc382626bd2d5a241604c8cdfc32fe7bd35126bf6",
+    "hallucinated.md": "d56c4b3b0888676c90cdd6f8e0c48e6198851c86492bf117c17fdfcc2f25b310"
+  },
+  "judge_model": "deepseek-v4-flash",
+  "judge_prompt_sha256": "9243ba524689b19b169ab73a536e6483294914c343577b7d0ed797ae13164dc9",
+  "judge_independent": false,
+  "started_at": "2026-09-10T13:12:24.086009+00:00",
+  "finished_at": "2026-09-10T13:14:46.680240+00:00",
+  "errors": [
+    "good: evidence.task_alignment.source[1] is not an input substring",
+    "literal: evidence.faithful.source[0] is not an input substring",
+    "omitted: evidence.task_alignment.source[1] is not an input substring",
+    "hallucinated: evidence.complete.source[3] is not an input substring",
+    "contract failed: good_qualified",
+    "contract failed: literal_hard_gates",
+    "contract failed: literal_unqualified",
+    "contract failed: literal_processing_below_threshold",
+    "contract failed: omitted_incomplete",
+    "contract failed: omitted_review_question_unanswerable",
+    "contract failed: hallucinated_unfaithful",
+    "contract failed: good_structure_gt_literal",
+    "contract failed: good_fluent_gt_literal",
+    "contract failed: good_processing_gt_literal",
+    "contract failed: good_dimension_sum_gt_literal"
+  ]
+}

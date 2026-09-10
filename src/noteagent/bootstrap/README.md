@@ -6,7 +6,7 @@
 
 | 文件 | 模块 | 作用 |
 |------|------|------|
-| `settings.py` | `Settings`、`project_root()` | `.env`：密钥、路径、模型、**上下文窗口/压缩/stub/`CHAT_MAX_TOOL_HOPS`** |
+| `settings.py` | `Settings`、`project_root()` | `.env`：密钥、路径、模型、**上下文窗口/压缩/stub/`CHAT_MAX_TOOL_HOPS`**；`JUDGE_MODEL` 仅离线评测 |
 | `app.py` | `AppContainer`、`build_container`、`create_app` | 构造 `engine`、`history`、`ChatAgent(..., budget=budget_from_settings)`；shutdown dispose engine |
 | `__init__.py` | 再导出上述符号 | `from noteagent.bootstrap import Settings` |
 

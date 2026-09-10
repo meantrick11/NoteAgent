@@ -71,4 +71,6 @@ python scripts/calibrate_learning_notes.py
 
 通过后，再用 `python scripts/eval_notes.py --judge --cases evals/prompt/learning_notes.jsonl --ids l01` 评估生成结果。两条命令都优先使用 `JUDGE_MODEL`；未配置时会明确警告并回退到 `CHAT_MODEL`，同时归档 `judge_independent=false`。同模型结果只用于初步自检，正式版本比较应固定一个与生成模型不同的独立 Judge 模型。
 
+已通过的四候选校准：[`results/learning_notes/calibration_l01_20260910-135238-835257/`](results/learning_notes/calibration_l01_20260910-135238-835257/)。v9 在 `l01` 上的 Judge 实跑（[`v9-learning_l01_20260910-215727`](results/learning_notes/v9-learning_l01_20260910-215727/)）硬门通过、`qualified=false`（structure 2、processing 1）。
+
 边界：该数据集只校准“长篇教程 / 技术文章 → 中文学习型笔记”，不替代行为题，不进入用户私人笔记，也不证明对所有教程已经泛化。不得用字符比、句子边界或标题数量代替上述语义契约。

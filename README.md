@@ -165,7 +165,7 @@ uv run pytest -q
 | [零基础（Docker）](docs/tutorials/zh/getting-started.md) | 从零打开浏览器 |
 | [本机开发](docs/tutorials/zh/local-dev.md) | uv、Postgres、测试、环境变量 |
 | [架构说明书](docs/architecture/architecture.md) | 现行系统设计；附件在同目录；评测见第 6 节 |
-| [评测准则](docs/evaluations/README.md) | 笔记正文 v0.1；工具 / RAG 以后 |
+| [评测准则](docs/evaluations/README.md) | 笔记正文现行 v0.2；旧题仍走 v0.1；工具 / RAG 以后 |
 | [evals/](evals/README.md) | 黄金集；离线跑分 `scripts/eval_notes.py`，结果在 `evals/prompt/results/`，不进默认 CI |
 | [docs/plans/](docs/plans/README.md) | 已做的实现规格；不要把未落地的 plan 当成现行系统 |
 

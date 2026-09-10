@@ -9,7 +9,7 @@ from langchain_core.messages import AIMessage
 
 from noteagent.bootstrap.settings import Settings
 from noteagent.notes.repository import FileNoteRepository
-from noteagent.prompt_eval.cases import EvalCase, load_cases
+from noteagent.prompt_eval.cases import EvalCase, case_rubric_version, load_cases
 from noteagent.prompt_eval.report import (
     _sorted_runs,
     case_filename,
@@ -544,6 +544,8 @@ async def test_run_eval_records_same_model_as_not_independent(tmp_path: Path):
     )
 
     config = json.loads((tmp_path / "result" / "config.json").read_text(encoding="utf-8"))
+    assert config["rubric_version"] == "v0.2"
+    assert config["rubric_versions"] == {"l-config": "v0.2"}
     assert config["judge_model"] == "same-model"
     assert config["judge_independent"] is False
     assert len(config["judge_prompt_sha256"]) == 64
@@ -555,6 +557,8 @@ async def test_run_eval_records_same_model_as_not_independent(tmp_path: Path):
     assert index["cases"][0]["semantic_completed"] is True
     assert index["review_questions"] == {"answered": 1, "total": 1}
     assert index["cases"][0]["review_questions"] == {"answered": 1, "total": 1}
+    report = (tmp_path / "result" / "l-config.md").read_text(encoding="utf-8")
+    assert "- rubric_version: `v0.2`" in report
 
 
 async def test_run_eval_records_effective_fallback_judge_model(tmp_path: Path):
@@ -586,6 +590,99 @@ async def test_run_eval_records_effective_fallback_judge_model(tmp_path: Path):
     config = json.loads((tmp_path / "result" / "config.json").read_text(encoding="utf-8"))
     assert config["judge_model"] == "chat-fallback"
     assert config["judge_independent"] is False
+
+
+def test_case_rubric_version_keeps_legacy_v01_and_learning_v02():
+    """Rubric selection depends only on the case task mode."""
+    legacy = EvalCase(id="legacy", kind="quality", user="source", expect_propose=False)
+    learning = EvalCase(
+        id="learning",
+        kind="quality",
+        user="source",
+        expect_propose=False,
+        task_mode="learning_note",
+    )
+
+    assert case_rubric_version(legacy) == "v0.1"
+    assert case_rubric_version(learning) == "v0.2"
+
+
+async def test_run_eval_records_legacy_rubric_v01(tmp_path: Path):
+    """A legacy-only run records v0.1 globally, by case, and in its report."""
+    case = EvalCase(
+        id="legacy-config",
+        kind="quality",
+        user="source",
+        expect_propose=False,
+    )
+
+    await run_eval(
+        [case],
+        dest=tmp_path / "legacy-result",
+        prompt_path=_PROMPT,
+        settings=_settings(),
+        model=ScriptedModel([AIMessage(content="不生成草稿")]),
+        cases_sha256="3" * 64,
+        prompt_display="system.txt",
+        cases_display="cases.jsonl",
+    )
+
+    config = json.loads(
+        (tmp_path / "legacy-result" / "config.json").read_text(encoding="utf-8")
+    )
+    assert config["rubric_version"] == "v0.1"
+    assert config["rubric_versions"] == {"legacy-config": "v0.1"}
+    report = (tmp_path / "legacy-result" / "legacy-config.md").read_text(
+        encoding="utf-8"
+    )
+    assert "- rubric_version: `v0.1`" in report
+
+
+async def test_run_eval_records_mixed_rubrics_and_per_case_reports(tmp_path: Path):
+    """A mixed run keeps each case version while marking the aggregate mixed."""
+    legacy = EvalCase(
+        id="legacy-mixed",
+        kind="quality",
+        user="legacy source",
+        expect_propose=False,
+    )
+    learning = EvalCase(
+        id="learning-mixed",
+        kind="quality",
+        user="learning source",
+        expect_propose=False,
+        task_mode="learning_note",
+    )
+
+    await run_eval(
+        [legacy, learning],
+        dest=tmp_path / "mixed-result",
+        prompt_path=_PROMPT,
+        settings=_settings(),
+        model=ScriptedModel(
+            [AIMessage(content="不生成草稿"), AIMessage(content="不生成草稿")]
+        ),
+        cases_sha256="4" * 64,
+        prompt_display="system.txt",
+        cases_display="mixed.jsonl",
+    )
+
+    config = json.loads(
+        (tmp_path / "mixed-result" / "config.json").read_text(encoding="utf-8")
+    )
+    assert config["rubric_version"] == "mixed"
+    assert config["rubric_versions"] == {
+        "legacy-mixed": "v0.1",
+        "learning-mixed": "v0.2",
+    }
+    legacy_report = (tmp_path / "mixed-result" / "legacy-mixed.md").read_text(
+        encoding="utf-8"
+    )
+    learning_report = (tmp_path / "mixed-result" / "learning-mixed.md").read_text(
+        encoding="utf-8"
+    )
+    assert "- rubric_version: `v0.1`" in legacy_report
+    assert "- rubric_version: `v0.2`" in learning_report
 
 
 def test_sorted_runs_orders_learning_status_then_dimension_sum():

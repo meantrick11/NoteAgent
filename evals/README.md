@@ -2,13 +2,13 @@
 
 本目录放**黄金集（考题）**和提示词离线跑分结果。不要把私人笔记全文放进来。
 
-**准则不在这里。** 记笔记正文怎么打分、六条和小指标、与生成链路的隔离：见 [docs/evaluations/](../docs/evaluations/README.md)，尤其是 [note-quality.md](../docs/evaluations/note-quality.md)。
+**准则不在这里。** 记笔记正文怎么打分、七个质量方面、与生成链路的隔离：见 [docs/evaluations/](../docs/evaluations/README.md)，尤其是 [note-quality.md](../docs/evaluations/note-quality.md)。旧 [`prompt/cases.jsonl`](prompt/cases.jsonl) 仍按 v0.1 六维小指标计 `total`；学习型 [`prompt/learning_notes.jsonl`](prompt/learning_notes.jsonl) 走 v0.2 硬门 + Judge。
 
 **不要放进 `tests/`。** `tests/` 是无网络、无真实 LLM 的 pytest。本目录的一键脚本不进默认 CI。不要让写草稿的同一个模型给自己打分。不要往 `notes/` 回流生成结果。
 
 | 目录 | 用途 |
 |------|------|
-| [prompt/](prompt/README.md) | 系统提示 / 笔记正文考题（20 条）+ 意图门 behavior 条；结果在 [prompt/results/](prompt/results/README.md) |
+| [prompt/](prompt/README.md) | 系统提示 / 笔记正文考题（`cases.jsonl` 20 条 + `learning_notes.jsonl` 的 `l01`）+ 意图门 behavior 条；结果在 [prompt/results/](prompt/results/README.md) |
 | [rag/](rag/README.md) | 检索 query（尚未填） |
 | [agent/](agent/README.md) | 多 hop 轨迹（尚未单开；能复用 prompt 集则先复用） |
 
@@ -17,6 +17,8 @@
 ```bash
 python scripts/eval_notes.py --ids b06,n05
 python scripts/eval_notes.py --name v8 --ids n01,n03 --prompt src/noteagent/chat/prompts/system.txt
+python scripts/eval_notes.py --name v9 --judge --cases evals/prompt/learning_notes.jsonl --ids l01
+python scripts/calibrate_learning_notes.py
 ```
 
 进程内 `ChatAgent`（`CHAT_MODEL` + 四工具），临时 notes / SQLite，不启动 HTTP，不人审写盘。无 `DEEPSEEK_API_KEY` 时退出码 1。
@@ -29,8 +31,8 @@ python scripts/eval_notes.py --name v8 --ids n01,n03 --prompt src/noteagent/chat
 4. `content` 是否以 `# ` 当正文一级标题（结构扣分）。
 5. `style` 为 `faithful_paragraphs` 时，主体应是段落；`outline` 允许短列表；`excerpt` 不应出现未点名的其它大节标题。材料里有代码/命令/REPL/备注时，草稿须有围栏或 `>` 引用（n03 / n08 另见 `must_substrings`）。
 
-行为失败与正文分两列记，不混成一个 Agent 总分。失败则记下 id，只改一类 prompt，归档 `prompts/iterations/vN`，再跑同一集。
+行为失败与正文分两列记，不混成一个 Agent 总分。失败则记下 id，只改一类 prompt，归档 `prompts/iterations/vN`，再跑同一集。学习型题的硬门、维度和校准契约见 [prompt/README.md](prompt/README.md)。
 
 ## 字段
 
-`id`、`kind`（quality|behavior）、`user`、`expect_propose`、`expect_tools_prefix`、`must_headings`、`forbidden_headings`、`must_anchors`、`must_substrings`（可选）、`style`、`expect_action`（可选）、`seed_files`（可选，评测开始前写入临时 notes）。
+`id`、`kind`（quality|behavior）、`user`、`expect_propose`、`expect_tools_prefix`、`must_headings`、`forbidden_headings`、`must_anchors`、`must_substrings`（可选）、`style`、`expect_action`（可选）、`seed_files`（可选，评测开始前写入临时 notes）。学习型题另有 `task_mode`、`must_concepts`、`review_questions` 等字段，见 [prompt/README.md](prompt/README.md)。
