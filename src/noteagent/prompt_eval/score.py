@@ -36,8 +36,9 @@ _STRONG = ("一定", "必须", "总是", "绝对", "只能", "must always", "alw
 _ATX = re.compile(r"^(#{1,6})\s+(\S.*)$")
 _NUMBERED = re.compile(r"^(\d+(?:\.\d+)*)\.?\s+\S")
 _LITERAL = re.compile(
-    r"(?:/[^\s，。；]+)|(?:python\d+\.\d+)|(?:sys\.argv(?:\[\d+\])?)|(?:UTF-8)|"
-    r"(?:Control-[A-Z])|(?:py\.exe)|(?:quit\(\))|(?:functools\.wraps)|(?:@decorator)",
+    r"(?<![A-Za-z])(?:/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*)|(?:python\d+\.\d+)|"
+    r"(?:sys\.argv(?:\[\d+\])?)|(?:UTF-8)|(?:Control-[A-Z])|(?:py\.exe)|(?:quit\(\))|"
+    r"(?:functools\.wraps)|(?:@decorator)",
     re.I,
 )
 _COMMAND = re.compile(

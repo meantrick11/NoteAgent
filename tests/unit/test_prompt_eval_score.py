@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from noteagent.prompt_eval.cases import load_cases
-from noteagent.prompt_eval.score import score_note
+from noteagent.prompt_eval.score import _literals, score_note
 
 _CASES = Path(__file__).resolve().parents[2] / "evals" / "prompt" / "cases.jsonl"
 
@@ -117,6 +117,33 @@ def test_create_h1_in_body_scores_zero():
         content="# 解释器\n\n" + _N01_BODY,
     )
     assert _metric(result, "structure.h1").score == 0
+
+
+def test_literals_io_slash_not_treated_as_path():
+    """English I/O must not make /O a spurious absolute-path literal."""
+    material = (
+        "Some modules provide file I/O, system calls, sockets, "
+        "and even GUI toolkits like Tk."
+    )
+    content = "其中一些模块提供文件 I/O、系统调用、套接字（sockets）。"
+    result = _literals(material, content)
+    assert result.metric_id == "faithful.literals"
+    assert result.score == 10
+    extra = result.raw.get("extra", [])
+    assert not any("/O" in item or "系统调用" in item or "套接字" in item for item in extra)
+
+
+def test_literals_unix_absolute_path_still_detected():
+    """Real Unix paths like /usr/local/bin/python3.14 must still be tracked."""
+    material = "Python is usually installed as /usr/local/bin/python3.14 on Unix."
+    faithful = _literals(material, "解释器通常安装为 /usr/local/bin/python3.14 on Unix.")
+    assert faithful.score == 10
+    assert "/usr/local/bin/python3.14" in faithful.raw["source"]
+    assert "/usr/local/bin/python3.14" in faithful.raw["draft"]
+
+    invented = _literals(material, "解释器在 /usr/local/bin/python3.99 on Unix.")
+    assert invented.score == 0
+    assert any("python3.99" in item for item in invented.raw["extra"])
 
 
 def test_behavior_fail_does_not_score_body():
