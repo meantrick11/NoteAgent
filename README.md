@@ -2,6 +2,8 @@
 
 个人学习笔记助手。本机 Web · Docker 或 uv · 人审后写 Markdown。
 
+产品远景是把对话、网页、视频与会议等内容整理为可复用材料；当前交付以聊天笔记闭环为起点。业务边界见 [产品与业务架构](docs/product/business-architecture.md)，未来能力与验收见 [版本路线](docs/roadmap/versions.md)。
+
 在浏览器里对话，把值得保留的内容整理成 Markdown 草稿，**你点同意之后**才写入本地 `notes/`，并按该文件重建检索索引。单用户、单进程；聊天模型走外网（默认 DeepSeek）；笔记是普通 `.md`，可以自己打开、搬家。
 
 当前版本：`0.1.0`（见 `pyproject.toml`）。
@@ -26,7 +28,7 @@
 
 | 点 | 含义 |
 |----|------|
-| 人审写盘 | 模型不能直接改文件。`propose_note` 只把草稿放进内存；同意后才 `create` / `append` / `replace` / `delete`。细节：[聊天工具](docs/architecture/chat-tools.md) |
+| 人审写盘 | 模型不能直接改文件。`propose_note` 将待审草稿保存到会话；同意后才 `create` / `append` / `replace` / `delete`。细节：[聊天工具](docs/architecture/chat-tools.md) |
 | Chat \| Documents | 同一张页面两套主界面：聊天管会话，Documents 管磁盘上的笔记。布局：[前端](docs/architecture/frontend.md) |
 | 一层目录 | 允许 `notes/Folder/Note.md`，禁止两层和 `..`。根下 `notes/*.md` 为未进文件夹的篇 |
 | 派生检索 | Chroma 由 Markdown 重建。索引失败不回滚已写入的笔记。[检索](docs/architecture/retrieval.md) |
@@ -58,7 +60,7 @@
 | `list_files` | 列出笔记相对路径（只读） |
 | `read_file` | 读一篇正文（只读） |
 | `search_relative_from_chromadb` | 语义检索已索引片段（只读） |
-| `propose_note` | 提交草稿到内存，**不写盘** |
+| `propose_note` | 持久化会话待审草稿，**不修改正式笔记** |
 
 参数、返回值和审批动作：[聊天工具](docs/architecture/chat-tools.md)。系统提示词在 [`src/noteagent/chat/prompts/system.txt`](src/noteagent/chat/prompts/system.txt)。
 
@@ -164,6 +166,8 @@ uv run pytest -q
 |------|------|
 | [零基础（Docker）](docs/tutorials/zh/getting-started.md) | 从零打开浏览器 |
 | [本机开发](docs/tutorials/zh/local-dev.md) | uv、Postgres、测试、环境变量 |
+| [产品与业务架构](docs/product/business-architecture.md) | 记录与复用场景、业务对象、整理方案及目标边界 |
+| [版本路线](docs/roadmap/versions.md) | 分阶段交付、当前证据缺口与验收要求 |
 | [架构说明书](docs/architecture/architecture.md) | 现行系统设计；附件在同目录；评测见第 6 节 |
 | [评测准则](docs/evaluations/README.md) | 笔记正文现行 v0.2；旧题仍走 v0.1；工具 / RAG 以后 |
 | [evals/](evals/README.md) | 黄金集；离线跑分 `scripts/eval_notes.py`，结果在 `evals/prompt/results/`，不进默认 CI |

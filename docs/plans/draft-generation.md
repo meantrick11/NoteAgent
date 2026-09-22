@@ -1,5 +1,7 @@
 # 入库 Job（设想，非现行系统）
 
+> **历史参考，非当前实施规格（2026-09-22）。** 后续设计以 [产品与业务架构](../product/business-architecture.md) 和 [版本路线](../roadmap/versions.md) 为准。本文下列旧假设不再作为约束：“一篇来源一篇 Markdown”“成功后丢弃全部网页正文”“强制独立 Reviewer”“Collector 不能写任何文件”。目标允许多来源与多材料关联，保留必要核对依据；Reviewer 须经评测证明收益；Collector 可在授权范围内保存来源，但不能提交正式材料。审批后索引等能力已部分落地，当前状态以现行架构为准。
+
 > 现行对话 → 提案 → 人审 → `notes/` 见 [architecture.md](../architecture/architecture.md) 与 [chat-tools.md](../architecture/chat-tools.md)。  
 > 本文只保留尚未写入代码的 IngestionJob / URL 源 / 自动索引设想，供以后做入库时对照。不要按本文理解当前进程。
 

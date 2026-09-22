@@ -2,6 +2,8 @@
 
 [`architecture.md`](./architecture.md) 统领现行全局架构。下面是附件（参数、公式、表列、检索点、界面、日志），不替代架构书。
 
+上层业务见 [产品与业务架构](../product/business-architecture.md)，阶段目标与验收见 [版本路线](../roadmap/versions.md)。未来的记录任务、来源管理和多模态材料不代表本目录所述代码已经实现。
+
 ## 现行
 
 | 文件 | 内容 |
