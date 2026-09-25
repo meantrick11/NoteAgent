@@ -34,8 +34,11 @@ RUN uv sync --frozen --no-dev \
     && uv pip install --python .venv/bin/python "torch==2.12.1" \
         --index-url https://download.pytorch.org/whl/cpu
 
-# Bake MiniLM so runtime can use EMBEDDING_LOCAL_FILES_ONLY=true.
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2', cache_folder='var/models')"
+# Bake the evaluated default model so runtime can use EMBEDDING_LOCAL_FILES_ONLY=true.
+# 换模型时必须同时改这一行，否则镜像里没有权重、启动会失败。
+ARG HF_ENDPOINT=https://hf-mirror.com
+ENV HF_ENDPOINT=${HF_ENDPOINT}
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-small', cache_folder='var/models')"
 
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
 RUN chmod +x /app/docker/entrypoint.sh \

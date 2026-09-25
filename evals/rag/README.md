@@ -36,11 +36,19 @@ uv run python scripts/eval_rag.py --corpus evals/rag/corpus/v1 \
 # 复现旧基线（char 500/50 + 正文嵌入）
 uv run python scripts/eval_rag.py --split dev --variant baseline \
   --strategy char --no-embed-heading-prefix --run-id rag-v1-baseline-dev
+
+# 换向量模型：编码指令按模型自动应用（见 retrieval/embedder.py 的 MODEL_INSTRUCTIONS）
+uv run python scripts/eval_rag.py --split dev --variant candidate-zh \
+  --model BAAI/bge-small-zh-v1.5 --run-id rag-v1-candidate-zh-dev
+uv run python scripts/eval_rag.py --split dev --variant candidate-multi \
+  --model intfloat/multilingual-e5-small --run-id rag-v1-candidate-multi-dev
 ```
 
-参数：`--strategy char|heading`（默认取 `CHUNK_STRATEGY`）、`--embed-heading-prefix / --no-embed-heading-prefix`（默认取 `EMBED_HEADING_PREFIX`）、`--chunk-size`、`--chunk-overlap`、`--top-k`（主指标口径，默认 5）、`--probe-k`（诊断用的更深候选，默认 20）、`--repeats`、`--warmup`。每个 run 在 `var/evals/rag/<run-id>/` 新建独立 Chroma，不复用生产索引，也不写生产 `notes/`。
+参数：`--model`（候选向量模型完整 id，默认取 `EMBEDDING_MODEL`）、`--strategy char|heading`（默认取 `CHUNK_STRATEGY`）、`--embed-heading-prefix / --no-embed-heading-prefix`（默认取 `EMBED_HEADING_PREFIX`）、`--chunk-size`、`--chunk-overlap`、`--top-k`（主指标口径，默认 5）、`--probe-k`（诊断用的更深候选，默认 20）、`--repeats`、`--warmup`。每个 run 在 `var/evals/rag/<run-id>/` 新建独立 Chroma，不复用生产索引，也不写生产 `notes/`。
 
-任务六的五个对照 run 都留在 `results/`：`rag-v1-baseline-dev`、`rag-v1-heading-dev`、`rag-v1-heading-prefix-dev`（选定配置）、`rag-v1-char320-dev`、`rag-v1-heading-prefix-320-dev`；结论见 [docs/evaluations/rag-v1-report.md](../../docs/evaluations/rag-v1-report.md) §5。
+模型文件用 [`scripts/download_models.py`](../../scripts/download_models.py) 走镜像取（hf.co 直连不通；huggingface_hub 因镜像不回 `x-repo-commit` 头而拒绝下载，脚本改为手工构建 HF 缓存布局）。缓存在 `EMBEDDING_CACHE_DIR`（当前 `D:\develop\aidevelop\transformer_models`）。
+
+对照 run 都留在 `results/`：切块五项见 §5（`rag-v1-baseline-dev`、`rag-v1-heading-dev`、`rag-v1-heading-prefix-dev` = 选定、`rag-v1-char320-dev`、`rag-v1-heading-prefix-320-dev`），向量模型两项为 `rag-v1-candidate-zh-dev`、`rag-v1-candidate-multi-dev`；结论见 [docs/evaluations/rag-v1-report.md](../../docs/evaluations/rag-v1-report.md)。
 
 ## 查询集字段
 

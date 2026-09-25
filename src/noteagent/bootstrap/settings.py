@@ -34,8 +34,10 @@ class Settings(BaseSettings):
     chroma_dir: Path = Path("chromadb_persist")
     chroma_collection: str = "my_knowledge"
 
+    # 默认向量模型由评测选出（见 docs/evaluations/rag-v1-report.md §6）：
+    # e5-small 让 dev Recall@5 从 9/18 升到 17/18，代价是多占约 350MB 内存与 1.6x 查询延迟。
     embedding_model: str = Field(
-        default="all-MiniLM-L6-v2",
+        default="intfloat/multilingual-e5-small",
         validation_alias="EMBEDDING_MODEL",
     )
     embedding_cache_dir: Path = Field(

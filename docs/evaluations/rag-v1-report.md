@@ -18,6 +18,7 @@
 | 主要失败原因 | **排序**（8/13 失败放到前 20 名就能覆盖），其余 5 条返回片段里没有完整证据 |
 | Agent 基线 | **任务成功率 25/30（83.3%）**，严格引用口径 22/30；检索调用率 26/30；无答案正确处理率 3/6；引用可定位到文件 100%、带回引文 56.3% |
 | 任务六（切块） | 选定 `heading` + 章节路径进嵌入文本：**Recall@5 5/18 → 9/18**、Hit@3 3/18 → 8/18、MRR 0.164 → 0.335 |
+| 任务七（向量模型） | 选定 `intfloat/multilingual-e5-small`：**Recall@5 9/18 → 17/18（94.4%）**、Hit@3 17/18、深召回 18/18、截断归零；**跨过 Recall@5 ≥85% 与 Hit@3 ≥80% 两项硬门槛** |
 
 **基线不达标，且失败主因是排序而非内容缺失。** 这不影响批次 1 的交付定义：计划明确"即使 baseline 不达标，本批也可以按『评测基础完成』交付"。
 
@@ -200,7 +201,98 @@ uv run python scripts/index_notes.py --all             # 真正重建（17 篇�
 回退：旧索引保留在原地，删除 `chromadb_persist/` 后把 `CHUNK_STRATEGY=char`、`EMBED_HEADING_PREFIX=false` 写回 `.env` 再重建即可。**本次没有动你的生产索引，也没有改 `notes/`。**
 
 
-## 6. 失败归因汇总（批次 1）
+## 6. 任务七：向量模型对照与选定配置
+
+**假设。** 剩下的失败集中在语义表示上：`paraphrase` 0.25、`mixed_language` 0.33。切块已经把
+排序问题改善到 Recall@5 9/18，要进一步只能换向量模型。
+
+### 6.1 候选与筛选判据
+
+筛选的第一条判据不是榜单名次，而是 **`max_seq_length` 必须覆盖我们的块**：上一节实测已证明
+超出部分会被静默截断，上限低于块长度的模型一开始就是坏的。
+
+| 模型 id | revision | 语言 | 维度 | max_seq_length | 权重 | 许可 | 编码指令 |
+|---|---|---|---|---|---|---|---|
+| `sentence-transformers/all-MiniLM-L6-v2`（基线） | 已缓存 | 英文 | 384 | 256 | 91 MB | apache-2.0 | 无 |
+| `BAAI/bge-small-zh-v1.5` | `7999e1d33597…` | 中文 | 512 | 512 | 96 MB | MIT | 查询侧 `为这个句子生成表示以用于检索相关文章：` |
+| `intfloat/multilingual-e5-small` | `614241f622f5…` | 多语言 | 384 | 512 | 471 MB | MIT | **文档 `passage: ` / 查询 `query: `（官方要求，非可选）** |
+| ~~`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`~~ | — | 多语言 | 384 | **128** | 471 MB | apache-2.0 | 无 |
+
+被排除的两个：`paraphrase-multilingual-MiniLM-L12-v2` 上限只有 128 token，比基线还低一半，
+几乎每块都会截断——它会把刚发现的缺陷放大而不是修复；`BAAI/bge-m3` 质量最强但 2.27 GB、
+568M 参数，本机是 CPU 版 torch，查询算力约为 MiniLM 的 25 倍，会直接撞上"p95 不超过基线 2 倍"
+的性能门槛，需要事先声明取舍才可用。
+
+模型文件走 `scripts/download_models.py` 从 hf-mirror 取（hf.co 直连不通）。注意
+huggingface_hub 1.x 会因镜像不返回 `x-repo-commit` 头而拒绝下载（`FileMetadataError`），
+脚本改为按 API 元数据手工构建 HF 缓存布局，并用 LFS sha256 逐个校验；下完再用
+`SentenceTransformer` 本地加载验维度与上限（不是只看文件存在）。
+
+### 6.2 对照结果（dev 24 条，切块固定为 heading + 标题路径）
+
+| 配置 | Recall@5 | Hit@3 | MRR@5 | Recall@20 | 截断块 | 索引耗时 | 热查询 min |
+|---|---|---|---|---|---|---|---|
+| MiniLM-L6 + char 500/50（最初基线） | 5/18 | 3/18 | 0.164 | 12/18 | 50/107 | 6.3 s | 65.4 ms* |
+| MiniLM-L6 + heading+prefix | 9/18 | 8/18 | 0.335 | 12/18 | 31/176 | 7.8 s | 77.5 ms* |
+| bge-small-zh-v1.5 + heading+prefix | 15/18 | 16/18 | 0.787 | 17/18 | 0/176 | 3.2 s | 7.4 ms |
+| **multilingual-e5-small + heading+prefix（选定）** | **17/18 = 94.4%** | **17/18** | **0.880** | **18/18** | **0/176** | 4.7 s | 11.2 ms |
+
+\* 前两行的热查询数字是在机器繁忙时段测的（同批次的安静时段实测为 min 7.0 ms / p95 12.0 ms）。
+延迟比较以安静时段的 min 为准：e5-small 11.2 ms ≈ 基线的 1.6 倍，仍在"不超过 2 倍"的门槛内。
+
+按类别 mean Recall@5：
+
+| 配置 | fact | paraphrase | mixed_language | multi_evidence |
+|---|---|---|---|---|
+| MiniLM + heading+prefix | 0.571 | 0.250 | 0.333 | 0.750 |
+| bge-small-zh-v1.5 | 1.000 | 0.500 | 1.000 | 0.875 |
+| **multilingual-e5-small** | **1.000** | **0.750** | **1.000** | **1.000** |
+
+**结论：选定 `intfloat/multilingual-e5-small`。** 它同时跨过两项硬门槛——Evidence Recall@5
+94.4%（≥85%）、Hit@3 94.4%（≥80%）——深候选 18/18 全中（说明内容全在索引里，且排得对），
+截断归零，只剩 1 条失败（q12「只要是递归就一定会用上回溯吗」排在第 5 名之后）。
+
+bge-small-zh-v1.5 相比基线也大幅改善（15/18），但它 **83.3% 略低于 85% 的 Recall@5 门槛**，
+且 MRR（0.787）、深召回（17/18）、paraphrase（0.50）都低于 e5-small，所以不选它。这轮也回答了
+"中文专精是否更好"：语料虽是中文论述，但英文术语含量高，**多语言模型确实更合适**。
+
+**代价（真实取舍）**：e5-small 权重 471 MB（vs 91 MB）、参数 117.7M（MiniLM 22.7M、bge-small-zh
+24.0M），同进程顺序加载观测到 RSS 436→502→510→859 MB，即约多占 350 MB；查询延迟约 1.6 倍。
+对单机个人应用可接受，但这是"用资源换准确率"，报告在此明确声明，而不是当成无成本改进。
+
+**编码指令是配置的一部分。** e5 不加 `query:`/`passage:` 会明显掉分，所以指令进了
+`SentenceTransformerEmbedder`，并计入索引配置指纹——只改指令同样要求重建。
+
+### 6.3 已落地的改动
+
+- `retrieval/embedder.py`：`build_embedder()` 按模型自动套用官方编码指令；`document_text()` 只影响
+  被嵌入的文本，`document` 字段仍是可映射回原文的正文切片。
+- 索引指纹新增第四段"编码指令"；`EMBEDDING_MODEL` 换模型同样触发 `IndexConfigMismatch`。
+- 生产默认模型改为 `intfloat/multilingual-e5-small`（`settings.py`、`.env.example`）。
+- `Dockerfile` 里烘进镜像的模型同步改为 e5-small，并显式声明 `HF_ENDPOINT`（默认 hf-mirror）——
+  否则 `EMBEDDING_LOCAL_FILES_ONLY=true` 的容器在运行时抓不到权重。**本机没有执行 Docker
+  构建**，这一项只有配置改动、未做构建验证。
+- 两个评测入口都支持 `--model`，便于在不动 `.env` 的情况下对照候选模型。
+
+### 6.4 需要你执行的两件事
+
+1. **你的 `.env` 仍写着 `EMBEDDING_MODEL=all-MiniLM-L6-v2`，它会覆盖代码默认值。** 我按约定
+   没有改你的 `.env`。要真正切到 e5-small，把这一行改成
+   `EMBEDDING_MODEL=intfloat/multilingual-e5-small`（或删掉这一行让代码默认生效）。
+   验证方式：`uv run python scripts/index_notes.py --all --dry-run` 的 `current fingerprint`
+   里应出现 `intfloat/multilingual-e5-small|heading-prefix|query: |passage: `。
+2. **重建索引**（配置指纹与现有 collection 不符，不重建直接启动会报 `IndexConfigMismatch`）：
+
+```powershell
+uv run python scripts/index_notes.py --all --dry-run   # 只报告，不写盘
+uv run python scripts/index_notes.py --all             # 真正重建
+```
+
+回退：把 `EMBEDDING_MODEL` 改回 `all-MiniLM-L6-v2`、`CHUNK_STRATEGY=char`、
+`EMBED_HEADING_PREFIX=false`，删掉 `chromadb_persist/` 再重建即可。**本次仍未动你的生产索引和
+`notes/`。**
+
+## 7. 失败归因汇总（批次 1）
 
 批次 1 的失败**不用于评价系统好坏**，而用于决定批次 2 先改什么：
 
@@ -211,11 +303,11 @@ uv run python scripts/index_notes.py --all             # 真正重建（17 篇�
 | Agent 也在替检索兜底 | 7 次运行靠 `read_file` 读对笔记；检索片段覆盖必需证据只有 15/24 | 任务 7 → 8.1（片段要带文件/章节/位置，模型不必靠猜） |
 | 片段无法给出章节级定位 | 当前 chunk 元数据只有 `file_name` + `chunk_index`；引用带回引文的只有 18/32 | 任务 6 必做（引用可追溯率 100% 依赖 heading_path） |
 | 切块边界可能割裂证据 | 语料中证据单元最长 112 字符，但 `Overview` 单篇 42 个代码围栏 | 任务 6 的围栏感知切块 |
-| 语料本身有真实缺陷 | 见 §7：`Backtracking` 两节重复、6 处标题前缺空行 | 任务 5（先修笔记再归因于 embedding） |
+| 语料本身有真实缺陷 | 见 §8：`Backtracking` 两节重复、6 处标题前缺空行 | 任务 5（先修笔记再归因于 embedding） |
 | 无答案时直接作答 | 3/6 次未说明"未找到" | 任务 8 的第 3、5 项（证据不足要先说不足） |
 | 冲突时 replace 掉原结论 | a06 2/3 次 `must_preserve=false` | 任务 8 的第 3 项（冲突要澄清，不得静默覆盖） |
 
-## 7. 需人工确认清单
+## 8. 需人工确认清单
 
 自动审查（含脚本核验）已完成；以下是**必须由你判断**的部分，共 20 条。其余 40 条查询的 `quote` 与偏移由代码逐条校验（`quote` 必须等于正文切片），你随机抽 5 条验格式即可。
 
@@ -257,7 +349,7 @@ uv run python scripts/index_notes.py --all             # 真正重建（17 篇�
 - `Backtracking.md` 的 LC93 内容**在两节重复**：q11 / q12（回溯与递归）的证据在 `回溯法理论基础`，q13 的两条证据在 `切割问题实战：复原IP地址（LC93）` 一节（另一节有近义内容）。命中判定按证据区间算，不受影响，但你看失败样例时会看到两节相似内容。
 - `BinaryTree.md` 的四个二级标题带 `[HH:MM:SS]` 时间戳，`heading_path` 里会带上时间戳，属预期（基线不改笔记）。
 
-## 8. 与计划的偏离
+## 9. 与计划的偏离
 
 | 偏离 | 原因 |
 |---|---|
@@ -267,21 +359,21 @@ uv run python scripts/index_notes.py --all             # 真正重建（17 篇�
 | 新增 `scripts/verify_rag_corpus.py` | 让审查结论与"无答案"标注可复跑核验，而不是只留在一次性脚本里 |
 | Agent 层"事实正确且有依据"用引用反查证据（宽松/严格两个口径） | 计划已选定确定性判定；增加严格口径是因为 `read_file` 引文无法定位到章节 |
 
-## 9. 已知限制
+## 10. 已知限制
 
 1. **语料只有 10 篇、dev 24 / holdout 16**，门槛附近一条查询约等于 4–6 个百分点；报告一律同时给成功数/总数。
 2. **自动审查不是独立验收**：关键词判定（未找到/重复/冲突）只是确定性代理，完整回答与草稿在 `var/` 的完整报告里，需人工确认。
 3. **本机延迟噪声大**，只在同一时段的相对比较中有效。
-4. **§3 / §4 的基线是任务六之前的切块配置（char 500/50）**；改用生产默认后检索指标见 §5，Agent 层需要用新配置重跑（留到任务 9 的 holdout 验收一起做）。
+4. **§3 / §4 的基线是任务六之前的切块配置（char 500/50）**；改用生产默认后检索指标见 §5、§6，Agent 层需要用新配置重跑（留到任务 9 的 holdout 验收一起做）。
 5. **holdout 未使用**：本批只跑 dev。选定候选项后再跑 holdout；一旦据其失败改方案，该集合即视为已见，须追加新样本。
 6. 语料中 9 篇 `source_status=missing`，因此**只判可读性与内部一致性**；只有 `Python_Tutorial_Intro` 有同章原文可比对，且不能证明该笔记正由该文本生成。
 
-## 10. 批次 2 的候选顺序（待你决定）
+## 11. 批次 2 的候选顺序（待你决定）
 
 按诊断证据排序，建议：
 
-1. **任务 7（向量模型）**——任务六已把排序改善到 Recall@5 9/18，剩余失败里 `paraphrase`（0.25）与 `mixed_language`（0.33）最弱，指向语义表示能力；且 256 token 截断问题仍需在候选模型上复核（BGE 系列上限更长）。候选已定 bge-small-zh-v1.5 + paraphrase-multilingual-MiniLM-L12-v2；**下载前会先给你模型 id、体积与目标目录**。
-2. **任务 6（章节切块）**——已完成，见 §5。
+1. ~~任务 7（向量模型）~~——已完成，见 §6：选定 `intfloat/multilingual-e5-small`，检索层两项硬门槛已达标。
+2. ~~任务 6（章节切块）~~——已完成，见 §5。
 3. **任务 5（笔记真实缺陷）**——`Backtracking` 重复章节等已在 `audit.md` 记录；是否修、修到什么程度按你确认。
 4. **任务 8（工具与 Agent 使用）**——按 Agent 基线暴露的调用/使用问题决定做哪几项。
 

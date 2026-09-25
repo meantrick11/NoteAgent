@@ -1,0 +1,54 @@
+{
+  "run_id": "rag-v1-candidate-multi-dev",
+  "variant": "candidate-multi",
+  "split": "dev",
+  "started_at": "2026-09-25T04:35:05.459557+00:00",
+  "git": {
+    "commit": "94ff312871be5e519b14050e90c9be035ca6ecd7",
+    "status": "M docs/plans/README.md\n M \"docs/references/\\346\\200\\235\\350\\200\\203.md\"\n M evals/rag/README.md\n M scripts/eval_rag.py\n M scripts/index_notes.py\n M src/noteagent/bootstrap/app.py\n M src/noteagent/rag_eval/agent_run.py\n M src/noteagent/rag_eval/run.py\n M src/noteagent/retrieval/embedder.py\n M src/noteagent/retrieval/service.py\n?? \"docs/references/\\344\\272\\256\\347\\202\\271\\347\\232\\204\\345\\234\\260\\346\\226\\271.md\"\n?? \"docs/roadmap/\\347\\211\\210\\346\\234\\2541.1\\344\\273\\243\\347\\240\\201\\350\\247\\243\\346\\236\\220.md\"\n?? evals/rag/results/rag-v1-candidate-zh-dev/\n?? scripts/download_models.py\n?? tests/unit/test_embedder.py"
+  },
+  "corpus_dir": "evals\\rag\\corpus\\v1",
+  "corpus_manifest_sha256": "67cb5e504bbae91e693ea3835a5f83ecac9a0c7f7a9eebf2886f4a2fc5b7f4ad",
+  "note_sha256": {
+    "Python_Tutorial_Intro": "60b3b8e2cb282437ba642591f77a4183f9568a4e3350c1288ca4c833b71aa657",
+    "Python_Tutorial_Interpreter": "b02c5657d54d12dd2e260309d9a2e4d5ad12b38786fe76ad79b5dd5cdaef45cd",
+    "Python_Tutorial_Overview": "39557f58056be1fb5f848d625e32f194223adf4f616cd3747f28e82fe703ff6a",
+    "Backtracking": "3ebef78d40aadf075aaebdcbe8f30a515b2e43505df3a898423886ffa209b3da",
+    "BinaryTree": "fc9bbb80376c3bd5e52cfc012e798e2a6d766fbc43835112a51865193d82f959",
+    "Agent_Design_Patterns": "17f9b45fdaf54799a37ce37be48f4bcbb9915c88b525fe3436347b6ddd44f706",
+    "Writing_Effective_Tools_for_Agents": "f4c8e27a424a904d5158c739b2a927559bb8a663825d25d53d02873fd3716afd",
+    "Software_Architecture_Design": "e4d5e24d34c850aadc824fcc3fb79fe55901caa1e4efea627462654964f3dca2",
+    "SQLAlchemy_psycopg": "e4bcc3fbaacb3bd08da42e94f9426761621b674d781afb766f5865f394acdac3",
+    "OWL2_Document_Overview": "40c999b6a8416d32620fe512897c6fe07f9008da8e7db4511c160ba7e68b80e3"
+  },
+  "queries_path": "evals\\rag\\queries.v1.jsonl",
+  "queries_sha256": "295300838802bc90243fb9e6451ab68c3fb07499ebefaf7fb32896a814aee636",
+  "embedding_model": "intfloat/multilingual-e5-small",
+  "embedding_revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+  "embedding_normalized": false,
+  "chunker": {
+    "strategy": "heading",
+    "chunk_size": 500,
+    "chunk_overlap": 50
+  },
+  "embed_heading_prefix": true,
+  "token_budget": {
+    "model_max_tokens": 512,
+    "chunks": 176,
+    "max_tokens": 371,
+    "p50_tokens": 127,
+    "mean_tokens": 151.6,
+    "over_limit": 0,
+    "over_limit_notes": []
+  },
+  "collection": "raggrade-candidate-multi-v1-intfloat_multilingual-e5-small",
+  "chroma_dir": "var\\evals\\rag\\rag-v1-candidate-multi-dev\\chroma",
+  "distance": "chroma-default-l2",
+  "top_k": 5,
+  "probe_k": 20,
+  "repeats": 3,
+  "warmup": 5,
+  "python": "3.13.5",
+  "platform": "Windows-11-10.0.22635-SP0",
+  "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel"
+}

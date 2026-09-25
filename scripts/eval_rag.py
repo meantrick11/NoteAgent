@@ -39,6 +39,11 @@ def main() -> int:
         default=settings.embed_heading_prefix,
         help="把章节路径拼在被嵌入的文本前面（只影响向量，不影响引用原文）",
     )
+    parser.add_argument(
+        "--model",
+        default="",
+        help="候选向量模型的完整 id（默认取 EMBEDDING_MODEL）；编码指令按模型自动应用",
+    )
     parser.add_argument("--chunk-size", type=int, default=500)
     parser.add_argument("--chunk-overlap", type=int, default=50)
     parser.add_argument("--repeats", type=int, default=3, help="每条查询的热延迟重复次数")
@@ -61,6 +66,7 @@ def main() -> int:
         warmup=args.warmup,
         strategy=args.strategy,
         embed_heading_prefix=args.embed_heading_prefix,
+        embedding_model=args.model or None,
         chunk_size=args.chunk_size,
         chunk_overlap=args.chunk_overlap,
     )

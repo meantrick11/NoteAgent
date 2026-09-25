@@ -26,13 +26,18 @@ def index_config_fingerprint(
 ) -> str:
     """Describe what an index's vectors and offsets mean.
 
-    Any change to the model, the chunking strategy, or the text used for embedding
-    makes previously stored points incomparable, so the fingerprint must change too.
-    Kept as a function so the rebuild script can compare without building a service.
+    Any change to the model, the chunking strategy, the text used for embedding, or the
+    model's encoding instructions makes previously stored points incomparable, so the
+    fingerprint must change too. Kept as a function so the rebuild script can compare
+    without building a service.
     """
     model = str(getattr(embedder, "model_name", "") or "unknown-model")
     embed_text = "heading-prefix" if embed_heading_prefix else "content"
-    return f"{chunker.describe()}|{model}|{embed_text}"
+    parts = [chunker.describe(), model, embed_text]
+    instructions = getattr(embedder, "instruction_fingerprint", None)
+    if callable(instructions) and instructions():
+        parts.append(instructions())
+    return "|".join(parts)
 
 
 class RetrievalService:

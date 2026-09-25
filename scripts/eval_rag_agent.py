@@ -26,6 +26,11 @@ def main() -> int:
     parser.add_argument("--variant", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--repeat", type=int, default=3, help="每个场景真实运行的次数")
+    parser.add_argument(
+        "--model",
+        default="",
+        help="向量模型完整 id（默认取 EMBEDDING_MODEL）；用于与检索层同一配置对比",
+    )
     parser.add_argument("--ids", default="", help="逗号分隔的 case id，用于小范围冒烟")
     parser.add_argument("--prompt", type=Path, default=DEFAULT_PROMPT)
     parser.add_argument("--var-root", type=Path, default=Path("var/evals/rag"))
@@ -47,6 +52,7 @@ def main() -> int:
         prompt_path=args.prompt,
         repeats=args.repeat,
         only_ids=only_ids,
+        embedding_model=args.model or None,
     )
     success = summary["agent_task_success"]
     print(

@@ -26,7 +26,7 @@ from noteagent.rag_eval.dataset import Corpus, QueryCase, load_corpus, load_quer
 from noteagent.retrieval.markdown import heading_path_at
 from noteagent.rag_eval.metrics import Interval, covered_units, evidence_recall, hit_at, reciprocal_rank
 from noteagent.retrieval.chunker import MarkdownChunker
-from noteagent.retrieval.embedder import SentenceTransformerEmbedder
+from noteagent.retrieval.embedder import SentenceTransformerEmbedder, build_embedder
 from noteagent.retrieval.service import RetrievalService
 from noteagent.retrieval.vector_store import ChromaVectorStore
 
@@ -407,6 +407,7 @@ def run_retrieval_eval(
     warmup: int = DEFAULT_WARMUP,
     strategy: str = "heading",
     embed_heading_prefix: bool = True,
+    embedding_model: str | None = None,
     chunk_size: int = 500,
     chunk_overlap: int = 50,
 ) -> dict:
@@ -423,8 +424,8 @@ def run_retrieval_eval(
         chunk_size=chunk_size, chunk_overlap=chunk_overlap, strategy=strategy
     )
     settings = Settings()
-    settings_model = settings.embedding_model
-    embedder = SentenceTransformerEmbedder(
+    settings_model = embedding_model or settings.embedding_model
+    embedder = build_embedder(
         settings_model,
         settings.embedding_cache_dir,
         local_files_only=settings.embedding_local_files_only,

@@ -245,13 +245,13 @@ uv run python scripts/eval_rag.py --corpus evals/rag/corpus/v1 --queries evals/r
 
 **修改：** `retrieval/embedder.py`、`bootstrap/settings.py`、评测 variant 配置；仅候选胜出后修改应用默认配置及部署依赖。
 
-- [ ] 当前实际模型作为 baseline，新增至多两个候选：一个中文轻量模型、一个多语言模型。执行时查看官方模型卡，记录完整模型 id/revision、语言、输入上限、query/document 指令、维度、资源需求、许可；BGE-M3 可列为候选，不预设胜出。
-- [ ] 使用相同冻结语料、章节逻辑、查询集和候选数。主比较使用所有候选均容纳的输入预算；更长上下文的潜在收益另开实验，不能归为纯模型收益。
-- [ ] 文档和查询使用同一模型及其正确的编码指令。距离度量与归一化遵循相应模型要求并完整记录，不继承旧距离阈值。
-- [ ] 每个模型新建 collection，全部重建。即使维度相同也不能混用旧向量。
-- [ ] 在 dev 对比 Recall@5、Hit@3、MRR、截断数、热查询 p95、索引耗时和内存。胜出定义：满足硬门槛、主要召回指标提高且其他指标无明显回退；接近持平时选择资源开销较低且运维简单的配置。
-- [ ] 最大验证 3 个模型（含基线），不无限追榜单。若都不达标，分类失败后进入任务八或报告语料/标注问题。
-- [ ] 胜出后检查 bootstrap、Dockerfile、compose、模型缓存预下载等实际配置入口，避免只改 Python 默认值却仍加载旧模型。
+- [x] 当前实际模型作为 baseline，新增至多两个候选：一个中文轻量模型、一个多语言模型。执行时查看官方模型卡，记录完整模型 id/revision、语言、输入上限、query/document 指令、维度、资源需求、许可；BGE-M3 可列为候选，不预设胜出。
+- [x] 使用相同冻结语料、章节逻辑、查询集和候选数。主比较使用所有候选均容纳的输入预算；更长上下文的潜在收益另开实验，不能归为纯模型收益。
+- [x] 文档和查询使用同一模型及其正确的编码指令。距离度量与归一化遵循相应模型要求并完整记录，不继承旧距离阈值。
+- [x] 每个模型新建 collection，全部重建。即使维度相同也不能混用旧向量。
+- [x] 在 dev 对比 Recall@5、Hit@3、MRR、截断数、热查询 p95、索引耗时和内存。胜出定义：满足硬门槛、主要召回指标提高且其他指标无明显回退；接近持平时选择资源开销较低且运维简单的配置。
+- [x] 最大验证 3 个模型（含基线），不无限追榜单。若都不达标，分类失败后进入任务八或报告语料/标注问题。
+- [x] 胜出后检查 bootstrap、Dockerfile、compose、模型缓存预下载等实际配置入口，避免只改 Python 默认值却仍加载旧模型。
 
 ```powershell
 uv run python scripts/eval_rag.py --corpus evals/rag/corpus/v1 --queries evals/rag/queries.v1.jsonl --split dev --variant candidate-a --run-id rag-v1-candidate-a-dev

@@ -14,7 +14,7 @@ import sys
 from noteagent.bootstrap.settings import Settings
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.retrieval.chunker import MarkdownChunker
-from noteagent.retrieval.embedder import SentenceTransformerEmbedder
+from noteagent.retrieval.embedder import build_embedder
 from noteagent.retrieval.service import RetrievalService, index_config_fingerprint
 from noteagent.retrieval.vector_store import ChromaVectorStore
 
@@ -23,9 +23,9 @@ _logger = logging.getLogger(__name__)
 
 def _build(settings: Settings, notes: FileNoteRepository) -> tuple[RetrievalService, str]:
     """Assemble the production retrieval stack and report its config fingerprint."""
-    embedder = SentenceTransformerEmbedder(
+    embedder = build_embedder(
         settings.embedding_model,
-        cache_folder=settings.embedding_cache_dir,
+        settings.embedding_cache_dir,
         local_files_only=settings.embedding_local_files_only,
     )
     chunker = MarkdownChunker(strategy=settings.chunk_strategy)
@@ -97,9 +97,9 @@ def _dry_run(settings: Settings, notes: FileNoteRepository, targets: list[str]) 
     store = ChromaVectorStore(settings.chroma_dir, settings.chroma_collection)
     wanted = index_config_fingerprint(
         chunker,
-        SentenceTransformerEmbedder(
+        build_embedder(
             settings.embedding_model,
-            cache_folder=settings.embedding_cache_dir,
+            settings.embedding_cache_dir,
             local_files_only=True,
         ),
         settings.embed_heading_prefix,

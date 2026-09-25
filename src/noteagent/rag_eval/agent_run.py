@@ -28,7 +28,7 @@ from noteagent.rag_eval.dataset import AgentCase, Corpus, QueryCase
 from noteagent.rag_eval.metrics import Interval, covered_units
 from noteagent.rag_eval.run import HitRecord, chunk_spans
 from noteagent.retrieval.chunker import MarkdownChunker
-from noteagent.retrieval.embedder import SentenceTransformerEmbedder
+from noteagent.retrieval.embedder import build_embedder
 from noteagent.retrieval.markdown import heading_path_at
 from noteagent.retrieval.service import RetrievalService
 from noteagent.retrieval.vector_store import ChromaVectorStore
@@ -189,7 +189,7 @@ def build_sandbox(
     for note_id, text in corpus.texts.items():
         chunks = chunker.split(text)
         lookup[note_id] = (chunks, chunk_spans(text, chunks, 50))
-    embedder = SentenceTransformerEmbedder(
+    embedder = build_embedder(
         settings.embedding_model,
         settings.embedding_cache_dir,
         local_files_only=settings.embedding_local_files_only,
@@ -617,6 +617,7 @@ def run_agent_eval(
     prompt_path: Path,
     repeats: int = DEFAULT_REPEATS,
     only_ids: list[str] | None = None,
+    embedding_model: str | None = None,
 ) -> dict:
     """Run every case in the split ``repeats`` times and write local + committed reports."""
     from noteagent.llm.factory import create_chat_model
@@ -634,6 +635,8 @@ def run_agent_eval(
     if not cases:
         raise ValueError(f"no agent cases with split={split!r} in {cases_path}")
     settings = Settings()
+    if embedding_model:
+        settings = settings.model_copy(update={"embedding_model": embedding_model})
     model = create_chat_model(settings)
     run_dir = var_root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)

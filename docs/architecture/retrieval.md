@@ -6,7 +6,7 @@
 |---|---|
 | 事实源 | 人审后的 `notes/*.md`。Chroma 是派生索引，可删光按文件重建 |
 | 触发 | 聊天 `commit_review` 写盘成功后同步该 `file_name`；Documents `/notes*` 写盘或点芯片同样走 `index_note` / `delete_note`；`reject` 不碰向量 |
-| 切块 / 模型 | `MarkdownChunker` 500/50、策略 `heading`、`embed_heading_prefix=True`（由 [rag-v1-report.md](../evaluations/rag-v1-report.md) 的任务六对照选出，可用 `CHUNK_STRATEGY` / `EMBED_HEADING_PREFIX` 覆盖）；默认 `all-MiniLM-L6-v2`。换模型或换切块策略必须重建 |
+| 切块 / 模型 | `MarkdownChunker` 500/50、策略 `heading`、`embed_heading_prefix=True`（由 [rag-v1-report.md](../evaluations/rag-v1-report.md) 的任务六对照选出，可用 `CHUNK_STRATEGY` / `EMBED_HEADING_PREFIX` 覆盖）；默认 `intfloat/multilingual-e5-small`（由评测选出，可用 `EMBEDDING_MODEL` 覆盖），按其官方要求自动加 `query:` / `passage:` 前缀。换模型、换切块策略或换编码指令都必须重建 |
 | 配置一致性 | collection metadata 存配置指纹 `策略\|模型\|被嵌入文本`；与当前配置不符时构造 `RetrievalService` 即报错要求重建 |
 | 不是 | 用户勾选入库、PDF 直接 embed、命中阈值 |
 
@@ -120,11 +120,11 @@ collection 自身的 metadata 另存配置指纹（见上表「配置一致性�
 
 每个块都带 `heading_path` 与 `start_char`/`end_char`，偏移由切分器给出并在写入前用切片校验（`text[start:end] == content`），不靠事后字符串搜索猜位置。
 
-[`SentenceTransformerEmbedder`](../../src/noteagent/retrieval/embedder.py)：本地 `SentenceTransformer`，`cache_folder` 为 `EMBEDDING_CACHE_DIR`。`embed_documents` 与 `embed_query` 必须是同一模型。默认 `all-MiniLM-L6-v2`。`EMBEDDING_LOCAL_FILES_ONLY=true` 时不联网下载。
+[`SentenceTransformerEmbedder`](../../src/noteagent/retrieval/embedder.py)：本地 `SentenceTransformer`，`cache_folder` 为 `EMBEDDING_CACHE_DIR`。`embed_documents` 与 `embed_query` 必须是同一模型。默认 `intfloat/multilingual-e5-small`，编码指令见 [`MODEL_INSTRUCTIONS`](../../src/noteagent/retrieval/embedder.py)。`EMBEDDING_LOCAL_FILES_ONLY=true` 时不联网下载。
 
 **被嵌入的文本可以不是引用原文。** `embed_heading_prefix=True` 时嵌入文本为 `heading_path + 换行 + 正文`，而 Chroma 的 `document` 始终存正文切片，保证引用可映射回原文。
 
-**注意输入上限。** `all-MiniLM-L6-v2` 的 `max_seq_length` 是 256 token，超出的部分被模型静默截断。评测 run 会把每块的实际 token 数与被截断块数写进报告（`token_budget`）；字符数不是可靠代理。
+**注意输入上限。** 各模型的 `max_seq_length` 差异很大（MiniLM-L6 只有 256 token，e5-small/bge-zh 是 512），超出的部分被模型静默截断；选型时这是第一条判据。评测 run 会把每块的实际 token 数与被截断块数写进报告（`token_budget`）；字符数不是可靠代理。
 
 换 embedding 模型或换切块策略后，新旧向量不能混用，需要按篇 `index_note` 重建（或删掉 persist 目录再编）。配置指纹不一致时 `RetrievalService` 会直接拒绝启动，见上表。
 
