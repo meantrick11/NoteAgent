@@ -543,6 +543,11 @@ def summarize(outcomes: list[CaseOutcome]) -> dict:
     """Aggregate the plan's Agent metrics, split by scenario, with counts."""
     history = [item for item in outcomes if item.scenario != "plain_chat"]
     plain = [item for item in outcomes if item.scenario == "plain_chat"]
+    # 门槛只看真正依赖检索的场景：历史问答与历史无答案。追加场景允许只走
+    # list_files + read_file（计划明确规定），所以单独报，不并进门槛分母。
+    retrieval_dependent = [
+        item for item in history if item.scenario in ("history_answer", "history_unanswerable")
+    ]
 
     def rate(items: list[CaseOutcome], predicate) -> dict[str, object]:
         passed = sum(1 for item in items if predicate(item))
@@ -579,6 +584,13 @@ def summarize(outcomes: list[CaseOutcome]) -> dict:
         "agent_task_success": rate(history, lambda i: bool(i.task_success)),
         "agent_task_success_strict": rate(history, lambda i: bool(i.task_success_strict)),
         "history_search_call_rate": rate(history, lambda i: bool(i.searches)),
+        "retrieval_dependent_search_call_rate": rate(
+            retrieval_dependent, lambda i: bool(i.searches)
+        ),
+        "history_append_search_call_rate": rate(
+            [item for item in history if item.scenario == "history_append"],
+            lambda i: bool(i.searches),
+        ),
         "plain_chat_search_call_rate": rate(plain, lambda i: bool(i.searches)),
         "plain_chat_no_draft": rate(plain, lambda i: i.draft is None),
         "history_unanswerable_correct": rate(
@@ -822,8 +834,16 @@ def _render_agent_report(summary: dict, outcomes: list[CaseOutcome], *, with_bod
         f"{summary['agent_task_success']['total']} | {summary['agent_task_success']['rate']} |",
         f"| Agent 任务成功率（严格引用口径） | {summary['agent_task_success_strict']['passed']}/"
         f"{summary['agent_task_success_strict']['total']} | {summary['agent_task_success_strict']['rate']} |",
-        f"| 历史任务检索调用率 | {summary['history_search_call_rate']['passed']}/"
+        f"| 历史任务检索调用率（门槛口径：问答+无答案） | "
+        f"{summary['retrieval_dependent_search_call_rate']['passed']}/"
+        f"{summary['retrieval_dependent_search_call_rate']['total']} | "
+        f"{summary['retrieval_dependent_search_call_rate']['rate']} |",
+        f"| 检索调用率（全部历史场景，含追加） | {summary['history_search_call_rate']['passed']}/"
         f"{summary['history_search_call_rate']['total']} | {summary['history_search_call_rate']['rate']} |",
+        f"| 追加场景检索调用率（另报，不计门槛） | "
+        f"{summary['history_append_search_call_rate']['passed']}/"
+        f"{summary['history_append_search_call_rate']['total']} | "
+        f"{summary['history_append_search_call_rate']['rate']} |",
         f"| 无需检索误调用率 | {summary['plain_chat_search_call_rate']['passed']}/"
         f"{summary['plain_chat_search_call_rate']['total']} | {summary['plain_chat_search_call_rate']['rate']} |",
         f"| 普通对话不写盘 | {summary['plain_chat_no_draft']['passed']}/"

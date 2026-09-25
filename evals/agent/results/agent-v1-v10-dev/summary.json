@@ -15,6 +15,16 @@
     "total": 30,
     "rate": 0.8333
   },
+  "retrieval_dependent_search_call_rate": {
+    "passed": 18,
+    "total": 18,
+    "rate": 1.0
+  },
+  "history_append_search_call_rate": {
+    "passed": 7,
+    "total": 12,
+    "rate": 0.5833
+  },
   "plain_chat_search_call_rate": {
     "passed": 0,
     "total": 6,
@@ -190,6 +200,5 @@
   "run_id": "agent-v1-v10-dev",
   "variant": "v10",
   "split": "dev",
-  "repeats": 3,
-  "started_at": "2026-09-25T05:36:42.148228+00:00"
+  "repeats": 3
 }

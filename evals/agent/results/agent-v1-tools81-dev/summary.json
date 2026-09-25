@@ -15,6 +15,16 @@
     "total": 30,
     "rate": 0.9667
   },
+  "retrieval_dependent_search_call_rate": {
+    "passed": 18,
+    "total": 18,
+    "rate": 1.0
+  },
+  "history_append_search_call_rate": {
+    "passed": 11,
+    "total": 12,
+    "rate": 0.9167
+  },
   "plain_chat_search_call_rate": {
     "passed": 0,
     "total": 6,
