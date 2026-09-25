@@ -33,6 +33,7 @@ services:
       - chroma_data:/app/chromadb_persist
       - app_logs:/app/var/logs
       # 只挂载 UI 配置目录，不覆盖整个 /app/var，否则镜像里预下载的模型会被隐藏。
+      # 这个卷是持久卷：界面上填写的 API Key 只存在这里，删掉卷等于丢凭据。
       - model_settings:/app/var/model_settings
     depends_on:
       db:

@@ -7,7 +7,8 @@
 | 事实源 | 人审后的 `notes/*.md`。Chroma 是派生索引，可删光按文件重建 |
 | 触发 | 聊天 `commit_review` 写盘成功后同步该 `file_name`；Documents `/notes*` 写盘或点芯片同样走 `index_note` / `delete_note`；`reject` 不碰向量 |
 | 切块 / 模型 | `MarkdownChunker` 500/50、策略 `heading`、`embed_heading_prefix=True`（由 [rag-v1-report.md](../evaluations/rag-v1-report.md) 的任务六对照选出，可用 `CHUNK_STRATEGY` / `EMBED_HEADING_PREFIX` 覆盖）；默认 `intfloat/multilingual-e5-small`（由评测选出，可用 `EMBEDDING_MODEL` 覆盖），按其官方要求自动加 `query:` / `passage:` 前缀。换模型、换切块策略或换编码指令都必须重建 |
-| 配置一致性 | collection metadata 存配置指纹 `策略\|模型\|被嵌入文本`；与当前配置不符时构造 `RetrievalService` 即报错要求重建 |
+| 索引身份 | collection 里存**配置指纹**（下面字段的 canonical JSON 的 SHA-256）与产生它的可核验字段。任一字段变化都是另一个索引：collection 名也跟着变，不会把新向量写进旧身份 |
+| 配置一致性 | 与当前配置身份不符时构造 `RetrievalService` 即抛 `IndexConfigMismatch` 要求重建；加指纹之前建的旧 collection 身份无法核验，一律报「需要重建」而不冒充匹配 |
 | 运行期选择 | 界面可切换本地向量模型。启动时以持久化的 active 为准（优先于 `EMBEDDING_MODEL`），切换走 §7.1 的维护窗口 |
 | 不是 | 用户勾选入库、PDF 直接 embed、命中阈值 |
 
@@ -75,7 +76,21 @@ PUT / POST / DELETE /notes* 、POST /notes/{path}/index
 
 Chroma collection 名来自 `CHROMA_COLLECTION`（默认 `my_knowledge`），目录 `CHROMA_DIR`。
 
-界面切换向量模型时，重建写入的是**该模型专属的 collection**：`{CHROMA_COLLECTION}__{模型短名}`（如 `my_knowledge__multilingual-e5-small`）。不同模型的向量不可比，所以切换不会写进旧模型建的集合；模型加载失败或构建失败时旧集合原样保留，也不会有任何旧集合被自动删除。切换回原模型时按 `{CHROMA_COLLECTION}` 之外的专属名重建一次全量索引，因此不会拿过期集合冒充新索引。
+界面切换向量模型时，重建写入的是**该身份专属的 collection**：`{CHROMA_COLLECTION}__{模型短名}-{指纹摘要}`（如 `my_knowledge__multilingual-e5-small-dce31fc4f6198bc4`）。名字里的摘要是索引身份的 SHA-256 前 16 位，长度上限 63，超长时先裁前缀、**摘要永远保留完整**，所以两个不同身份不会被截成同名。同一模型换了分块策略也是另一个身份，因此不会撞进同一 collection；模型加载失败或构建失败时旧集合原样保留，也不会有任何旧集合被自动删除。
+
+判定索引可用时只**打开**已有 collection（`create_if_missing=False`），绝不 `get_or_create`：索引被删掉后必须报「不存在」，而不是就地生成一个空集合冒充有效索引。空语料建出的空 collection 是有效状态（`retrieval_state=empty`），与丢失（`missing`）区分开。
+
+collection metadata 存两项：`noteagent_index_config`（指纹）与 `noteagent_index_config_fields`（canonical JSON 字段）。指纹字段如下，全部参与 SHA-256：
+
+| 指纹字段 | 现行值 / 来源 |
+|---|---|
+| `schema` | `noteagent-index-v2`；字段集合或含义变化时必须改 |
+| `normalization` | `md-v1`：笔记正文进入嵌入前的规范化版本（标题解析等） |
+| `model` | 嵌入模型 ID（`EMBEDDING_MODEL` 或界面选中的模型） |
+| `revision` | 本地缓存快照名（`refs/main` 或唯一 snapshot）；启动时按**当前缓存**解析，模型权重被原地更新即体现为指纹不符 |
+| `chunker` | `MarkdownChunker.describe()`，如 `heading:500/50` |
+| `heading_prefix` | 是否把章节路径拼进被嵌入文本 |
+| `instructions` | 该模型的编码指令指纹，如 `query: \|passage: ` |
 
 | 字段 | 现行值 |
 |------|--------|
@@ -88,7 +103,7 @@ Chroma collection 名来自 `CHROMA_COLLECTION`（默认 `my_knowledge`），目
 | metadata.start_char / end_char | 该块在笔记**解码后文本**中的字符区间（左闭右开）；语料为 CRLF 文件，但应用读到的是 `read_text` 规范化后的 LF 文本，偏移以它为准 |
 | metadata.content_sha256 | 切块内容的哈希，用于发现索引与磁盘正文漂移 |
 
-collection 自身的 metadata 另存配置指纹（见上表「配置一致性」）。
+collection 自身的 metadata 另存上面两项身份记录（见 §4 的开头）。
 
 短笔记只切出一块时，collection 里就是一条（embedding 为默认模型的 384 维，此处省略）：
 
@@ -131,7 +146,7 @@ collection 自身的 metadata 另存配置指纹（见上表「配置一致性�
 
 **注意输入上限。** 各模型的 `max_seq_length` 差异很大（MiniLM-L6 只有 256 token，e5-small/bge-zh 是 512），超出的部分被模型静默截断；选型时这是第一条判据。评测 run 会把每块的实际 token 数与被截断块数写进报告（`token_budget`）；字符数不是可靠代理。
 
-换 embedding 模型或换切块策略后，新旧向量不能混用，需要按篇 `index_note` 重建（或删掉 persist 目录再编）。配置指纹不一致时 `RetrievalService` 会直接拒绝启动，见上表。
+换 embedding 模型、换模型权重或换切块策略后，新旧向量不能混用，需要按篇 `index_note` 重建（或删掉 persist 目录再编）。身份不一致时 `RetrievalService` 会直接拒绝构造，见 §4 与 §7。想在切块配置变化后重建，不需要先删旧 collection：新身份有自己的名字，重建直接写新集合，校验通过后才发布。
 
 测试用假 embedder，不加载真实句向量模型。检索评测数据在 [`evals/rag/`](../../evals/rag/README.md)，不进 pytest 默认套件里的联网部分。
 
@@ -159,9 +174,13 @@ collection 自身的 metadata 另存配置指纹（见上表「配置一致性�
 | 写盘成功、embed / Chroma 失败 | 文件保留；日志 `draft index failed` |
 | 向量库目录损坏 | 删 persist 或对每篇跑 `index_notes.py` |
 | 缩短 replace 仍只 upsert、不先删 | **现行已先删。** 旧实现会残留高序号 id |
-| 配置指纹与 collection 不符 | 构造 `RetrievalService` 抛 `IndexConfigMismatch`，附两边指纹与「重建」提示；不静默用旧向量 |
-| 加指纹之前建的旧索引 | 视作 legacy 默认配置（`char:500/50\|all-MiniLM-L6-v2\|content`）；配置未变则照常可用，变了才要求重建 |
+| 活动 collection 不存在 | `CollectionMissingError`；状态 `retrieval_state=missing`、`retrieval_available=false` 并给出可操作原因。读取路径**不会**创建空集合，界面提供「重建并修复」 |
+| 配置指纹与 collection 不符 | 构造 `RetrievalService` 抛 `IndexConfigMismatch`，附两边指纹与「重建」提示；状态 `config_mismatch`，不静默用旧向量 |
+| 加指纹之前建的旧 collection | 身份无法核验：**有向量**时报 `config_mismatch` 要求重建；**没有向量**（空集合）可以就地写入当前身份 |
+| 空 collection（身份正确、0 个向量） | 有效状态：`retrieval_state=empty`，`retrieval_available=true`，`indexed_files=0`。笔记目录非空时界面提示「可能需要重建」但不阻断 |
 | 切块器产出的块不是正文连续切片 | 抛 `ValueError` 并记日志；不写入无法定位的偏移 |
+
+`GET /model-settings` 每次都会重新核对活动索引（`verify_index()`：collection 仍存在且指纹一致），所以索引被别的进程删掉后，状态在下一次轮询就会变成 `missing`，不会一直报可用。状态字段：`retrieval_state`（`ok` / `empty` / `missing` / `config_mismatch` / `unavailable`）、`indexed_files`、`corpus_files`。
 
 索引步骤 logger 与一次 `index_note` 的日志顺序见 [observability.md](./observability.md) §4。INFO 不打切块原文。`RetrievalService` 只做删点/切块/embed/入库，并在步骤边界调用 `IndexTrace`。人审侧另有 `draft indexed` / `draft index failed`。
 
@@ -170,12 +189,23 @@ collection 自身的 metadata 另存配置指纹（见上表「配置一致性�
 单进程串行维护，不做双写或增量追赶。`ModelRuntimeService`（[`model_management/service.py`](../../src/noteagent/model_management/service.py)）持有唯一的 `RuntimeSnapshot`（chat agent + retrieval + embedding 状态 + revision），请求通过 `read` / `write` / `chat` 取一次快照并在整个操作内使用：
 
 1. 门禁锁内确认没有正在进行的聊天/写操作，再开维护窗口（检查与设置必须原子）。已有请求继续持有旧快照到 `finally` 释放。
-2. 后台线程用 `local_files_only=true` 加载目标模型，按 `{collection}__{模型短名}` 建全新 collection。
+2. **先在锁外算出目标身份**（`index_fingerprint`，不加载权重），据此得到目标 collection 名；后台线程再用 `local_files_only=true` 加载目标模型并写这个新 collection。
 3. 逐篇 `index_note` 并汇报进度；目标集合里磁盘上已不存在的 `file_name` 会删掉（`indexed_files()`，避免残留幽灵片段）。`scripts/index_notes.py` 与界面共用 `index_targets()`，README.md 与 `bak/` 的排除规则一致。
-4. 构建前后比对笔记清单与内容 hash；不一致（外部改过文件）则任务失败，旧索引保留。非空语料必须切出至少一块，并至少用真实语料搜到一次命中；空语料允许成功建空索引。
-5. 原子写 `active_embedding` 与 revision，然后用**一次替换**发布新的检索对象与绑定它的 Agent/工具。任一步失败都保留旧对象，job 记为 `failed`。
+4. 构建前后比对笔记清单与内容 hash；不一致（外部改过文件）则任务失败，旧索引保留。非空语料必须切出至少一块，并至少用真实语料搜到一次命中；空语料允许成功建空索引。装配出的指纹与第 2 步预计算的不一致时**放弃发布**，绝不把内容登记成另一个身份。
+5. 原子写 `active_embedding`（模型、resolved revision、collection、指纹）与 revision，然后用**一次替换**发布新的检索对象与绑定它的 Agent/工具。任一步失败都保留旧对象，job 记为 `failed`。
 6. 维护期间 `/chat`、审批的 approve/override、所有 `/notes` 写接口返回 409（`code=busy`），拒绝发生在建会话/写消息/落盘之前；reject 草稿走只读租约因此仍可用；读笔记、读历史、`GET /model-settings` 不受影响。
-7. 重启时读最后一次成功的 active；`running` 的 job 记为 `interrupted`，绝不自动启用半成品。lifespan 退出时停止接受新任务，并阻止进行中的任务发布。
+7. 重启时读最后一次成功的 active；`running` 的 job 记为 `interrupted`，绝不自动启用半成品。lifespan 退出时停止接受新任务，并在发布前的检查点阻止进行中的任务发布。
+8. **不自动删除旧 collection**：重建成功后旧集合仍在盘上，作为回退与对照。当前仓库没有安全的引用计数，所以不做自动清理；要清理须在确认没有请求引用旧索引后单独执行。
+
+**重试与幂等规则**（`POST /model-settings/embedding/switch`）：
+
+| 请求情形 | 结果 |
+|---|---|
+| 活动 collection 存在、指纹与目标一致、且模型就是目标模型 | `200 unchanged=true`，不建 job |
+| 活动指针指向的 collection 缺失或指纹不符 | 建修复 job，写新身份的 collection |
+| 同一身份已有 job 在跑 | `409 busy`（`_maintenance` 门禁），不会起第二个 worker 并发写同一目标 |
+| 上次 job 失败后重试 | 生成新的 job id；旧 active 与旧对象保持不变；成功前一直按 `missing`/`config_mismatch` 如实报告 |
+| 构建完成但未发布时进程退出 | active 指针不变，job 失败/中断；重启后可再次重试 |
 
 维护窗口内不要同时跑索引 CLI：外部进程不受内存门禁约束，会让步骤 4 的 hash 比对失败。本期单进程单 worker。
 
@@ -205,8 +235,9 @@ collection 自身的 metadata 另存配置指纹（见上表「配置一致性�
 | [`src/noteagent/retrieval/chunker.py`](../../src/noteagent/retrieval/chunker.py) | 字符 / 章节切块，输出块与偏移 |
 | [`src/noteagent/retrieval/markdown.py`](../../src/noteagent/retrieval/markdown.py) | 围栏感知的标题解析与 `heading_path`（检索与评测共用） |
 | [`src/noteagent/retrieval/embedder.py`](../../src/noteagent/retrieval/embedder.py) | 本地句向量 |
-| [`src/noteagent/retrieval/vector_store.py`](../../src/noteagent/retrieval/vector_store.py) | upsert / query / `delete_by_file_name` |
-| [`src/noteagent/retrieval/service.py`](../../src/noteagent/retrieval/service.py) | `index_note`、`delete_note`、`search`、`indexed_files`、`index_targets` |
+| [`src/noteagent/retrieval/instructions.py`](../../src/noteagent/retrieval/instructions.py) | 各模型的编码指令表；单独成模块，让指纹能在不加载权重时算出来 |
+| [`src/noteagent/retrieval/vector_store.py`](../../src/noteagent/retrieval/vector_store.py) | upsert / query / `delete_by_file_name` / 存在性与身份校验（`exists`、`stored_config`、`ensure_config`） |
+| [`src/noteagent/retrieval/service.py`](../../src/noteagent/retrieval/service.py) | `index_note`、`delete_note`、`search`、`indexed_files`、`index_targets`、身份指纹（`canonical_index_config` / `index_fingerprint_for_model`）、`verify_index` |
 | [`src/noteagent/observability/index_trace.py`](../../src/noteagent/observability/index_trace.py) | 索引/检索步骤 INFO |
 | [`src/noteagent/retrieval/models.py`](../../src/noteagent/retrieval/models.py) | `SearchHit`、`NoteChunk` |
 | [`src/noteagent/chat/drafts.py`](../../src/noteagent/chat/drafts.py) | `_sync_index` |

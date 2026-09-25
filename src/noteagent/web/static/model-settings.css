@@ -208,6 +208,17 @@ button.ms-chip:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 .ms-ok[hidden] { display: none; }
 
+/* 需要用户注意但不算错误的状态（例如索引为空而笔记目录非空）。 */
+.ms-warn {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #b45309;
+  font-size: 12px;
+  word-break: break-word;
+}
+
 .ms-progress {
   margin-top: 8px;
   font-size: 12px;

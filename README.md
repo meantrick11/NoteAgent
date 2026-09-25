@@ -72,6 +72,8 @@
 uv run python scripts/index_notes.py Agent.md
 ```
 
+输入框下侧靠右的**向量入口**可以切换本地向量模型，也可以在索引丢失/配置不符时点「重建并修复」。索引用**身份指纹**（模型 + 权重快照 + 分块策略与大小 + 标题前缀 + 编码指令 + 正文规范化版本）标识，指纹不同的索引各有自己的 collection，所以改了分块配置不需要先删旧库；丢失的索引会如实报为不可用，不会用一个空 collection 冒充。重建期间不能发送消息或写笔记（后端也拒绝），旧索引保留到新索引校验通过。
+
 切块与查询路径：[检索](docs/architecture/retrieval.md)。脚本说明：[scripts/README.md](scripts/README.md)。
 
 ## 快速开始
@@ -143,6 +145,8 @@ uv run pytest -q
 | 未保存圆点 | 顶栏；切篇或离开前会询问 |
 | 绿 / 灰芯片 | 已索引 / 未索引；灰芯片可点入库 |
 | 拖笔记到文件夹或根 | 确认后移动并改向量路径 |
+| 输入框下「聊天：… ▾」 | 新增 / 编辑 / 启用 / 删除聊天配置。「保存」只存草稿，「保存并启用」才更换正在运行的客户端；**当前启用的那条不能直接编辑或删除**，先启用另一条 |
+| 输入框下「向量：… ▾」 | 选本地已有向量模型「重建并切换」；当前模型索引不可用时按钮变成「重建并修复」 |
 
 界面分区与请求：[前端](docs/architecture/frontend.md)。
 
@@ -154,7 +158,10 @@ uv run pytest -q
 | PostgreSQL | 会话与气泡；`DATABASE_URL` 前缀须为 `postgresql+psycopg://` |
 | `chromadb_persist` | 派生向量；丢了可按文件重建 |
 | `var/logs` | Agent / 索引日志；完整 prompt 在这里，不进聊天表 |
+| `var/model_settings/settings.json` | 界面上保存的聊天配置与向量选择。**界面上填写的 API Key 明文在这里**（未加密，`chmod 600` 尽力而为）；`.env` 的 Key 不被复制进来 |
 | `.env` | 密钥与路径；不要提交。从 `.env.example` 复制 |
+
+备份或迁移：直接备份 `var/model_settings` 目录（连同 `notes/` 与 Chroma 目录）。移除某条凭据只有两条路——界面上「清除已保存的 Key」或删除该配置；删除配置是唯一会连凭据一起移除的操作。Docker 下该目录必须挂持久卷，否则容器重建等于丢凭据。
 
 不记录你在笔记以外的按键内容。没有账号系统，数据默认只在本机（或你自己的 Docker 卷）。卷说明见 [本机开发](docs/tutorials/zh/local-dev.md)。
 

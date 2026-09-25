@@ -40,6 +40,9 @@ const ModelSettings = (() => {
     embedding_candidates: [],
     retrieval_available: true,
     retrieval_problem: null,
+    retrieval_state: "ok",
+    indexed_files: 0,
+    corpus_files: 0,
     busy: false,
     embedding_job: null,
   };
@@ -98,6 +101,9 @@ const ModelSettings = (() => {
     state.active_embedding = json.active_embedding || null;
     state.retrieval_available = json.retrieval_available !== false;
     state.retrieval_problem = json.retrieval_problem || null;
+    state.retrieval_state = json.retrieval_state || "ok";
+    state.indexed_files = json.indexed_files || 0;
+    state.corpus_files = json.corpus_files || 0;
     state.busy = json.busy === true;
     state.embedding_job = json.embedding_job || null;
     loadedAt = Date.now();
@@ -171,6 +177,15 @@ const ModelSettings = (() => {
       edit.disabled = streaming || jobRunning();
       edit.addEventListener("click", () => openForm(profile));
       row.appendChild(edit);
+
+      if (!isActive) {
+        // 只有显式删除才会移除配置和它的 Key；当前启用的那条必须先切换走。
+        const remove = el("button", "ms-btn", "删除");
+        remove.type = "button";
+        remove.disabled = streaming || jobRunning();
+        remove.addEventListener("click", () => deleteProfile(profile));
+        row.appendChild(remove);
+      }
       list.appendChild(row);
     });
     if (!state.retrieval_available && state.retrieval_problem) {
@@ -192,12 +207,15 @@ const ModelSettings = (() => {
       if (candidate.active && state.retrieval_available) {
         row.appendChild(el("span", "ms-chip on", "已启用"));
       } else if (candidate.availability === "available") {
-        const button = el("button", "ms-btn", candidate.active ? "重建并切换" : "重建并切换");
+        // 当前模型但索引不可用时，同一个按钮就是修复入口。
+        const repairing = candidate.active;
+        const button = el("button", "ms-btn" + (repairing ? " primary" : ""), repairing ? "重建并修复" : "重建并切换");
         button.type = "button";
         button.disabled = jobRunning() || streaming;
         button.title = "重建期间暂不可发送消息或保存笔记，已有内容仍可查看";
         button.addEventListener("click", () => switchEmbedding(candidate.model_id));
         row.appendChild(button);
+        if (repairing) row.appendChild(el("span", "ms-chip warn", "索引不可用"));
       } else {
         const chip = el("span", "ms-chip warn", AVAILABILITY_TEXT[candidate.availability] || "不可用");
         chip.title = candidate.reason || "";
@@ -208,10 +226,35 @@ const ModelSettings = (() => {
     if (!(state.embedding_candidates || []).length) {
       list.appendChild(el("p", "ms-row-sub", "读取中…"));
     }
-    if (state.retrieval_problem) {
-      list.appendChild(el("div", "ms-error", state.retrieval_problem));
-    }
+    // 索引状态写进向量弹层自己的状态区：丢失、指纹不符、空索引各自可辨。
+    // 重建进行中时由进度条说明情况，避免和上一轮的状态互相矛盾。
+    const retrieval = jobRunning() ? null : retrievalStatus();
+    if (retrieval) list.appendChild(el("div", retrieval.className, retrieval.text));
     renderJob();
+  }
+
+  function retrievalStatus() {
+    switch (state.retrieval_state) {
+      case "missing":
+        return { className: "ms-error", text: state.retrieval_problem || "索引 collection 不存在，需要重建。" };
+      case "config_mismatch":
+        return { className: "ms-error", text: state.retrieval_problem || "索引配置已变化，需要重建。" };
+      case "unavailable":
+        return { className: "ms-error", text: state.retrieval_problem || "向量索引当前不可用。" };
+      case "empty":
+        if (state.corpus_files > 0) {
+          return {
+            className: "ms-warn",
+            text: `索引里还没有任何片段，但笔记目录有 ${state.corpus_files} 篇：可能需要重建。`,
+          };
+        }
+        return { className: "ms-ok", text: "笔记目录为空，索引为空（状态正常）。" };
+      default:
+        return {
+          className: "ms-row-sub",
+          text: `已索引 ${state.indexed_files} 个片段，覆盖 ${state.corpus_files} 篇笔记。`,
+        };
+    }
   }
 
   function renderJob() {
@@ -236,10 +279,12 @@ const ModelSettings = (() => {
       showEmbeddingOk(`已切换到 ${job.target_model}，检索与笔记索引都使用新模型。`);
     } else if (job.status === "interrupted") {
       showEmbeddingError(
-        `上次重建被中断（${job.target_model}），仍在使用 ${activeEmbeddingId()}。`
+        `上次重建被中断（${job.target_model}），仍在使用 ${activeEmbeddingId()}；可以再点一次重试。`
       );
     } else {
-      showEmbeddingError(`重建失败：${job.error || "未知原因"}。仍在使用 ${activeEmbeddingId()}。`);
+      showEmbeddingError(
+        `重建失败：${job.error || "未知原因"}。仍在使用 ${activeEmbeddingId()}；可以再点一次重试。`
+      );
     }
   }
 
@@ -307,16 +352,25 @@ const ModelSettings = (() => {
 
   function openForm(profile) {
     editingId = profile ? profile.id : null;
+    const isActive = Boolean(
+      profile && state.active_chat && state.active_chat.id === profile.id
+    );
     dom.form.hidden = false;
     dom.formTitle.textContent = profile ? `编辑「${profile.label}」` : "新增聊天配置";
     dom.fLabel.value = profile ? profile.label : "";
     dom.fProvider.value = profile ? profile.provider : "deepseek";
     dom.fModel.value = profile ? profile.model : "";
     dom.fBaseUrl.value = profile ? profile.base_url : "";
+    // Key 永不回显：留空表示保留已保存的那一个。
     dom.fKey.value = "";
     dom.fKey.placeholder = profile && profile.has_api_key ? "留空保留已保存的 Key" : "";
     dom.fContextWindow.value = profile ? String(profile.context_window) : "32768";
     dom.fAuthNone.checked = profile ? profile.auth_mode === "none" : false;
+    dom.fClearKey.checked = false;
+    dom.fClearKey.parentElement.hidden = !(profile && profile.has_api_key);
+    // 当前启用的配置不能走普通保存：改了文件而运行中的客户端没换，状态就不一致了。
+    dom.btnSave.hidden = isActive;
+    dom.formActiveNote.hidden = !isActive;
     syncAuthFields();
     showError("");
     showOk("");
@@ -331,13 +385,10 @@ const ModelSettings = (() => {
   }
 
   function syncAuthFields() {
-    const keyless = dom.fAuthNone.checked;
-    dom.fKey.disabled = keyless;
     dom.fAuthNone.parentElement.hidden = dom.fProvider.value === "deepseek";
-    if (dom.fProvider.value === "deepseek") {
-      dom.fAuthNone.checked = false;
-      dom.fKey.disabled = false;
-    }
+    if (dom.fProvider.value === "deepseek") dom.fAuthNone.checked = false;
+    if (dom.fClearKey.checked) dom.fKey.value = "";
+    dom.fKey.disabled = dom.fAuthNone.checked || dom.fClearKey.checked;
   }
 
   function formPayload() {
@@ -352,11 +403,18 @@ const ModelSettings = (() => {
     if (editingId) payload.id = editingId;
     const key = dom.fKey.value.trim();
     if (key) payload.api_key = key;
+    if (dom.fClearKey.checked) payload.clear_api_key = true;
     return payload;
   }
 
+  function setFormBusy(busy) {
+    dom.btnTest.disabled = busy;
+    dom.btnSave.disabled = busy;
+    dom.btnActivate.disabled = busy;
+  }
+
   async function testConnection() {
-    dom.btnTest.disabled = true;
+    setFormBusy(true);
     showError("");
     showOk("");
     try {
@@ -377,21 +435,37 @@ const ModelSettings = (() => {
       if (json.verified) showOk("连接测试通过：" + parts.join("；"));
       else showError("连接测试未通过：" + parts.join("；"));
     } finally {
-      dom.btnTest.disabled = false;
+      setFormBusy(false);
     }
   }
 
-  async function saveAndActivate() {
-    dom.btnActivate.disabled = true;
+  async function submitProfile(activate) {
+    setFormBusy(true);
     showError("");
     showOk("");
     try {
       await refreshIfStale();
-      const res = await fetch("/model-settings/chat/activate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ expected_revision: state.revision, profile: formPayload() }),
-      });
+      const body = { ...formPayload(), expected_revision: state.revision };
+      let res;
+      if (activate) {
+        res = await fetch("/model-settings/chat/activate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expected_revision: state.revision, profile: formPayload() }),
+        });
+      } else if (editingId) {
+        res = await fetch("/model-settings/chat/profiles/" + encodeURIComponent(editingId), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      } else {
+        res = await fetch("/model-settings/chat/profiles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      }
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         // 409 说明别的标签页改过配置：刷新后让用户重试，输入不丢。
@@ -401,9 +475,44 @@ const ModelSettings = (() => {
       }
       closeForm();
       await fetchStatus(true);
-      showOk(`已启用「${json.label}」，下一个问题就会用 ${json.model}。`);
+      showOk(
+        activate
+          ? `已启用「${json.label}」，下一个问题就会用 ${json.model}。`
+          : `已保存「${json.label}」（未启用）。`
+      );
+    } catch (err) {
+      showError((activate ? "启用失败：" : "保存失败：") + err.message);
     } finally {
-      dom.btnActivate.disabled = false;
+      setFormBusy(false);
+    }
+  }
+
+  async function deleteProfile(profile) {
+    const confirmed = window.confirm(
+      `删除配置「${profile.label}」？该配置保存的 Key 会一并删除，且无法恢复。`
+    );
+    if (!confirmed) return;
+    showError("");
+    showOk("");
+    try {
+      await refreshIfStale();
+      const res = await fetch(
+        "/model-settings/chat/profiles/" +
+          encodeURIComponent(profile.id) +
+          "?expected_revision=" +
+          state.revision,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        showError(errorText(json, res));
+        await fetchStatus(true);
+        return;
+      }
+      await fetchStatus(true);
+      showOk(`已删除「${profile.label}」。`);
+    } catch (err) {
+      showError("删除失败：" + err.message);
     }
   }
 
@@ -444,8 +553,9 @@ const ModelSettings = (() => {
   }
 
   async function switchEmbedding(modelId) {
-    showError("");
-    showOk("");
+    // 向量相关的成败都写进向量弹层自己的状态区，绝不串到聊天弹层。
+    showEmbeddingError("");
+    showEmbeddingOk("");
     try {
       await refreshIfStale();
       const res = await fetch("/model-settings/embedding/switch", {
@@ -455,12 +565,12 @@ const ModelSettings = (() => {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        showError(errorText(json, res));
+        showEmbeddingError(errorText(json, res));
         await fetchStatus(true);
         return;
       }
       if (json.unchanged) {
-        showOk("当前已经在使用这个向量模型。");
+        showEmbeddingOk("当前已经在使用这个向量模型，索引也在。");
         await fetchStatus(true);
         return;
       }
@@ -471,7 +581,7 @@ const ModelSettings = (() => {
       renderEmbeddings();
       startPolling();
     } catch (err) {
-      showError("切换失败：" + err.message);
+      showEmbeddingError("切换失败：" + err.message);
     }
   }
 
@@ -554,6 +664,13 @@ const ModelSettings = (() => {
     dom.fKey = field(dom.form, "API Key", "input");
     dom.fKey.type = "password";
     dom.fKey.autocomplete = "new-password";
+    dom.fKey.addEventListener("input", () => {
+      // 输入新 Key 与"清除"是互斥意图，服务端也会拒绝同时提交。
+      if (dom.fKey.value.trim() && dom.fClearKey.checked) {
+        dom.fClearKey.checked = false;
+        syncAuthFields();
+      }
+    });
     const check = el("label", "ms-check");
     dom.fAuthNone = el("input");
     dom.fAuthNone.type = "checkbox";
@@ -561,6 +678,22 @@ const ModelSettings = (() => {
     check.appendChild(dom.fAuthNone);
     check.appendChild(el("span", null, "该服务无需 API Key（仅限本地兼容服务）"));
     dom.form.appendChild(check);
+
+    const clear = el("label", "ms-check");
+    dom.fClearKey = el("input");
+    dom.fClearKey.type = "checkbox";
+    dom.fClearKey.addEventListener("change", syncAuthFields);
+    clear.appendChild(dom.fClearKey);
+    clear.appendChild(el("span", null, "清除已保存的 Key（该配置将不再带凭据）"));
+    dom.form.appendChild(clear);
+    dom.form.appendChild(
+      el(
+        "div",
+        "ms-hint",
+        "留空即保留已保存的 Key；只有勾选「清除」或删除该配置才会移除它。"
+      )
+    );
+
     dom.fContextWindow = field(
       dom.form,
       "上下文窗口（token）",
@@ -569,17 +702,29 @@ const ModelSettings = (() => {
       "用于上下文压缩预算；按服务实际能力填写，不会根据模型名猜测"
     );
 
+    dom.formActiveNote = el(
+      "div",
+      "ms-hint",
+      "这是当前启用的配置：请用「保存并启用」提交，普通保存会改变文件却不更换正在运行的客户端。"
+    );
+    dom.formActiveNote.hidden = true;
+    dom.form.appendChild(dom.formActiveNote);
+
     dom.formActions = el("div", "ms-actions");
     dom.btnTest = el("button", "ms-btn", "测试连接");
     dom.btnTest.type = "button";
     dom.btnTest.addEventListener("click", testConnection);
+    dom.btnSave = el("button", "ms-btn", "保存");
+    dom.btnSave.type = "button";
+    dom.btnSave.addEventListener("click", () => submitProfile(false));
     dom.btnActivate = el("button", "ms-btn primary", "保存并启用");
     dom.btnActivate.type = "button";
-    dom.btnActivate.addEventListener("click", saveAndActivate);
+    dom.btnActivate.addEventListener("click", () => submitProfile(true));
     const cancel = el("button", "ms-btn", "取消");
     cancel.type = "button";
     cancel.addEventListener("click", closeForm);
     dom.formActions.appendChild(dom.btnTest);
+    dom.formActions.appendChild(dom.btnSave);
     dom.formActions.appendChild(dom.btnActivate);
     dom.formActions.appendChild(cancel);
     dom.form.appendChild(dom.formActions);

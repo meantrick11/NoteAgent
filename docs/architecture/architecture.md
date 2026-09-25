@@ -122,7 +122,9 @@ ChatAgent  chat/agent.py          仅 Chat 路径
 
 ### 3.3 装配
 
-进程启动时 [`bootstrap/app.py`](../../src/noteagent/bootstrap/app.py) 的 `build_container` 把 Settings、engine、`FileNoteRepository`、`ConversationStore` 焊进 `AppContainer`，再构造 [`ModelRuntimeService`](../../src/noteagent/model_management/service.py) 并由它 `initialize()` 出唯一一套运行对象（ChatAgent + RetrievalService + 当前模型状态），挂到 `app.state.container`。Agent/工具/检索的构造集中在 [`bootstrap/runtime.py`](../../src/noteagent/bootstrap/runtime.py)，路由只从运行时取一次快照，自己不 `new` 模型、不直连 Chroma。缺 `DATABASE_URL` 则装配失败，避免半初始化进程；索引加载失败不阻塞启动，检索显式置为不可用。
+进程启动时 [`bootstrap/app.py`](../../src/noteagent/bootstrap/app.py) 的 `build_container` 把 Settings、engine、`FileNoteRepository`、`ConversationStore` 焊进 `AppContainer`，再构造 [`ModelRuntimeService`](../../src/noteagent/model_management/service.py) 并由它 `initialize()` 出唯一一套运行对象（ChatAgent + RetrievalService + 当前模型状态），挂到 `app.state.container`。Agent/工具/检索的构造集中在 [`bootstrap/runtime.py`](../../src/noteagent/bootstrap/runtime.py)，路由只从运行时取一次快照，自己不 `new` 模型、不直连 Chroma。缺 `DATABASE_URL` 则装配失败，避免半初始化进程；**索引或聊天配置不可用都不阻塞启动**：索引显式置为不可用并给出 `retrieval_state` + 可操作原因，聊天配置缺必要凭据则带着「改哪个配置、怎么改」的提示直接报错，两者都不会悄悄退回另一个模型。
+
+**发布原子性。** 切换只在短发布锁内核对 revision、写盘、整块替换 `RuntimeSnapshot`（Agent 与它绑定的 retrieval 一起换）。激活聊天配置分两阶段：锁内解析目标 → 锁外探测与构造客户端 → 锁内复核 revision 与维护状态后一次提交；任一步失败，active 指针、revision、旧 Agent 全部保持原值。只有显式删除才移除配置（连同其凭据）。
 
 ### 3.4 代码组织（开发视图）
 

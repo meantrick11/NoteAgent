@@ -2310,22 +2310,32 @@ document.querySelector(".sidebar-body").addEventListener("scroll", closeConversa
 
 // ========== 主逻辑 ==========
 async function ask() {
+  // 同步门闩：必须在任何 await 之前置位，否则双击的第二次调用会在第一次的 await
+  // （refreshIfStale）期间看到 isStreaming 仍为 false，从而多发一轮请求、多写一条消息。
   if (isStreaming) return;
 
   const question = textarea.value.trim();
   if (!question) return;
 
+  isStreaming = true;
+  ModelSettings.setStreaming(true);
+  applyModelBusyState();
+
   // 另一个标签页可能刚开了向量维护窗口：发送前刷新一次服务端状态。
-  await ModelSettings.refreshIfStale();
+  try {
+    await ModelSettings.refreshIfStale();
+  } catch (err) {
+    // 刷新失败不影响发送本身：后端仍会按维护状态拒绝。
+  }
   if (!ModelSettings.canSend()) {
+    // 输入框这时还没被清空，用户的问题原样留在原处。
     appendMessage("assistant", "向量索引重建中，暂时不能发送消息；已有内容仍可查看。");
+    isStreaming = false;
+    ModelSettings.setStreaming(false);
     applyModelBusyState();
     return;
   }
 
-  isStreaming = true;
-  ModelSettings.setStreaming(true);
-  applyModelBusyState();
   textarea.value = "";
   textarea.style.height = "auto";
 
@@ -2469,6 +2479,7 @@ async function ask() {
     bodyEl.textContent = "请求失败：" + err.message;
     finishTrace(assistEl, steps);
   } finally {
+    // 异常和取消路径也要在这里释放门闩，否则界面再也发不出下一条消息。
     isStreaming = false;
     ModelSettings.setStreaming(false);
     applyModelBusyState();
