@@ -1,6 +1,8 @@
 from pathlib import Path
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+# 外置 CSS/JS 的目录；FastAPI 必须显式 mount，模板不会自动提供静态资源路由。
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 # 获取初始页的窗口
 def read_home_html() -> str:

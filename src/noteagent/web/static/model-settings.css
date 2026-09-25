@@ -1,0 +1,229 @@
+/* 输入框下方右侧的模型入口。变量沿用 templates/home.html 的 :root 定义。 */
+
+/* 输入区作为定位基准：弹层向上展开在输入框之外，不遮挡输入框、发送按钮与引用面板。 */
+.input-area { position: relative; }
+
+.model-toolbar {
+  max-width: calc((100% + 768px) / 2);
+  margin: 8px auto 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.model-picker {
+  position: static;
+}
+
+.model-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.model-btn:hover { border-color: var(--accent); color: var(--text); }
+.model-btn[aria-expanded="true"] { border-color: var(--accent); color: var(--text); }
+.model-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.model-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.model-btn-kind { flex-shrink: 0; }
+
+/* 长模型名省略显示，悬停可看全名（title 由脚本设置）。 */
+.model-btn-name {
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.model-btn-caret { flex-shrink: 0; font-size: 10px; }
+
+/* 维护窗口提示：只说明状态，不遮挡任何交互。 */
+.model-toolbar-note {
+  max-width: calc((100% + 768px) / 2);
+  margin: 6px auto 0;
+  text-align: right;
+  font-size: 12px;
+  color: #b45309;
+}
+
+.model-toolbar-note[hidden] { display: none; }
+
+/* 弹层向上展开到整个输入区之上，避免遮挡输入框、发送按钮与引用面板。 */
+.model-popover {
+  position: absolute;
+  right: 24px;
+  bottom: calc(100% + 12px);
+  width: min(420px, calc(100vw - 48px));
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+  z-index: 40;
+}
+
+.model-popover[hidden] { display: none; }
+
+.model-popover h4 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ms-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 14px 0 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.ms-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  background: var(--bg);
+}
+
+.ms-row.active { border-color: var(--accent); background: #eef2ff; }
+.ms-row-main { flex: 1; min-width: 0; }
+.ms-row-title { font-size: 13px; word-break: break-all; }
+.ms-row-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.ms-chip {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  background: var(--surface);
+}
+
+/* 可点击的 chip 是 button，键盘也能触达。 */
+button.ms-chip { font-family: inherit; cursor: pointer; }
+button.ms-chip:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+button.ms-chip:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.ms-chip.on { border-color: var(--accent); color: var(--accent); }
+.ms-chip.warn { border-color: #f59e0b; color: #b45309; }
+
+.ms-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.ms-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.ms-btn:hover:not(:disabled) { border-color: var(--accent); }
+.ms-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ms-btn.primary:hover:not(:disabled) { background: var(--accent-hover); }
+.ms-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.ms-field { margin-bottom: 8px; }
+.ms-field label {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.ms-field input, .ms-field select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+}
+.ms-field input:focus, .ms-field select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.ms-field .ms-hint { margin-top: 3px; font-size: 11px; color: var(--text-secondary); }
+.ms-check { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.ms-check input { width: auto; }
+
+/* 错误与进度都只写 textContent，绝不拼接供应商字符串。 */
+.ms-error {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 12px;
+  word-break: break-word;
+}
+.ms-error[hidden] { display: none; }
+
+.ms-ok {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 12px;
+}
+.ms-ok[hidden] { display: none; }
+
+.ms-progress {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.ms-progress[hidden] { display: none; }
+.ms-bar {
+  height: 6px;
+  margin-top: 4px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.ms-bar-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.2s;
+}
