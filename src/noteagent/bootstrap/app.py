@@ -17,7 +17,7 @@ from noteagent.db import create_engine_from_url, create_session_factory
 from noteagent.llm.factory import create_chat_model
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.retrieval.chunker import MarkdownChunker
-from noteagent.retrieval.embedder import SentenceTransformerEmbedder
+from noteagent.retrieval.embedder import build_embedder
 from noteagent.retrieval.service import RetrievalService
 from noteagent.retrieval.vector_store import ChromaVectorStore
 
@@ -48,11 +48,11 @@ def build_container(settings: Settings) -> AppContainer:
 
     notes = FileNoteRepository(settings.notes_dir)  #Notes repository initialization
 
-    embedder = SentenceTransformerEmbedder(
+    embedder = build_embedder(
         settings.embedding_model,
-        cache_folder=settings.embedding_cache_dir,
+        settings.embedding_cache_dir,
         local_files_only=settings.embedding_local_files_only,
-    )           #Embedding model initialization
+    )           #Embedding model initialization（编码指令按模型自动应用）
 
     retrieval = RetrievalService(
         notes=notes,
