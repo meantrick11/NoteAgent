@@ -162,6 +162,7 @@ class ModelSettingsStore:
             ) from exc
         if not isinstance(data, dict):
             raise ModelSettingsCorruptError(f"模型配置 {self._path} 顶层必须是对象")
+        self._check_schema_version(data)
         try:
             return StoredModelSettings.model_validate(data)
         except ValidationError as exc:
@@ -169,6 +170,24 @@ class ModelSettingsStore:
                 f"模型配置 {self._path} 结构不合法：{exc.error_count()} 处问题；"
                 "请修复或备份后删除该文件再启动"
             ) from exc
+
+    def _check_schema_version(self, data: dict) -> None:
+        """Refuse a file written by a newer app instead of reinterpreting it.
+
+        An older file (or one predating the version field) is accepted as-is: every
+        field that ever existed has a default or is optional, so loading it keeps the
+        stored profile ids, the active pointers, and any saved credential. Downgrading
+        a newer file silently would drop whatever it added, so that is an error.
+        """
+        version = data.get("schema_version")
+        if version is None:
+            _logger.info("模型配置缺少 schema_version，按旧格式读取 path=%s", self._path)
+            return
+        if not isinstance(version, int) or version > SCHEMA_VERSION:
+            raise ModelSettingsCorruptError(
+                f"模型配置 {self._path} 的 schema_version={version!r} 高于本应用支持的 "
+                f"{SCHEMA_VERSION}；请用写入该文件的版本打开，或备份后删除该文件再启动（原文件未改动）"
+            )
 
     def load_effective(self, settings: Settings) -> StoredModelSettings:
         """Stored settings when present, otherwise an env-derived initial document.
@@ -208,15 +227,26 @@ class ModelSettingsStore:
     def _resolve_env_credentials(
         self, settings: StoredModelSettings, app_settings: Settings
     ) -> StoredModelSettings:
-        """Fill env-sourced credentials from .env, leaving UI-entered ones as stored."""
+        """Fill env-sourced credentials from .env, leaving UI-entered ones as stored.
+
+        Only the DeepSeek default profile may reference the environment: the key in
+        ``.env`` belongs to that vendor, so a profile that moved to another provider
+        must carry its own credential (a UI one) instead of borrowing this key.
+        """
         profiles: list[ChatProfile] = []
         for profile in settings.chat_profiles:
-            if profile.credential_source == "env" and profile.provider == "deepseek":
-                profiles.append(
-                    profile.model_copy(update={"api_key": app_settings.deepseek_api_key})
+            if profile.credential_source == "env":
+                if profile.provider == "deepseek":
+                    profiles.append(
+                        profile.model_copy(update={"api_key": app_settings.deepseek_api_key})
+                    )
+                    continue
+                _logger.warning(
+                    "配置引用了环境凭据但不适用 provider=%s profile=%s；该配置需要自己的 Key",
+                    profile.provider,
+                    profile.id,
                 )
-            else:
-                profiles.append(profile)
+            profiles.append(profile)
         return settings.model_copy(update={"chat_profiles": profiles})
 
     def _write_atomic(self, settings: StoredModelSettings) -> None:
@@ -239,10 +269,23 @@ class ModelSettingsStore:
                 handle.write(payload)
                 handle.flush()
                 os.fsync(handle.fileno())
-            os.chmod(temp_path, _OWNER_ONLY_MODE)
+            self._restrict_to_owner(temp_path)
             os.replace(temp_path, self._path)
         except OSError as exc:
             temp_path.unlink(missing_ok=True)
             _logger.error("写入模型配置失败 path=%s error=%s", self._path, exc)
             raise
         _logger.info("模型配置已保存 path=%s revision=%s", self._path, settings.revision)
+
+    @staticmethod
+    def _restrict_to_owner(path: Path) -> None:
+        """Best-effort owner-only permissions.
+
+        POSIX honours 0o600; Windows only maps it onto the read-only bit, and some
+        filesystems refuse chmod outright. Losing the restriction is acceptable and
+        must never stop the app from saving its configuration, so this is non-fatal.
+        """
+        try:
+            os.chmod(path, _OWNER_ONLY_MODE)
+        except OSError as exc:
+            _logger.debug("无法设置配置文件权限 path=%s error=%s", path, exc)

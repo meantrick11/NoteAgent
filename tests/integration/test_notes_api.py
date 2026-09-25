@@ -39,7 +39,12 @@ class FixedAssembler:
     def build_chat_model(self, profile):
         raise AssertionError("notes API tests must not build a real chat model")
 
-    def build_retrieval(self, *, model_id, collection, local_files_only):
+    def index_fingerprint(self, *, model_id, resolved_revision):
+        return self._retrieval.config_fingerprint()
+
+    def build_retrieval(
+        self, *, model_id, resolved_revision, collection, local_files_only, create_if_missing
+    ):
         return self._retrieval
 
     def build_agent(self, *, profile, retrieval):

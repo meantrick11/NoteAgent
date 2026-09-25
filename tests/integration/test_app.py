@@ -28,6 +28,12 @@ class StubRetrieval:
     def config_fingerprint(self) -> str:
         return "stub-config"
 
+    def verify_index(self) -> bool:
+        return True
+
+    def point_count(self) -> int:
+        return 0
+
 
 class StubAssembler:
     """Hands back the agent a test injected; never builds a real model."""
@@ -39,7 +45,12 @@ class StubAssembler:
     def build_chat_model(self, profile):
         raise AssertionError("integration tests must not build a real chat model")
 
-    def build_retrieval(self, *, model_id, collection, local_files_only):
+    def index_fingerprint(self, *, model_id, resolved_revision):
+        return f"stub:{model_id}:{resolved_revision or ''}"
+
+    def build_retrieval(
+        self, *, model_id, resolved_revision, collection, local_files_only, create_if_missing
+    ):
         return self._retrieval
 
     def build_agent(self, *, profile, retrieval):

@@ -16,7 +16,7 @@ from noteagent.chat.tools import build_chat_tools
 from noteagent.llm.factory import create_chat_model_from_config
 from noteagent.retrieval.chunker import MarkdownChunker
 from noteagent.retrieval.embedder import build_embedder
-from noteagent.retrieval.service import RetrievalService
+from noteagent.retrieval.service import RetrievalService, index_fingerprint_for_model
 from noteagent.retrieval.vector_store import ChromaVectorStore
 
 if TYPE_CHECKING:
@@ -82,8 +82,27 @@ class BootstrapAssembler:
             api_key=api_key_for_profile(profile),
         )
 
+    def index_fingerprint(self, *, model_id: str, resolved_revision: str | None) -> str:
+        """Identity of the index this model and chunk configuration would build.
+
+        Computed without loading the model, because the target collection has to be
+        named from this identity before the rebuild starts.
+        """
+        return index_fingerprint_for_model(
+            model_id,
+            strategy=self._settings.chunk_strategy,
+            embed_heading_prefix=self._settings.embed_heading_prefix,
+            resolved_revision=resolved_revision,
+        )
+
     def build_retrieval(
-        self, *, model_id: str, collection: str, local_files_only: bool
+        self,
+        *,
+        model_id: str,
+        resolved_revision: str | None,
+        collection: str,
+        local_files_only: bool,
+        create_if_missing: bool,
     ) -> RetrievalService:
         """Build the retrieval stack for one embedding model and collection."""
         embedder = build_embedder(
@@ -95,8 +114,11 @@ class BootstrapAssembler:
             notes=self._notes,
             chunker=MarkdownChunker(strategy=self._settings.chunk_strategy),
             embedder=embedder,
-            store=ChromaVectorStore(self._settings.chroma_dir, collection),
+            store=ChromaVectorStore(
+                self._settings.chroma_dir, collection, create_if_missing=create_if_missing
+            ),
             embed_heading_prefix=self._settings.embed_heading_prefix,
+            resolved_revision=resolved_revision,
         )
 
     def build_agent(

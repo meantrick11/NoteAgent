@@ -18,6 +18,8 @@ CredentialSource = Literal["env", "ui"]
 JobStatus = Literal["running", "succeeded", "failed", "interrupted"]
 # 本地缓存里一个模型的可用程度：目录存在不等于 available。
 EmbeddingAvailability = Literal["available", "incomplete", "unsupported"]
+# 活动索引的真实状态，供界面区分"丢失""指纹不符""空但有效"和"已就绪"。
+RetrievalState = Literal["ok", "empty", "missing", "config_mismatch", "unavailable"]
 
 DEFAULT_CONTEXT_WINDOW = 32768
 SCHEMA_VERSION = 1
@@ -306,7 +308,12 @@ class EmbeddingSwitchOut(BaseModel):
 
 
 class ModelSettingsStatusOut(BaseModel):
-    """Everything the UI needs to render both pickers and any running job."""
+    """Everything the UI needs to render both pickers and any running job.
+
+    ``retrieval_state`` is the machine-readable companion to ``retrieval_problem``:
+    "empty" is a valid, available index (nothing to index yet), while "missing" and
+    "config_mismatch" both mean the index has to be rebuilt before it can be trusted.
+    """
 
     revision: int
     chat_profiles: list[ChatProfileOut]
@@ -314,5 +321,8 @@ class ModelSettingsStatusOut(BaseModel):
     active_embedding: ActiveEmbedding | None
     retrieval_available: bool
     retrieval_problem: str | None = None
+    retrieval_state: RetrievalState = "ok"
+    indexed_files: int = 0
+    corpus_files: int = 0
     busy: bool
     embedding_job: EmbeddingJobRecord | None = None

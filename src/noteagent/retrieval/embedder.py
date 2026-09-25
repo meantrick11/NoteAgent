@@ -2,13 +2,17 @@ from pathlib import Path
 
 from sentence_transformers import SentenceTransformer
 
-# 各模型要求的编码指令；不按官方用法加，检索质量会明显下降。
-# bge-zh-v1.5：query 侧指令（官方表 "query instruction for retrieval"）。
-# e5 系列：query 与 passage 两侧都必须加，非英文也一样。
-MODEL_INSTRUCTIONS: dict[str, tuple[str, str]] = {
-    "BAAI/bge-small-zh-v1.5": ("为这个句子生成表示以用于检索相关文章：", ""),
-    "intfloat/multilingual-e5-small": ("query: ", "passage: "),
-}
+from noteagent.retrieval.instructions import (
+    MODEL_INSTRUCTIONS,
+    instructions_for,
+)
+
+__all__ = [
+    "MODEL_INSTRUCTIONS",
+    "SentenceTransformerEmbedder",
+    "build_embedder",
+    "instructions_for",
+]
 
 
 class SentenceTransformerEmbedder:
@@ -77,7 +81,7 @@ def build_embedder(
     local_files_only: bool = False,
 ) -> SentenceTransformerEmbedder:
     """Create an embedder with the encoding instructions this model requires."""
-    query_prefix, document_prefix = MODEL_INSTRUCTIONS.get(model_name, ("", ""))
+    query_prefix, document_prefix = instructions_for(model_name)
     return SentenceTransformerEmbedder(
         model_name,
         cache_folder,

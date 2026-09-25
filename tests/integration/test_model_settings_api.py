@@ -15,6 +15,7 @@ from noteagent.model_management.catalog import repo_dir_name
 from noteagent.model_management.service import (
     ChatProbeResult,
     ModelRuntimeService,
+    embedding_collection_name,
 )
 from noteagent.model_management.store import ModelSettingsStore
 from noteagent.notes.repository import FileNoteRepository
@@ -50,10 +51,17 @@ class FakeRetrieval:
         self.collection = collection
         self.indexed: list[str] = []
         self.errors: list[str] = []
+        self.gone = False
         self._block = block
 
     def config_fingerprint(self) -> str:
         return f"fp:{self.model_id}"
+
+    def verify_index(self) -> bool:
+        return not self.gone
+
+    def point_count(self) -> int:
+        return len(self.indexed)
 
     def index_note(self, file_name: str) -> int:
         if self._block is not None:
@@ -86,7 +94,12 @@ class FakeAssembler:
     def build_chat_model(self, profile):
         raise AssertionError("API tests must not build a real chat model")
 
-    def build_retrieval(self, *, model_id, collection, local_files_only):
+    def index_fingerprint(self, *, model_id, resolved_revision):
+        return f"fp:{model_id}"
+
+    def build_retrieval(
+        self, *, model_id, resolved_revision, collection, local_files_only, create_if_missing
+    ):
         existing = self._by_collection.get(collection)
         if existing is not None:
             return existing
@@ -279,6 +292,185 @@ def test_saving_a_profile_does_not_activate_it(tmp_path):
     assert len(body["chat_profiles"]) == 2
 
 
+# ---------- 请求身份与删除 ----------
+
+
+def test_create_ignores_a_client_supplied_id(tmp_path):
+    """A new profile id is minted server-side, never taken from the body."""
+    client, _, _, _, _ = build_client(tmp_path)
+
+    response = client.post(
+        "/model-settings/chat/profiles",
+        json=compatible_profile(id="chosen-by-client", expected_revision=0),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["id"] != "chosen-by-client"
+    ids = {p["id"] for p in client.get("/model-settings").json()["chat_profiles"]}
+    assert "chosen-by-client" not in ids
+    assert response.json()["id"] in ids
+
+
+def test_update_rejects_a_body_id_that_contradicts_the_url(tmp_path):
+    """The URL owns the identity; a conflicting body id is a validation error."""
+    client, _, _, _, _ = build_client(tmp_path)
+    created = client.post(
+        "/model-settings/chat/profiles",
+        json=compatible_profile(expected_revision=0),
+    ).json()
+
+    response = client.put(
+        f"/model-settings/chat/profiles/{created['id']}",
+        json=compatible_profile(id="someone-else", expected_revision=1),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "invalid_profile"
+
+
+def test_delete_removes_a_non_active_profile(tmp_path):
+    """Deleting a draft profile removes exactly that one."""
+    client, _, _, _, _ = build_client(tmp_path)
+    created = client.post(
+        "/model-settings/chat/profiles",
+        json=compatible_profile(expected_revision=0),
+    ).json()
+
+    response = client.delete(
+        f"/model-settings/chat/profiles/{created['id']}?expected_revision=1"
+    )
+
+    assert response.status_code == 204
+    ids = {p["id"] for p in client.get("/model-settings").json()["chat_profiles"]}
+    assert created["id"] not in ids
+    assert "env-default" in ids
+
+
+def test_delete_refuses_the_active_profile(tmp_path):
+    """The running profile has to be switched away from first."""
+    client, _, _, _, _ = build_client(tmp_path)
+    active_id = client.get("/model-settings").json()["active_chat"]["id"]
+
+    response = client.delete(
+        f"/model-settings/chat/profiles/{active_id}?expected_revision=0"
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "busy"
+    assert client.get("/model-settings").json()["active_chat"]["id"] == active_id
+
+
+def test_delete_requires_the_current_revision(tmp_path):
+    """A stale tab must not delete what it has not seen the current state of."""
+    client, _, _, _, _ = build_client(tmp_path)
+    created = client.post(
+        "/model-settings/chat/profiles",
+        json=compatible_profile(expected_revision=0),
+    ).json()
+
+    response = client.delete(
+        f"/model-settings/chat/profiles/{created['id']}?expected_revision=0"
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "revision_conflict"
+
+
+def test_delete_unknown_profile_is_404(tmp_path):
+    """Deleting something that is not stored is not a silent success."""
+    client, _, _, _, _ = build_client(tmp_path)
+
+    response = client.delete("/model-settings/chat/profiles/nope?expected_revision=0")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "profile_not_found"
+
+
+def test_delete_refuses_a_cross_origin_call(tmp_path):
+    """Deleting a credential-bearing profile is protected like the other writes."""
+    client, _, _, _, _ = build_client(tmp_path)
+
+    response = client.delete(
+        "/model-settings/chat/profiles/env-default?expected_revision=0",
+        headers={"origin": "https://evil.example", "host": "testserver"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_moving_the_env_profile_to_another_vendor_needs_a_key(tmp_path):
+    """The .env DeepSeek key must not be reused for a different vendor."""
+    client, _, _, _, _ = build_client(tmp_path)
+
+    response = client.post(
+        "/model-settings/chat/activate",
+        json={
+            "expected_revision": 0,
+            "profile": {
+                "id": "env-default",
+                "label": "本地兼容服务",
+                "provider": "openai-compatible",
+                "model": "qwen2.5",
+                "base_url": "http://localhost:1234/v1",
+                "context_window": 8192,
+            },
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "invalid_profile"
+    body = client.get("/model-settings").json()
+    assert body["active_chat"]["credential_source"] == "env"
+    assert body["revision"] == 0
+
+
+def test_two_vendors_keep_their_own_keys_across_a_restart(tmp_path, caplog):
+    """Both profiles and both credentials survive a restart, and never leak."""
+    caplog.set_level("DEBUG")
+    deepseek_key = "sk-deepseek-only-marker"
+    compat_key = "sk-compat-only-marker"
+    client, _, _, _, _ = build_client(tmp_path)
+    first = client.post(
+        "/model-settings/chat/profiles",
+        json={
+            "label": "DeepSeek 主账号",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "base_url": "",
+            "api_key": deepseek_key,
+            "context_window": 65536,
+            "expected_revision": 0,
+        },
+    ).json()
+    second = client.post(
+        "/model-settings/chat/profiles",
+        json=compatible_profile(api_key=compat_key, expected_revision=1),
+    ).json()
+    activated = client.post(
+        "/model-settings/chat/activate",
+        json={"expected_revision": 2, "profile_id": second["id"]},
+    )
+    assert activated.status_code == 200
+
+    restarted, _, _, _, _ = build_client(tmp_path)
+    status = restarted.get("/model-settings").json()
+
+    assert status["active_chat"]["id"] == second["id"]
+    assert {p["id"] for p in status["chat_profiles"]} == {
+        "env-default",
+        first["id"],
+        second["id"],
+    }
+    written = ModelSettingsStore(tmp_path / "settings").load()
+    assert written.profile_by_id(first["id"]).api_key.get_secret_value() == deepseek_key
+    assert written.profile_by_id(second["id"]).api_key.get_secret_value() == compat_key
+    # 两个 Key 都不出现在任何响应、状态或日志里。
+    assert deepseek_key not in restarted.get("/model-settings").text
+    assert compat_key not in restarted.get("/model-settings").text
+    assert deepseek_key not in caplog.text
+    assert compat_key not in caplog.text
+
+
 # ---------- 连接测试与激活 ----------
 
 
@@ -421,7 +613,28 @@ def test_switch_starts_a_job_and_reports_active_until_it_finishes(tmp_path):
 
     status = client.get("/model-settings").json()
     assert status["active_embedding"]["model_id"] == E5
-    assert status["active_embedding"]["collection"] == "notes__multilingual-e5-small"
+    assert status["active_embedding"]["collection"] == embedding_collection_name(
+        "notes", E5, f"fp:{E5}"
+    )
+    assert status["retrieval_state"] == "ok"
+    assert status["indexed_files"] == 1
+
+
+def test_status_distinguishes_a_missing_index_from_an_empty_one(tmp_path):
+    """丢失的索引必须报不可用，空语料则是一个有效的空索引。"""
+    client, runtime, _, _, _ = build_client(tmp_path)
+
+    fresh = client.get("/model-settings").json()
+    assert fresh["retrieval_available"] is True
+    assert fresh["retrieval_state"] == "empty"
+    assert fresh["indexed_files"] == 0
+
+    # 活动索引被外部删掉：状态立刻变差，而不是继续报可用。
+    runtime.snapshot().retrieval.gone = True
+    gone = client.get("/model-settings").json()
+    assert gone["retrieval_available"] is False
+    assert gone["retrieval_state"] == "missing"
+    assert gone["retrieval_problem"]
 
 
 def test_switch_to_the_same_model_is_unchanged(tmp_path):

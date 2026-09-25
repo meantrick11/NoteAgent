@@ -52,6 +52,7 @@ from noteagent.model_management.store import (
 )
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.retrieval.service import RetrievalService, index_targets
+from noteagent.retrieval.vector_store import CollectionMissingError, IndexConfigMismatch
 
 if TYPE_CHECKING:
     from langchain_core.language_models.chat_models import BaseChatModel
@@ -62,8 +63,10 @@ _logger = logging.getLogger(__name__)
 
 # 每次连接测试最多两个短请求，单个请求的上限（秒）。没有隐藏重试。
 PROBE_TIMEOUT_SECONDS = 20.0
-# Chroma 对 collection 名长度有限制；base + 模型短名超长时截断。
+# Chroma 对 collection 名长度有限制；越过它的部分先裁前缀，指纹摘要永远保留完整。
 COLLECTION_MAX_LENGTH = 63
+COLLECTION_DIGEST_LENGTH = 16
+COLLECTION_MODEL_SLUG_LENGTH = 24
 
 
 class ModelManagementError(RuntimeError):
@@ -160,13 +163,30 @@ class RepairRequiredError(ModelManagementError):
     retryable = True
 
 
+class RuntimeConfigurationError(RuntimeError):
+    """The persisted choice cannot be turned into a running object at startup.
+
+    Raised from :meth:`ModelRuntimeService.initialize` so the operator sees a single
+    actionable line instead of an opaque traceback, and never a silent fallback to a
+    different model than the one that was activated.
+    """
+
+
 class RuntimeAssembler(Protocol):
     """Assembly entry injected by bootstrap, so this module never imports bootstrap."""
 
     def build_chat_model(self, profile: ChatProfile) -> BaseChatModel: ...
 
+    def index_fingerprint(self, *, model_id: str, resolved_revision: str | None) -> str: ...
+
     def build_retrieval(
-        self, *, model_id: str, collection: str, local_files_only: bool
+        self,
+        *,
+        model_id: str,
+        resolved_revision: str | None,
+        collection: str,
+        local_files_only: bool,
+        create_if_missing: bool,
     ) -> RetrievalService: ...
 
     def build_agent(
@@ -216,14 +236,20 @@ def _probe_tool(value: str) -> str:
     return value
 
 
-def embedding_collection_name(base: str, model_id: str) -> str:
-    """Give each embedding model its own collection.
+def embedding_collection_name(base: str, model_id: str, fingerprint: str) -> str:
+    """Name a collection after the *full* index identity, not just the model.
 
-    Vectors from different models are not comparable, so a switch must never write into
-    the collection the previous model built.
+    The same embedding model under a different chunking strategy is a different index,
+    so a model-only name would put two incompatible vector sets in one collection. The
+    digest is what makes them distinct; the readable part is capped and the digest is
+    never truncated, so two configurations can never truncate into the same name.
     """
-    slug = re.sub(r"[^A-Za-z0-9_-]", "-", model_id.rsplit("/", 1)[-1])
-    return f"{base}__{slug}"[:COLLECTION_MAX_LENGTH]
+    slug = re.sub(r"[^A-Za-z0-9_-]", "-", model_id.rsplit("/", 1)[-1])[
+        :COLLECTION_MODEL_SLUG_LENGTH
+    ]
+    suffix = f"{slug}-{fingerprint[:COLLECTION_DIGEST_LENGTH]}"
+    prefix = base[: max(1, COLLECTION_MAX_LENGTH - len(suffix) - 2)]
+    return f"{prefix}__{suffix}"
 
 
 def _now() -> datetime:
@@ -345,6 +371,7 @@ class ModelRuntimeService:
         self._document: StoredModelSettings | None = None
         self._snapshot: RuntimeSnapshot | None = None
         self._retrieval_problem: str | None = None
+        self._retrieval_state: str = "ok"
         self._live_job: EmbeddingJobRecord | None = None
         self._job_thread: threading.Thread | None = None
 
@@ -378,10 +405,24 @@ class ModelRuntimeService:
                     "active_chat_profile_id": profile.id,
                 }
             )
-        retrieval, problem, embedding = self._open_retrieval(document)
-        agent = self._assembler.build_agent(profile=profile, retrieval=retrieval)
+        retrieval, problem, embedding, retrieval_state = self._open_retrieval(document)
+        try:
+            agent = self._assembler.build_agent(profile=profile, retrieval=retrieval)
+        except Exception as exc:
+            # 缺 Key 之类的问题必须说清"哪个配置、怎么修"，且绝不能悄悄换成另一个模型。
+            _logger.error(
+                "启动失败：当前启用的聊天配置不可用 profile=%s provider=%s error=%s",
+                profile.id,
+                profile.provider,
+                exc,
+            )
+            raise RuntimeConfigurationError(
+                f"当前启用的聊天配置「{profile.label}」({profile.id}) 无法使用：{exc}。"
+                "请在「聊天模型」设置中为该配置填写 API Key（或改选其它配置）后重启"
+            ) from exc
         self._document = document
         self._retrieval_problem = problem
+        self._retrieval_state = retrieval_state
         self._snapshot = RuntimeSnapshot(
             revision=document.revision,
             chat_profile_id=profile.id,
@@ -443,13 +484,28 @@ class ModelRuntimeService:
             document = self._require_document()
             active = document.active_chat_profile()
             snapshot = self._snapshot
+            live_retrieval = snapshot.retrieval if snapshot else None
+            problem = self._retrieval_problem
+            state = self._retrieval_state
+            indexed = 0
+            if live_retrieval is not None:
+                # 重建期间也要如实反映：索引被外部删掉时状态必须立刻变差。
+                if not live_retrieval.verify_index():
+                    state, problem = "missing", "索引 collection 已不存在，需要重建"
+                    live_retrieval = None
+                else:
+                    indexed = live_retrieval.point_count()
+                    state = "empty" if indexed == 0 else "ok"
             return ModelSettingsStatusOut(
                 revision=document.revision,
                 chat_profiles=[profile.to_out() for profile in document.chat_profiles],
                 active_chat=active.to_out() if active else None,
                 active_embedding=snapshot.embedding if snapshot else document.active_embedding,
-                retrieval_available=snapshot is not None and snapshot.retrieval is not None,
-                retrieval_problem=self._retrieval_problem,
+                retrieval_available=live_retrieval is not None,
+                retrieval_problem=problem,
+                retrieval_state=state,
+                indexed_files=indexed,
+                corpus_files=self._corpus_file_count(),
                 busy=self._maintenance,
                 embedding_job=self._live_job or document.embedding_job,
             )
@@ -462,7 +518,9 @@ class ModelRuntimeService:
             existing = (
                 self._require_document().profile_by_id(candidate.id) if candidate.id else None
             )
-        profile = self._merge_candidate(candidate, existing)
+        # 测试不落盘，id 只用于把候选与它编辑的配置对齐（凭据保留规则依赖它）。
+        probe_id = existing.id if existing is not None else (candidate.id or "probe")
+        profile = self._merge_candidate(candidate, existing, profile_id=probe_id)
         result = await self._probe_impl(profile)
         return ChatTestOut(
             verified=result.verified,
@@ -474,18 +532,37 @@ class ModelRuntimeService:
     def save_chat_profile(
         self, write: ChatProfileWriteIn, *, profile_id: str | None
     ) -> ChatProfileOut:
-        """Create or update a stored profile. Saving never switches the runtime."""
+        """Create or update a stored profile. Saving never switches the runtime.
+
+        ``profile_id`` is the identity: it comes from the URL on update and is None on
+        create. A create always mints a server-side id, so a client-chosen id can never
+        overwrite (or collide with) a stored profile; an update rejects a body id that
+        contradicts the URL instead of quietly editing a different profile.
+        """
         with self._lock:
             self._ensure_not_maintenance()
             self._check_revision(write.expected_revision)
             document = self._require_document()
-            existing = document.profile_by_id(profile_id) if profile_id else None
-            if profile_id and existing is None:
-                raise ProfileNotFoundError(f"未找到配置 {profile_id}")
-            if profile_id is not None and profile_id == document.active_chat_profile_id:
-                # 直接改文件会让运行中的客户端与配置不一致，必须走"保存并启用"。
-                raise BusyError("当前启用的配置不能直接编辑，请用「保存并启用」提交")
-            profile = self._merge_candidate(write, existing, fallback_id=profile_id)
+            if profile_id is None:
+                if write.id is not None:
+                    _logger.info(
+                        "忽略请求体中的 id=%s：新配置的 id 由服务端生成", write.id
+                    )
+                target_id = uuid.uuid4().hex[:12]
+                existing = None
+            else:
+                if write.id is not None and write.id != profile_id:
+                    raise InvalidProfileError(
+                        f"请求体中的 id（{write.id}）与 URL 中的 profile_id（{profile_id}）不一致"
+                    )
+                existing = document.profile_by_id(profile_id)
+                if existing is None:
+                    raise ProfileNotFoundError(f"未找到配置 {profile_id}")
+                if profile_id == document.active_chat_profile_id:
+                    # 直接改文件会让运行中的客户端与配置不一致，必须走"保存并启用"。
+                    raise BusyError("当前启用的配置不能直接编辑，请用「保存并启用」提交")
+                target_id = profile_id
+            profile = self._merge_candidate(write, existing, profile_id=target_id)
             profiles = [p for p in document.chat_profiles if p.id != profile.id]
             profiles.append(profile)
             # 只保存，不启用：启用必须走 activate_chat 的验证事务。
@@ -493,8 +570,50 @@ class ModelRuntimeService:
             _logger.info("chat profile saved id=%s model=%s", profile.id, profile.model)
             return profile.to_out()
 
+    def delete_chat_profile(self, *, profile_id: str, expected_revision: int) -> None:
+        """Remove one stored profile. The active profile has to be switched away first.
+
+        Only an explicit delete removes a profile (and with it its credential); editing
+        or activating anything else must leave every other profile untouched.
+        """
+        with self._lock:
+            self._ensure_not_maintenance()
+            self._check_revision(expected_revision)
+            document = self._require_document()
+            profile = document.profile_by_id(profile_id)
+            if profile is None:
+                raise ProfileNotFoundError(f"未找到配置 {profile_id}")
+            if profile_id == document.active_chat_profile_id:
+                raise BusyError("当前启用的配置不能删除，请先启用另一个配置")
+            profiles = [p for p in document.chat_profiles if p.id != profile_id]
+            self._save_locked(document.model_copy(update={"chat_profiles": profiles}))
+            _logger.info(
+                "chat profile deleted id=%s provider=%s source=%s",
+                profile.id,
+                profile.provider,
+                profile.credential_source,
+            )
+
     async def activate_chat(self, payload: ChatActivateIn) -> ChatProfileOut:
-        """Verify, save, and enable in one transaction; the old client stays on failure."""
+        """Verify, save, and enable in one transaction; the old client stays on failure.
+
+        Two phases on purpose: probing and building the new client happen outside the
+        lock (they take seconds), then the commit re-checks revision, maintenance state,
+        and the target profile inside the lock before persisting and publishing the new
+        snapshot together. Any failure before the commit leaves the active pointer, the
+        revision, the snapshot, and the running agent exactly as they were.
+        """
+        profile, retrieval = self._prepare_activation(payload)
+        result = await self._probe_impl(profile)
+        if not result.verified:
+            raise ProtocolUnsupportedError(_describe_probe(result))
+        agent = self._assembler.build_agent(profile=profile, retrieval=retrieval)
+        return self._commit_activation(payload, profile, retrieval, agent)
+
+    def _prepare_activation(
+        self, payload: ChatActivateIn
+    ) -> tuple[ChatProfile, RetrievalService | None]:
+        """Resolve the target profile under the lock without changing anything."""
         with self._lock:
             self._ensure_not_maintenance()
             self._check_revision(payload.expected_revision)
@@ -505,19 +624,23 @@ class ModelRuntimeService:
                 )
                 if payload.profile.id and existing is None:
                     raise ProfileNotFoundError(f"未找到配置 {payload.profile.id}")
-                profile = self._merge_candidate(payload.profile, existing)
+                target_id = existing.id if existing is not None else uuid.uuid4().hex[:12]
+                profile = self._merge_candidate(payload.profile, existing, profile_id=target_id)
             else:
                 profile = document.profile_by_id(payload.profile_id)
                 if profile is None:
                     raise ProfileNotFoundError(f"未找到配置 {payload.profile_id}")
             retrieval = self._snapshot.retrieval if self._snapshot else None
+            return profile, retrieval
 
-        # 探针要发真实请求，不能持锁；结束到发布之间再核对一次 revision 与维护状态。
-        result = await self._probe_impl(profile)
-        if not result.verified:
-            raise ProtocolUnsupportedError(_describe_probe(result))
-        agent = self._assembler.build_agent(profile=profile, retrieval=retrieval)
-
+    def _commit_activation(
+        self,
+        payload: ChatActivateIn,
+        profile: ChatProfile,
+        retrieval: RetrievalService | None,
+        agent: ChatAgent,
+    ) -> ChatProfileOut:
+        """Persist the new profile and active pointer, then publish the snapshot."""
         with self._lock:
             self._ensure_not_maintenance()
             self._check_revision(payload.expected_revision)
@@ -532,9 +655,7 @@ class ModelRuntimeService:
                     }
                 )
             )
-            embedding = (
-                self._snapshot.embedding if self._snapshot else saved.active_embedding
-            )
+            embedding = self._snapshot.embedding if self._snapshot else saved.active_embedding
             self._snapshot = RuntimeSnapshot(
                 revision=saved.revision,
                 chat_profile_id=profile.id,
@@ -544,10 +665,11 @@ class ModelRuntimeService:
                 embedding=embedding,
             )
         _logger.info(
-            "chat profile activated id=%s model=%s provider=%s",
+            "chat profile activated id=%s model=%s provider=%s revision=%s",
             profile.id,
             profile.model,
             profile.provider,
+            saved.revision,
         )
         return profile.to_out()
 
@@ -567,8 +689,10 @@ class ModelRuntimeService:
     ) -> tuple[bool, EmbeddingJobRecord | None]:
         """Open a maintenance window and start a rebuild.
 
-        Returns ``(unchanged, job)``: unchanged means the requested model is already in
-        force with a matching fingerprint, so there is nothing to rebuild.
+        Returns ``(unchanged, job)``: unchanged means the running index already *has*
+        the identity this request asks for and still exists, so there is nothing to
+        rebuild. A collection that is missing, or whose identity differs (including a
+        change to the chunking configuration), starts a repair job instead.
         """
         try:
             candidate = catalog.inspect_model(
@@ -581,6 +705,14 @@ class ModelRuntimeService:
         if candidate.availability != "available":
             raise ModelUnavailableError(candidate.reason or "该向量模型当前不可用")
 
+        # 身份与目标 collection 必须在加载模型之前算出来：collection 名就是身份。
+        target_fingerprint = self._assembler.index_fingerprint(
+            model_id=candidate.model_id, resolved_revision=candidate.resolved_revision
+        )
+        collection = embedding_collection_name(
+            self._settings.chroma_collection, candidate.model_id, target_fingerprint
+        )
+
         with self._lock:
             self._ensure_not_maintenance()
             self._check_revision(expected_revision)
@@ -589,11 +721,11 @@ class ModelRuntimeService:
             snapshot = self._snapshot
             active = snapshot.embedding if snapshot else None
             if (
-                active is not None
-                and active.model_id == candidate.model_id
-                and snapshot is not None
+                snapshot is not None
                 and snapshot.retrieval is not None
-                and active.fingerprint == snapshot.retrieval.config_fingerprint()
+                and active is not None
+                and active.fingerprint == target_fingerprint
+                and snapshot.retrieval.verify_index()
             ):
                 return True, None
             if self._active_operations > 0:
@@ -616,16 +748,23 @@ class ModelRuntimeService:
 
         thread = threading.Thread(
             target=self._rebuild_worker,
-            args=(candidate.model_id, candidate.resolved_revision, start_revision),
+            args=(
+                candidate.model_id,
+                candidate.resolved_revision,
+                collection,
+                target_fingerprint,
+                start_revision,
+            ),
             name=f"embedding-rebuild-{job.id}",
             daemon=True,
         )
         self._job_thread = thread
         thread.start()
         _logger.info(
-            "embedding rebuild started job=%s target=%s revision=%s",
+            "embedding rebuild started job=%s target=%s collection=%s revision=%s",
             job.id,
             candidate.model_id,
+            collection,
             start_revision,
         )
         return False, job
@@ -644,12 +783,13 @@ class ModelRuntimeService:
 
     def _open_retrieval(
         self, document: StoredModelSettings
-    ) -> tuple[RetrievalService | None, str | None, ActiveEmbedding | None]:
-        """Build retrieval for the persisted embedding state.
+    ) -> tuple[RetrievalService | None, str | None, ActiveEmbedding | None, str]:
+        """Open the persisted index without ever creating or relabelling one.
 
-        Returns the service (or None), a user-facing reason when it is unavailable, and
-        the embedding state with the fingerprint actually observed. A missing index is
-        reported as unavailable rather than replaced by an empty one.
+        Returns the service (or None), a user-facing reason when it is unusable, the
+        embedding state with the fingerprint actually observed, and the machine-readable
+        state. A collection that is gone, or whose identity does not match the current
+        configuration, is reported as such instead of being replaced by an empty one.
         """
         embedding = document.active_embedding
         if embedding is None:
@@ -657,11 +797,35 @@ class ModelRuntimeService:
                 model_id=self._settings.embedding_model,
                 collection=self._settings.chroma_collection,
             )
+        revision = self._resolve_revision(embedding)
         try:
             retrieval = self._assembler.build_retrieval(
                 model_id=embedding.model_id,
+                resolved_revision=revision,
                 collection=embedding.collection,
                 local_files_only=self._settings.embedding_local_files_only,
+                create_if_missing=False,
+            )
+        except CollectionMissingError:
+            _logger.error(
+                "活动索引 collection 不存在 model=%s collection=%s",
+                embedding.model_id,
+                embedding.collection,
+            )
+            return (
+                None,
+                f"索引 collection「{embedding.collection}」不存在（可能已被删除或从未建立）；"
+                "请重建索引后再使用检索",
+                embedding,
+                "missing",
+            )
+        except IndexConfigMismatch as exc:
+            _logger.error("活动索引指纹不符 collection=%s error=%s", embedding.collection, exc)
+            return (
+                None,
+                f"现有索引与当前配置不一致（{exc}）；请重建索引",
+                embedding,
+                "config_mismatch",
             )
         except Exception as exc:
             _logger.exception(
@@ -669,45 +833,76 @@ class ModelRuntimeService:
                 embedding.model_id,
                 embedding.collection,
             )
-            return None, f"向量索引当前不可用：{_public_error(exc)}", embedding
-        return retrieval, None, embedding.model_copy(
-            update={"fingerprint": retrieval.config_fingerprint()}
+            return None, f"向量索引当前不可用：{_public_error(exc)}", embedding, "unavailable"
+        observed = embedding.model_copy(
+            update={
+                "resolved_revision": revision,
+                "fingerprint": retrieval.config_fingerprint(),
+            }
         )
+        state = "empty" if retrieval.point_count() == 0 else "ok"
+        return retrieval, None, observed, state
+
+    def _resolve_revision(self, embedding: ActiveEmbedding) -> str | None:
+        """Revision of the cached model as it exists right now.
+
+        The revision is part of the index identity, so it must describe the weights on
+        disk rather than whatever was recorded last time: an in-place model update then
+        shows up as a fingerprint mismatch that requires a rebuild. A model the catalog
+        does not know (a hand-placed cache) keeps its recorded revision instead.
+        """
+        from_cache = catalog.resolved_revision(
+            self._settings.embedding_cache_dir, embedding.model_id
+        )
+        return from_cache if from_cache is not None else embedding.resolved_revision
+
+    def _corpus_file_count(self) -> int:
+        """How many notes the index is supposed to cover."""
+        targets, _skipped = index_targets(self._notes)
+        return len(targets)
 
     def _merge_candidate(
         self,
         candidate: ChatProfileIn,
         existing: ChatProfile | None,
         *,
-        fallback_id: str | None = None,
+        profile_id: str,
     ) -> ChatProfile:
         """Combine a submitted form with the stored profile it edits.
 
         An omitted key means "keep what is stored"; an explicit clear wins over
         everything. The mask shown in the UI is never accepted as a real key because the
-        stored value is what we keep, not the submitted placeholder.
+        stored value is what we keep, not the submitted placeholder. ``profile_id`` is
+        decided by the caller (server-minted on create, the URL id on update), so the
+        body can never choose an identity of its own.
         """
         provided = candidate.provided_api_key()
+        moved_off_env = (
+            existing is not None
+            and existing.credential_source == "env"
+            and existing.provider == "deepseek"
+            and candidate.provider != "deepseek"
+        )
         if candidate.clear_api_key:
             api_key, source = SecretStr(""), "ui"
         elif provided is not None:
             api_key, source = SecretStr(provided), "ui"
+        elif moved_off_env:
+            # .env 里的 Key 属于 DeepSeek 默认配置，不能跟着换到别的供应商；
+            # 那种情况下它会指向一个根本无法认证的端点。
+            api_key, source = SecretStr(""), "ui"
         elif existing is not None:
             api_key, source = existing.api_key, existing.credential_source
         else:
             api_key, source = SecretStr(""), "ui"
 
         if candidate.auth_mode == "api_key" and not api_key.get_secret_value().strip():
+            if moved_off_env:
+                raise InvalidProfileError(
+                    "环境变量里的 Key 只属于原来的 DeepSeek 配置；换用其它供应商请填写 API Key，"
+                    "或明确勾选「该服务无需 API Key」"
+                )
             raise InvalidProfileError("该配置要求 API Key，但当前没有可用凭据")
-
-        if existing is not None:
-            profile_id = existing.id
-        elif candidate.id:
-            profile_id = candidate.id
-        elif fallback_id:
-            profile_id = fallback_id
-        else:
-            profile_id = uuid.uuid4().hex[:12]
 
         try:
             return ChatProfile(
@@ -835,11 +1030,18 @@ class ModelRuntimeService:
     # ---------- 内部：重建 ----------
 
     def _rebuild_worker(
-        self, model_id: str, resolved_revision: str | None, start_revision: int
+        self,
+        model_id: str,
+        resolved_revision: str | None,
+        collection: str,
+        expected_fingerprint: str,
+        start_revision: int,
     ) -> None:
         """Thread body: never let an exception escape, never leave the gate closed."""
         try:
-            self._run_rebuild(model_id, resolved_revision, start_revision)
+            self._run_rebuild(
+                model_id, resolved_revision, collection, expected_fingerprint, start_revision
+            )
         except Exception as exc:
             _logger.exception("embedding rebuild failed target=%s", model_id)
             self._finish_job("failed", _public_error(exc))
@@ -849,16 +1051,36 @@ class ModelRuntimeService:
                 self._job_thread = None
 
     def _run_rebuild(
-        self, model_id: str, resolved_revision: str | None, start_revision: int
+        self,
+        model_id: str,
+        resolved_revision: str | None,
+        collection: str,
+        expected_fingerprint: str,
+        start_revision: int,
     ) -> None:
-        """Build a fresh index for the target model, then publish it in one swap."""
-        collection = embedding_collection_name(self._settings.chroma_collection, model_id)
+        """Build a fresh index for the target identity, then publish it in one swap.
+
+        The new index is built in its own collection and only published after the whole
+        corpus is indexed and verified; a failure anywhere leaves the old pointer, the
+        old collection, and the old runtime objects untouched. Old collections are never
+        deleted here — that is a separate, explicit cleanup step.
+        """
         before = _note_manifest(self._notes)
         self._update_job(stage="loading")
         # 加载失败（缓存不完整等）直接抛错，旧索引与旧对象保持不变。
         retrieval = self._assembler.build_retrieval(
-            model_id=model_id, collection=collection, local_files_only=True
+            model_id=model_id,
+            resolved_revision=resolved_revision,
+            collection=collection,
+            local_files_only=True,
+            create_if_missing=True,
         )
+        fingerprint = retrieval.config_fingerprint()
+        if fingerprint != expected_fingerprint:
+            # 预计算与装配结果不一致：绝不把内容发布成另一个身份的索引。
+            raise RepairRequiredError(
+                "目标索引的配置指纹与预期不符，已放弃本次重建（请重试或检查模型缓存）"
+            )
         targets, _skipped = index_targets(self._notes)
         self._update_job(stage="indexing", total=len(targets), completed=0)
         chunks = 0
@@ -877,7 +1099,6 @@ class ModelRuntimeService:
             self._update_job(stage="verifying")
             if not retrieval.search(_first_query(self._notes, targets[0]), top_k=1):
                 raise RepairRequiredError("新索引检索不到已有语料，已保留旧索引")
-        fingerprint = retrieval.config_fingerprint()
         self._update_job(stage="publishing")
 
         with self._lock:
@@ -913,6 +1134,7 @@ class ModelRuntimeService:
                 embedding=embedding,
             )
             self._retrieval_problem = None
+            self._retrieval_state = "empty" if chunks == 0 else "ok"
             self._live_job = None
         _logger.info(
             "embedding rebuild published job=%s model=%s collection=%s chunks=%d notes=%d",

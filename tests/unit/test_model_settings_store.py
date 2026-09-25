@@ -9,6 +9,7 @@ from pydantic import SecretStr, ValidationError
 from noteagent.bootstrap.settings import Settings
 from noteagent.model_management.schemas import (
     ENV_PROFILE_ID,
+    SCHEMA_VERSION,
     ChatProfile,
     ChatProfileIn,
     StoredModelSettings,
@@ -191,6 +192,96 @@ def test_structurally_invalid_file_is_also_reported(tmp_path):
 
     with pytest.raises(ModelSettingsCorruptError):
         store.load()
+
+
+def test_a_file_without_a_schema_version_is_read_as_legacy(tmp_path):
+    """An older file keeps its ids, pointers, and credentials; nothing is reset."""
+    settings = make_settings(tmp_path)
+    store = ModelSettingsStore(settings.model_settings_dir)
+    settings.model_settings_dir.mkdir(parents=True, exist_ok=True)
+    # 早期格式：没有 schema_version / credential_source / embedding_job。
+    store.path.write_text(
+        json.dumps(
+            {
+                "revision": 4,
+                "chat_profiles": [
+                    {
+                        "id": "old-1",
+                        "label": "旧配置",
+                        "provider": "openai-compatible",
+                        "model": "qwen2.5",
+                        "base_url": "http://localhost:1234/v1",
+                        "api_key": "legacy-key",
+                        "context_window": 8192,
+                    }
+                ],
+                "active_chat_profile_id": "old-1",
+                "active_embedding": {
+                    "model_id": "intfloat/multilingual-e5-small",
+                    "collection": "legacy_collection",
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = store.load_effective(settings)
+
+    assert loaded.revision == 4
+    assert loaded.active_chat_profile_id == "old-1"
+    profile = loaded.profile_by_id("old-1")
+    assert profile.api_key.get_secret_value() == "legacy-key"
+    # 旧文件没有 credential_source，按"UI 保存的凭据"解释——这正是它实际的含义。
+    assert profile.credential_source == "ui"
+    assert loaded.active_embedding.collection == "legacy_collection"
+
+
+def test_a_newer_schema_version_is_refused_and_the_file_kept(tmp_path):
+    """A file from a newer app must not be reinterpreted or rewritten."""
+    settings = make_settings(tmp_path)
+    store = ModelSettingsStore(settings.model_settings_dir)
+    settings.model_settings_dir.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(
+        {"schema_version": SCHEMA_VERSION + 1, "chat_profiles": [], "mystery": True}
+    )
+    store.path.write_text(payload, encoding="utf-8")
+
+    with pytest.raises(ModelSettingsCorruptError) as excinfo:
+        store.load_effective(settings)
+
+    assert "schema_version" in str(excinfo.value)
+    assert store.path.read_text(encoding="utf-8") == payload
+
+
+def test_two_vendors_keep_their_own_keys_across_a_restart(tmp_path):
+    """Persisted profiles stay separate: no merging into one credential set."""
+    settings = make_settings(tmp_path)
+    store = ModelSettingsStore(settings.model_settings_dir)
+    store.save(
+        StoredModelSettings(
+            chat_profiles=[
+                ui_profile(
+                    "deepseek-1", provider="deepseek", model="deepseek-chat", base_url=""
+                ),
+                ui_profile("compat-1", api_key=SecretStr("second-key")),
+            ],
+            active_chat_profile_id="compat-1",
+        )
+    )
+
+    # 重启：同一目录、全新的 store 实例。
+    restarted = ModelSettingsStore(settings.model_settings_dir)
+    loaded = restarted.load_effective(settings)
+
+    assert loaded.active_chat_profile_id == "compat-1"
+    assert {p.id for p in loaded.chat_profiles} == {"deepseek-1", "compat-1"}
+    assert loaded.profile_by_id("deepseek-1").api_key.get_secret_value() == "ui-secret"
+    assert loaded.profile_by_id("compat-1").api_key.get_secret_value() == "second-key"
+
+    written = restarted.path.read_text(encoding="utf-8")
+    assert "second-key" in written
+    assert written.count('"api_key":') == 2
 
 
 @pytest.mark.parametrize(

@@ -154,6 +154,21 @@ async def update_chat_profile(
     return _runtime(request).save_chat_profile(body, profile_id=profile_id)
 
 
+@router.delete(
+    "/chat/profiles/{profile_id}",
+    status_code=204,
+    dependencies=[Depends(require_same_origin)],
+)
+async def delete_chat_profile(
+    profile_id: str, expected_revision: int, request: Request
+) -> Response:
+    """Delete a stored profile (and its credential). The active one is protected."""
+    _runtime(request).delete_chat_profile(
+        profile_id=profile_id, expected_revision=expected_revision
+    )
+    return Response(status_code=204)
+
+
 @router.post(
     "/chat/activate",
     response_model=ChatProfileOut,

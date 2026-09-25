@@ -145,6 +145,21 @@ def inspect_model(
     )
 
 
+def resolved_revision(cache_dir: Path, model_id: str) -> str | None:
+    """Snapshot revision of a cached model, or None when the cache cannot tell.
+
+    Part of the index identity, so it has to be readable without loading weights; an
+    unknown model id is reported the same as a missing cache entry (both mean "no
+    revision to record"), and callers fall back to whatever the index recorded.
+    """
+    try:
+        model = known_model(model_id)
+    except UnknownEmbeddingModelError:
+        return None
+    snapshot = _snapshot_dir(cache_dir / repo_dir_name(model.model_id))
+    return snapshot.name if snapshot is not None else None
+
+
 def _inspect_cache(
     cache_dir: Path, model_id: str
 ) -> tuple[Availability, str | None, str | None]:

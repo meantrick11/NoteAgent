@@ -1,10 +1,12 @@
 import hashlib
+import json
 import time
 from typing import Protocol
 
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.observability.index_trace import IndexTrace
 from noteagent.retrieval.chunker import MarkdownChunker
+from noteagent.retrieval.instructions import instruction_fingerprint_for
 from noteagent.retrieval.models import NoteChunk, SearchHit
 from noteagent.retrieval.vector_store import ChromaVectorStore
 
@@ -16,28 +18,91 @@ class Embedder(Protocol):
     def embed_query(self, query: str) -> list[float]: ...
 
 
+# 索引身份的版本：字段集合或含义变化时必须改，否则新旧指纹会被当成同一个索引。
+INDEX_CONFIG_SCHEMA = "noteagent-index-v2"
+# 笔记正文进入嵌入前的规范化版本（Markdown 标题解析等）；改了它旧索引就需要重建。
+DOC_NORMALIZATION_VERSION = "md-v1"
+
+
 def _elapsed_ms(started: float) -> int:
     """Milliseconds since started, using a monotonic clock."""
     return round((time.monotonic() - started) * 1000)
 
 
-def index_config_fingerprint(
-    chunker: MarkdownChunker, embedder: Embedder, embed_heading_prefix: bool
-) -> str:
-    """Describe what an index's vectors and offsets mean.
+def canonical_index_config(
+    *,
+    model_id: str,
+    chunker: MarkdownChunker,
+    embed_heading_prefix: bool,
+    instructions: str,
+    resolved_revision: str | None = None,
+) -> dict[str, object]:
+    """Every field that decides what a stored vector and chunk offset mean.
 
-    Any change to the model, the chunking strategy, the text used for embedding, or the
-    model's encoding instructions makes previously stored points incomparable, so the
-    fingerprint must change too. Kept as a function so the rebuild script can compare
-    without building a service.
+    Anything here changing makes previously stored points incomparable, so all of it
+    belongs in the identity; anything else about the deployment does not.
     """
-    model = str(getattr(embedder, "model_name", "") or "unknown-model")
-    embed_text = "heading-prefix" if embed_heading_prefix else "content"
-    parts = [chunker.describe(), model, embed_text]
+    return {
+        "schema": INDEX_CONFIG_SCHEMA,
+        "normalization": DOC_NORMALIZATION_VERSION,
+        "model": model_id,
+        "revision": resolved_revision or "",
+        "chunker": chunker.describe(),
+        "heading_prefix": bool(embed_heading_prefix),
+        "instructions": instructions,
+    }
+
+
+def fingerprint_of(canonical: dict[str, object]) -> str:
+    """SHA-256 of the canonical JSON: the stable identity used for names and metadata."""
+    payload = json.dumps(
+        canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def index_config_fingerprint(
+    chunker: MarkdownChunker,
+    embedder: Embedder,
+    embed_heading_prefix: bool,
+    resolved_revision: str | None = None,
+) -> str:
+    """Identity of an index built by a concrete service (embedder already assembled)."""
     instructions = getattr(embedder, "instruction_fingerprint", None)
-    if callable(instructions) and instructions():
-        parts.append(instructions())
-    return "|".join(parts)
+    return fingerprint_of(
+        canonical_index_config(
+            model_id=str(getattr(embedder, "model_name", "") or "unknown-model"),
+            chunker=chunker,
+            embed_heading_prefix=embed_heading_prefix,
+            instructions=instructions() if callable(instructions) else "",
+            resolved_revision=resolved_revision,
+        )
+    )
+
+
+def index_fingerprint_for_model(
+    model_id: str,
+    *,
+    strategy: str,
+    embed_heading_prefix: bool,
+    resolved_revision: str | None = None,
+) -> str:
+    """Identity a rebuild of this model would produce, without loading any weights.
+
+    Needed *before* the rebuild so the target collection can be named from the identity
+    it will actually have; the assembled service computes the same value from its own
+    objects, and the rebuild refuses to publish if the two disagree.
+    """
+    return fingerprint_of(
+        canonical_index_config(
+            model_id=model_id,
+            chunker=MarkdownChunker(strategy=strategy),
+            embed_heading_prefix=embed_heading_prefix,
+            instructions=instruction_fingerprint_for(model_id),
+            resolved_revision=resolved_revision,
+        )
+    )
+
 
 
 def index_targets(notes: FileNoteRepository) -> tuple[list[str], list[str]]:
@@ -70,6 +135,7 @@ class RetrievalService:
         trace: IndexTrace | None = None,
         *,
         embed_heading_prefix: bool = False,
+        resolved_revision: str | None = None,
     ):
         self._notes = notes
         self._chunker = chunker
@@ -77,14 +143,38 @@ class RetrievalService:
         self._store = store
         self._trace = trace or IndexTrace()
         self._embed_heading_prefix = embed_heading_prefix
+        self._resolved_revision = resolved_revision
         # 构造即校验：配置与已有 collection 不符时立刻要求重建，而不是静默用错向量。
-        self._store.ensure_config(self.config_fingerprint())
+        self._store.ensure_config(self.config_fingerprint(), self.config_fields())
+
+    def config_fields(self) -> dict[str, object]:
+        """The verifiable configuration fields behind :meth:`config_fingerprint`."""
+        instructions = getattr(self._embedder, "instruction_fingerprint", None)
+        return canonical_index_config(
+            model_id=str(getattr(self._embedder, "model_name", "") or "unknown-model"),
+            chunker=self._chunker,
+            embed_heading_prefix=self._embed_heading_prefix,
+            instructions=instructions() if callable(instructions) else "",
+            resolved_revision=self._resolved_revision,
+        )
 
     def config_fingerprint(self) -> str:
-        """Fingerprint of the configuration this service would index with."""
-        return index_config_fingerprint(
-            self._chunker, self._embedder, self._embed_heading_prefix
-        )
+        """Identity of the index this service would build."""
+        return fingerprint_of(self.config_fields())
+
+    def verify_index(self) -> bool:
+        """True when the collection behind this service still exists and matches it.
+
+        Cheap enough for a status or switch call, and deliberately re-reads the store:
+        an index deleted by another process must stop counting as usable.
+        """
+        if not self._store.exists():
+            return False
+        return self._store.stored_config() == self.config_fingerprint()
+
+    def point_count(self) -> int:
+        """Number of stored vectors; 0 when the collection is gone."""
+        return self._store.count()
 
     def delete_note(self, file_name: str) -> None:
         """Drop every vector for this note. Safe if the file was never indexed."""

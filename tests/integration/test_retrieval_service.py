@@ -1,14 +1,26 @@
 from pathlib import Path
 
+import chromadb
 import pytest
+from chromadb.config import Settings as ChromaSettings
 
 from noteagent.chat.drafts import DraftStore, NoteDraft, commit_review
 from noteagent.chat.history import ConversationStore
 from noteagent.db import Base, create_engine_from_url, create_session_factory
+from noteagent.model_management.service import (
+    COLLECTION_DIGEST_LENGTH,
+    COLLECTION_MAX_LENGTH,
+    embedding_collection_name,
+)
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.retrieval.chunker import MarkdownChunker
-from noteagent.retrieval.service import RetrievalService
-from noteagent.retrieval.vector_store import ChromaVectorStore, IndexConfigMismatch
+from noteagent.retrieval.service import RetrievalService, index_config_fingerprint
+from noteagent.retrieval.vector_store import (
+    LEGACY_FINGERPRINT,
+    ChromaVectorStore,
+    CollectionMissingError,
+    IndexConfigMismatch,
+)
 
 _INDEX_TRACE = "noteagent.observability.index_trace"
 
@@ -218,9 +230,61 @@ def test_reusing_a_collection_with_another_configuration_is_refused(tmp_path: Pa
         )
 
 
-def test_a_collection_from_before_fingerprints_is_adopted(tmp_path: Path):
-    from noteagent.retrieval.vector_store import LEGACY_FINGERPRINT
+# --- 任务三/四：索引身份、存在性与空索引 ---------------------------------------
 
+
+def _collection_names(chroma_dir: Path) -> set[str]:
+    """Every collection currently in the store, read without creating anything."""
+    client = chromadb.PersistentClient(
+        path=str(chroma_dir),
+        settings=ChromaSettings(anonymized_telemetry_enabled=False),
+    )
+    return {collection.name for collection in client.list_collections()}
+
+
+def _indexed_service(tmp_path: Path, name: str = "demo") -> RetrievalService:
+    """A real Chroma collection with one indexed note."""
+    notes = FileNoteRepository(tmp_path / "notes")
+    notes.create("Go.md", "Go")
+    notes.write("Go.md", "注意力机制用 Query Key Value 计算权重。\n", append=True)
+    service = RetrievalService(
+        notes=notes,
+        chunker=MarkdownChunker(),
+        embedder=FakeEmbedder(),
+        store=ChromaVectorStore(tmp_path / "chroma", name),
+    )
+    service.index_note("Go.md")
+    return service
+
+
+def test_opening_a_missing_collection_refuses_and_creates_nothing(tmp_path: Path):
+    """A lost index must not be silently replaced by an empty one."""
+    with pytest.raises(CollectionMissingError):
+        ChromaVectorStore(tmp_path / "chroma", "absent", create_if_missing=False)
+
+    assert _collection_names(tmp_path / "chroma") == set()
+
+
+def test_a_collection_created_for_a_rebuild_is_reported_as_empty(tmp_path: Path):
+    """An index built for an empty corpus is valid, and says it holds nothing."""
+    store = ChromaVectorStore(tmp_path / "chroma", "fresh")
+
+    assert store.exists() is True
+    assert store.count() == 0
+    # 空 collection 还没有向量需要重新解释，可以就地确定身份。
+    assert store.stored_config() is None
+    service = RetrievalService(
+        notes=FileNoteRepository(tmp_path / "notes"),
+        chunker=MarkdownChunker(),
+        embedder=FakeEmbedder(),
+        store=store,
+    )
+    assert service.verify_index() is True
+    assert service.point_count() == 0
+
+
+def test_a_collection_from_before_fingerprints_is_reported_as_needing_a_rebuild(tmp_path: Path):
+    """旧格式 collection 的身份无法核验，不能被当成匹配。"""
     store = ChromaVectorStore(tmp_path / "chroma", "legacy")
     store.upsert(
         ids=["Go.md_0"],
@@ -228,6 +292,72 @@ def test_a_collection_from_before_fingerprints_is_adopted(tmp_path: Path):
         documents=["旧内容"],
         metadatas=[{"file_name": "Go.md", "chunk_index": 0}],
     )
-    store.ensure_config(LEGACY_FINGERPRINT)
+    assert store.stored_config() == LEGACY_FINGERPRINT
+
     with pytest.raises(IndexConfigMismatch):
-        store.ensure_config("heading:500/50|all-MiniLM-L6-v2|content")
+        RetrievalService(
+            notes=FileNoteRepository(tmp_path / "notes"),
+            chunker=MarkdownChunker(),
+            embedder=FakeEmbedder(),
+            store=ChromaVectorStore(tmp_path / "chroma", "legacy"),
+        )
+
+
+def test_an_empty_legacy_collection_is_adopted_with_the_current_identity(tmp_path: Path):
+    """没有向量要重新解释时，旧 collection 可以就地写上新身份。"""
+    ChromaVectorStore(tmp_path / "chroma", "legacy")
+    service = RetrievalService(
+        notes=FileNoteRepository(tmp_path / "notes"),
+        chunker=MarkdownChunker(),
+        embedder=FakeEmbedder(),
+        store=ChromaVectorStore(tmp_path / "chroma", "legacy"),
+    )
+
+    assert service.verify_index() is True
+    assert (
+        ChromaVectorStore(tmp_path / "chroma", "legacy").stored_config()
+        == service.config_fingerprint()
+    )
+
+
+def test_a_deleted_collection_stops_counting_as_usable(tmp_path: Path):
+    """删除活动 collection 后，索引必须立刻报为不可用，而不是一个空索引。"""
+    service = _indexed_service(tmp_path)
+    assert service.verify_index() is True
+    assert service.point_count() > 0
+
+    client = chromadb.PersistentClient(
+        path=str(tmp_path / "chroma"),
+        settings=ChromaSettings(anonymized_telemetry_enabled=False),
+    )
+    client.delete_collection("demo")
+
+    assert service.verify_index() is False
+    assert service.point_count() == 0
+    assert _collection_names(tmp_path / "chroma") == set()
+
+
+def test_two_configurations_of_one_model_land_in_different_collections(tmp_path: Path):
+    """Same model, different chunking: separate identities, separate collections."""
+    plain = FakeEmbedder()
+    char = index_config_fingerprint(MarkdownChunker(500, 50, strategy="char"), plain, False)
+    heading = index_config_fingerprint(
+        MarkdownChunker(500, 50, strategy="heading"), plain, False
+    )
+
+    assert char != heading
+    assert embedding_collection_name("notes", "e5", char) != embedding_collection_name(
+        "notes", "e5", heading
+    )
+
+
+def test_a_long_collection_name_never_truncates_the_identity(tmp_path: Path):
+    """名字有长度上限，但指纹摘要必须完整保留，否则两个身份会被截成同名。"""
+    base = "a_very_long_base_collection_name_that_does_not_fit_at_all"
+    first = embedding_collection_name(base, "intfloat/multilingual-e5-small", "a" * 64)
+    second = embedding_collection_name(base, "intfloat/multilingual-e5-small", "b" * 64)
+
+    assert len(first) <= COLLECTION_MAX_LENGTH
+    assert first != second
+    assert first.endswith("a" * COLLECTION_DIGEST_LENGTH)
+    assert second.endswith("b" * COLLECTION_DIGEST_LENGTH)

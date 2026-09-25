@@ -4,11 +4,20 @@ No model is loaded here: the instruction table and the pure helpers are what mat
 and the fingerprint is checked through a stub embedder.
 """
 
+import json
 from pathlib import Path
 
 from noteagent.retrieval.chunker import MarkdownChunker
 from noteagent.retrieval.embedder import MODEL_INSTRUCTIONS, SentenceTransformerEmbedder
-from noteagent.retrieval.service import index_config_fingerprint
+from noteagent.retrieval.instructions import instruction_fingerprint_for
+from noteagent.retrieval.service import (
+    DOC_NORMALIZATION_VERSION,
+    INDEX_CONFIG_SCHEMA,
+    canonical_index_config,
+    fingerprint_of,
+    index_config_fingerprint,
+    index_fingerprint_for_model,
+)
 
 
 class _StubEmbedder:
@@ -42,28 +51,73 @@ def test_document_text_applies_the_document_prefix():
     assert embedder.instruction_fingerprint() == "query: |passage: "
 
 
-def test_fingerprint_changes_with_model_strategy_and_instructions():
+def test_fingerprint_is_a_sha256_of_the_canonical_configuration():
+    """The identity is the hash of the fields, so any of them changing changes it."""
+    chunker = MarkdownChunker(500, 50, strategy="char")
+    embedder = _StubEmbedder("all-MiniLM-L6-v2")
+
+    fingerprint = index_config_fingerprint(chunker, embedder, False)
+
+    assert len(fingerprint) == 64
+    canonical = canonical_index_config(
+        model_id="all-MiniLM-L6-v2",
+        chunker=chunker,
+        embed_heading_prefix=False,
+        instructions="",
+    )
+    assert canonical["schema"] == INDEX_CONFIG_SCHEMA
+    assert canonical["normalization"] == DOC_NORMALIZATION_VERSION
+    assert json.dumps(canonical, sort_keys=True)
+    assert fingerprint == fingerprint_of(canonical)
+
+
+def test_fingerprint_changes_with_model_strategy_heading_and_instructions():
     char = MarkdownChunker(500, 50, strategy="char")
     heading = MarkdownChunker(500, 50, strategy="heading")
+    smaller = MarkdownChunker(300, 30, strategy="char")
     plain = _StubEmbedder("all-MiniLM-L6-v2")
     instructed = _StubEmbedder("intfloat/multilingual-e5-small", "query: |passage: ")
 
     base = index_config_fingerprint(char, plain, False)
-    assert base == "char:500/50|all-MiniLM-L6-v2|content"
+    assert index_config_fingerprint(char, plain, False) == base
     assert index_config_fingerprint(heading, plain, False) != base
+    assert index_config_fingerprint(smaller, plain, False) != base
     assert index_config_fingerprint(char, plain, True) != base
     assert index_config_fingerprint(char, instructed, False) != base
-    assert index_config_fingerprint(char, plain, False) == base
 
 
-def test_legacy_fingerprint_still_matches_an_unchanged_deployment():
-    """旧索引没有指纹时按 legacy 默认处理，配置没变就不该被要求重建。"""
+def test_fingerprint_changes_with_the_model_revision():
+    """同样的模型换了权重快照就是另一个索引，不能沿用旧向量。"""
+    chunker = MarkdownChunker(500, 50, strategy="char")
+    embedder = _StubEmbedder("all-MiniLM-L6-v2")
+
+    first = index_config_fingerprint(chunker, embedder, False, "rev-a")
+    second = index_config_fingerprint(chunker, embedder, False, "rev-b")
+
+    assert first != second
+    assert first != index_config_fingerprint(chunker, embedder, False)
+
+
+def test_a_model_level_fingerprint_matches_the_assembled_one():
+    """预计算（不加载权重）与装配后的结果必须一致，否则目标 collection 会被写错内容。"""
+    for model_id in ("all-MiniLM-L6-v2", "intfloat/multilingual-e5-small"):
+        embedder = _StubEmbedder(model_id, instruction_fingerprint_for(model_id))
+        assert index_fingerprint_for_model(
+            model_id,
+            strategy="heading",
+            embed_heading_prefix=True,
+            resolved_revision="rev-1",
+        ) == index_config_fingerprint(
+            MarkdownChunker(strategy="heading"), embedder, True, "rev-1"
+        )
+
+
+def test_a_collection_from_before_fingerprints_is_not_adopted():
+    """旧格式 collection 的身份无法核验，只能报告需要重建，绝不伪造匹配。"""
     from noteagent.retrieval.vector_store import LEGACY_FINGERPRINT
 
-    assert LEGACY_FINGERPRINT == "char:500/50|all-MiniLM-L6-v2|content"
-    assert (
-        index_config_fingerprint(MarkdownChunker(500, 50, strategy="char"), _StubEmbedder("all-MiniLM-L6-v2"), False)
-        == LEGACY_FINGERPRINT
+    assert LEGACY_FINGERPRINT != index_config_fingerprint(
+        MarkdownChunker(500, 50, strategy="char"), _StubEmbedder("all-MiniLM-L6-v2"), False
     )
 
 
