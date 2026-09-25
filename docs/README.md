@@ -34,7 +34,7 @@
 | [design/](design/README.md)             | 子系统设计文档索引                                                     |
 | [plans/](plans/README.md)               | 实现规格与入库设想                                                     |
 | [decisions/](decisions/README.md)       | ADR，目前可空                                                      |
-| [evaluations/](evaluations/README.md)   | 评测准则（笔记正文现行 v0.2；旧题仍走 v0.1；工具 / RAG 以后）；黄金集在 [evals/](../evals/README.md) |
+| [evaluations/](evaluations/README.md)   | 评测准则（笔记正文现行 v0.2；旧题仍走 v0.1；检索现行 [rag-quality.md](evaluations/rag-quality.md)，含实测报告）；黄金集在 [evals/](../evals/README.md) |
 | [references/](references/README.md)     | 外部摘录，不是契约                                                     |
 
 

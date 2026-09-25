@@ -131,6 +131,8 @@ src/noteagent/
   notes/          Markdown IO
   retrieval/      切块、embedding、Chroma
   llm/            聊天模型工厂
+  prompt_eval/    离线提示词评测（黄金集、v0.1/v0.2 打分、语义 Judge）
+  rag_eval/       离线检索评测（冻结语料、证据标注、检索与 Agent 两层 run）
   observability/  进程日志、Agent 追踪、索引步骤
 alembic/          会话表迁移
 notes/            正式笔记数据
@@ -419,14 +421,18 @@ ORM：[`db/models.py`](../../src/noteagent/db/models.py)。连接：[`db/engine.
 |------|------|
 | 准则与账本划分 | [docs/evaluations/](../evaluations/README.md) |
 | 笔记正文尺子 | [docs/evaluations/note-quality.md](../evaluations/note-quality.md)（现行 v0.2；`cases.jsonl` 旧题仍按 v0.1 计 `total`） |
+| 检索尺子 | [docs/evaluations/rag-quality.md](../evaluations/rag-quality.md)（现行 v1；证据标注契约、九项指标、失败分类） |
 | 黄金集 | 仓库根 [evals/](../../evals/README.md) |
-| 离线跑分产物 | [evals/prompt/results/](../../evals/prompt/results/README.md) |
+| 离线跑分产物 | [evals/prompt/results/](../../evals/prompt/results/README.md)、[evals/rag/results/](../../evals/rag/README.md)、[evals/agent/results/](../../evals/agent/README.md) |
+| 实测报告 | [docs/evaluations/rag-v1-report.md](../evaluations/rag-v1-report.md)（检索与 Agent 基线、失败样例、重建/回退） |
 
-三本账互不合成一个 Agent 总分：笔记正文（学习型走 v0.2；旧题仍用 v0.1）、工具轨迹（以后）、RAG（以后）。评测只服务离线迭代 [`system.txt`](../../src/noteagent/chat/prompts/system.txt)，不拦截草稿、不按分数自动再生成。现行生成提示词是 v9：在 `l01` 上硬门与复习题可通过，结构/加工未达合格线。
+三本账互不合成一个 Agent 总分：笔记正文（学习型走 v0.2；旧题仍用 v0.1）、工具轨迹、检索（Recall@5 / Hit@3 / MRR、调用率、引用可追溯）。评测只服务离线迭代 [`system.txt`](../../src/noteagent/chat/prompts/system.txt)，不拦截草稿、不按分数自动再生成。现行生成提示词是 v9：在 `l01` 上硬门与复习题可通过，结构/加工未达合格线。检索侧现行配置是 `all-MiniLM-L6-v2` + 500/50 字符切块，dev 基线未达门槛，失败主因是排序而非内容缺失（见实测报告）。
 
 **为什么。** 改提示词需要固定考题和可重复的尺子。若把打分接进 Agent，会变成「生成 → 打分 → 再生成」，与「LLM 只出提案、磁盘只走人类操作」冲突。v0.2 不得与 v0.1 直接比较总分或排名。
 
-**代码落点。** [`prompt_eval/`](../../src/noteagent/prompt_eval/README.md)、[`scripts/eval_notes.py`](../../scripts/eval_notes.py)、[`scripts/calibrate_learning_notes.py`](../../scripts/calibrate_learning_notes.py)。考题：[`evals/prompt/cases.jsonl`](../../evals/prompt/cases.jsonl)（v0.1）、[`evals/prompt/learning_notes.jsonl`](../../evals/prompt/learning_notes.jsonl)（v0.2）。`chat` 不得 import `prompt_eval`。
+**代码落点。** [`prompt_eval/`](../../src/noteagent/prompt_eval/README.md)、[`rag_eval/`](../../src/noteagent/rag_eval/README.md)、[`scripts/eval_notes.py`](../../scripts/eval_notes.py)、[`scripts/calibrate_learning_notes.py`](../../scripts/calibrate_learning_notes.py)、[`scripts/eval_rag.py`](../../scripts/eval_rag.py)、[`scripts/eval_rag_agent.py`](../../scripts/eval_rag_agent.py)、[`scripts/build_rag_queries.py`](../../scripts/build_rag_queries.py)、[`scripts/verify_rag_corpus.py`](../../scripts/verify_rag_corpus.py)。考题：[`evals/prompt/cases.jsonl`](../../evals/prompt/cases.jsonl)（v0.1）、[`evals/prompt/learning_notes.jsonl`](../../evals/prompt/learning_notes.jsonl)（v0.2）、[`evals/rag/`](../../evals/rag/README.md) 与 [`evals/agent/`](../../evals/agent/README.md)（冻结语料与证据标注）。`chat` 不得 import `prompt_eval` 或 `rag_eval`。
+
+检索评测的语料正文不进仓库（与 `notes/*` 同一隐私口径）：仓库只提交 manifest 哈希与不含正文的结论，含命中正文的完整报告落 `var/evals/rag/`。
 
 ---
 
