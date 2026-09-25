@@ -31,7 +31,7 @@
 | 人审写盘 | 模型不能直接改文件。`propose_note` 将待审草稿保存到会话；同意后才 `create` / `append` / `replace` / `delete`。细节：[聊天工具](docs/architecture/chat-tools.md) |
 | Chat \| Documents | 同一张页面两套主界面：聊天管会话，Documents 管磁盘上的笔记。布局：[前端](docs/architecture/frontend.md) |
 | 一层目录 | 允许 `notes/Folder/Note.md`，禁止两层和 `..`。根下 `notes/*.md` 为未进文件夹的篇 |
-| 派生检索 | Chroma 由 Markdown 重建。索引失败不回滚已写入的笔记。[检索](docs/architecture/retrieval.md) |
+| 派生检索 | Chroma 由 Markdown 重建。索引失败不回滚已写入的笔记。现行配置是 `intfloat/multilingual-e5-small` + 章节感知切块，collection 存配置指纹，改配置必须重建。[检索](docs/architecture/retrieval.md)、[为什么这样选](docs/architecture/rag-v1-retrospective.md) |
 
 三条运行时原则：LLM 只出提案；磁盘只走人类操作（聊天审批、Documents、或 Chat 出处侧栏保存）；聊天气泡不画工具过程。
 
@@ -76,7 +76,7 @@ uv run python scripts/index_notes.py Agent.md
 
 ## 快速开始
 
-推荐 Docker：不装 Python、不装本机 PostgreSQL、镜像里已带 MiniLM。聊天仍走外网，必须自己准备 API Key。
+推荐 Docker：不装 Python、不装本机 PostgreSQL、镜像里已带向量模型 `intfloat/multilingual-e5-small`。聊天仍走外网，必须自己准备 API Key。
 
 1. 安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)，确认能执行 `docker compose version`（旧环境可用 `docker-compose`）。
 2. 克隆本仓库，进入根目录（有 `docker-compose.yml` 的那一层）。

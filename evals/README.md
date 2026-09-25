@@ -4,6 +4,8 @@
 
 **准则不在这里。** 记笔记正文怎么打分、七个质量方面、与生成链路的隔离：见 [docs/evaluations/](../docs/evaluations/README.md)，尤其是 [note-quality.md](../docs/evaluations/note-quality.md)。旧 [`prompt/cases.jsonl`](prompt/cases.jsonl) 仍按 v0.1 六维小指标计 `total`；学习型 [`prompt/learning_notes.jsonl`](prompt/learning_notes.jsonl) 走 v0.2 硬门 + Judge。
 
+**复盘不在这里。** 检索这一轮遇到的问题、做法、不足与后续方向见 [docs/architecture/rag-v1-retrospective.md](../docs/architecture/rag-v1-retrospective.md)。
+
 **不要放进 `tests/`。** `tests/` 是无网络、无真实 LLM 的 pytest。本目录的一键脚本不进默认 CI。不要让写草稿的同一个模型给自己打分。不要往 `notes/` 回流生成结果。
 
 | 目录 | 用途 |

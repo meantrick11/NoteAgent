@@ -1,5 +1,7 @@
 # agent evals
 
+> 复盘与经验：[docs/architecture/rag-v1-retrospective.md](../../docs/architecture/rag-v1-retrospective.md)。
+
 真实 `ChatAgent` 的 RAG 场景评测：调用时机、结果使用、引用与写入安全。准则与指标见 [docs/evaluations/rag-quality.md](../../docs/evaluations/rag-quality.md)；直接检索层见 [../rag/README.md](../rag/README.md)。
 
 ## 数据位置

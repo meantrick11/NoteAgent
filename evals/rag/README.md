@@ -1,5 +1,7 @@
 # rag evals
 
+> 复盘与经验：[docs/architecture/rag-v1-retrospective.md](../../docs/architecture/rag-v1-retrospective.md)。
+
 检索（RAG）评测的**数据与产物**。准则、指标定义与字段契约在 [docs/evaluations/rag-quality.md](../../docs/evaluations/rag-quality.md)。
 
 ## 数据位置

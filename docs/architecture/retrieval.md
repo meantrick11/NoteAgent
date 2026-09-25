@@ -12,6 +12,8 @@
 
 `retrieval` 不改笔记文件、不写 PostgreSQL、不调聊天模型。`notes` / `retrieval` 不得 import `chat`。
 
+现行切块策略、嵌入模型与配置指纹是评测选型的结果，**为什么这样选、代价是什么、还剩什么**见 [rag-v1-retrospective.md](./rag-v1-retrospective.md)。
+
 ---
 
 ## 1. 要解决什么

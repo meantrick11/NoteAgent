@@ -6,14 +6,15 @@
 
 | 文件 | 模块 | 作用 |
 |------|------|------|
-| `chunker.py` | `MarkdownChunker` | 默认 chunk 500、overlap 50，中文标点分隔 |
-| `embedder.py` | `SentenceTransformerEmbedder` | 本地句向量；模型/缓存在 Settings |
+| `chunker.py` | `MarkdownChunker` | 默认 chunk 500、overlap 50，中文标点分隔；策略 `heading`（章节感知，默认）/ `char`（旧字符切块）。`split()` 兼容，索引走 `split_with_metadata()`，块带 `heading_path` 与 `start_char`/`end_char` |
+| `markdown.py` | 标题解析 | 围栏感知的 `note_headings` / `heading_path_at`，索引与评测共用 |
+| `embedder.py` | `SentenceTransformerEmbedder` / `build_embedder()` | 本地句向量；**装配一律走 `build_embedder()`**，它按模型套官方编码指令（e5 必须 `query:` / `passage:`）。模型/缓存在 Settings |
 | `vector_store.py` | `ChromaVectorStore` | PersistentClient upsert / query / 按 file_name 删除 / `has_file_name` |
 | `service.py` | `RetrievalService`、`Embedder` Protocol | `index_note`（先删再写）、`delete_note`、`is_indexed`、`search` |
 | `models.py` | `SearchHit` | `content`、`distance`、`metadata` |
 | `__init__.py` | 再导出常用类型 | |
 
-换模型只改 `.env`：`EMBEDDING_MODEL`、`EMBEDDING_CACHE_DIR`、`EMBEDDING_LOCAL_FILES_ONLY`。
+换模型改 `.env` 的 `EMBEDDING_MODEL`（或 `CHUNK_STRATEGY` / `EMBED_HEADING_PREFIX`）。**改完必须重建索引**：collection 里存了配置指纹（策略｜模型｜嵌入文本｜编码指令），不符时构造 `RetrievalService` 直接抛 `IndexConfigMismatch`。重建：`uv run python scripts/index_notes.py --all --dry-run` 先看清单，再 `--all`。为什么这样设计见 [复盘](../../../docs/architecture/rag-v1-retrospective.md)。
 
 ## 基础使用
 

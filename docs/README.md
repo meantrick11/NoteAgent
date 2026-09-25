@@ -15,7 +15,7 @@
 5. **[前端](architecture/frontend.md)**、**[聊天工具](architecture/chat-tools.md)** — 当前界面和人审动作。
 6. **[上下文](architecture/context-management.md)**、**[数据库](architecture/database.md)** — 当前装配公式、压缩与数据表。
 7. **[检索](architecture/retrieval.md)**、**[可观测性](architecture/observability.md)** — 当前索引、查询和日志。
-8. **[评测准则](evaluations/README.md)** 与 **[evals/](../evals/README.md)** — 准则、黄金集与跑分结果；评测结果用于版本验收。
+8. **[评测准则](evaluations/README.md)** 与 **[evals/](../evals/README.md)** — 准则、黄金集与跑分结果；评测结果用于版本验收，检索这一轮的复盘见 [architecture/rag-v1-retrospective.md](architecture/rag-v1-retrospective.md)。
 9. **[实现计划](plans/README.md)** 与 `src/noteagent/**/README.md` — 具体切片及代码包说明；计划状态要单独核对。
 
 历史参考：[屏幕/音频旧稿](architecture/DESIGN.md)、[入库 Job 旧设想](plans/draft-generation.md)。其中与上层业务不一致的假设已在入口标注，不作为新功能规格。根目录 `TODO.md` 是长期学习清单，不作为产品版本状态表。

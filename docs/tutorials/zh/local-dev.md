@@ -44,7 +44,7 @@ uv run alembic upgrade head
 `.env.example` 默认：
 
 - `EMBEDDING_CACHE_DIR=var/models`（相对仓库根）
-- `EMBEDDING_LOCAL_FILES_ONLY=false`（第一次允许从网络下载 MiniLM）
+- `EMBEDDING_LOCAL_FILES_ONLY=false`（第一次允许从网络下载默认向量模型 `intfloat/multilingual-e5-small`）
 
 下载完成后可改成 `true`，避免以后误连 Hugging Face。不要指向别的机器上的绝对路径。
 
@@ -85,7 +85,9 @@ uv run python scripts/index_notes.py Agent.md
 | `CHROMA_COLLECTION` | collection 名 |
 | `DATABASE_URL` | PostgreSQL，前缀须为 `postgresql+psycopg://` |
 | `CHAT_CONTEXT_WINDOW` 等 | 上下文窗口、压缩、stub、`CHAT_MAX_TOOL_HOPS`；见 `.env.example` |
-| `EMBEDDING_MODEL` | SentenceTransformer 模型名 |
+| `EMBEDDING_MODEL` | SentenceTransformer 模型名，默认 `intfloat/multilingual-e5-small`（评测选定；改它或改切块策略都必须重建索引） |
+| `CHUNK_STRATEGY` | `heading`（默认，章节感知）或 `char`（旧字符切块） |
+| `EMBED_HEADING_PREFIX` | `true`（默认）时把章节路径拼进被嵌入的文本，引用原文不变 |
 | `EMBEDDING_CACHE_DIR` | 本地模型缓存 |
 | `EMBEDDING_LOCAL_FILES_ONLY` | `true` 时不联网下载 |
 | `HOST` / `PORT` | 服务监听 |
@@ -116,6 +118,6 @@ uv run python scripts/index_notes.py Agent.md
 | `./notes` bind | 正式 Markdown，可在宿主机直接打开 |
 | `chroma_data` | Chroma 派生索引 |
 | `pgdata` | 会话库 |
-| `app_logs` | `var/logs`；不要挂载整个 `var/`，否则会盖住镜像里的 MiniLM 缓存 |
+| `app_logs` | `var/logs`；不要挂载整个 `var/`，否则会盖住镜像里的向量模型缓存 |
 
 compose 里 Postgres 用户/库名为 `noteagent`（仅本地默认）。聊天模型仍走外网，容器不内置 LLM。

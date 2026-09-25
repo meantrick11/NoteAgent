@@ -18,6 +18,14 @@
 
 评测准则：[docs/evaluations/](../evaluations/README.md)。黄金集不在本目录：仓库根 [`evals/`](../../evals/README.md)。
 
+## 复盘
+
+| 文件 | 内容 |
+|------|------|
+| [rag-v1-retrospective.md](./rag-v1-retrospective.md) | 2026-09-25 检索质量工作：遇到的问题（产品侧 7 条、评测侧 6 条）、做法、结果、不足与后续触发条件。数字与失败样例见 [rag-v1-report.md](../evaluations/rag-v1-report.md) |
+
+复盘不是规格：现行实现以本目录的架构书与附件为准。
+
 ## 非现行
 
 | 文件 | 内容 |

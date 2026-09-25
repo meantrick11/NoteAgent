@@ -26,7 +26,7 @@ CHAT_MODEL=deepseek-v4-flash
 
 若你的账号没有 `deepseek-v4-flash`，改成平台上实际可用的模型名。
 
-不要改 `EMBEDDING_*`、`HOST`、`DATABASE_URL`：`docker compose` 会覆盖它们。容器自带 Postgres 和 MiniLM，不用本机数据库。
+不要改 `EMBEDDING_*`、`HOST`、`DATABASE_URL`：`docker compose` 会覆盖它们。容器自带 Postgres 和向量模型（`intfloat/multilingual-e5-small`），不用本机数据库。
 
 ## 3. 启动
 
