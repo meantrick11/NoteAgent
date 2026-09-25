@@ -109,13 +109,15 @@ flowchart TD
 
 | | |
 |--|--|
-| 描述 | 按问题语义检索笔记片段。询问历史知识点时优先使用。 |
+| 描述 | 按问题语义检索笔记片段。询问历史知识点时优先使用。每条片段带 `file_name`、`heading_path` 与 `start_char`/`end_char`，可直接据此定位原文。 |
 | 参数 | `query: str` |
-| 成功 | `{fragments: [{content, source_id?}], count}`。内部 `retrieval.search(query, top_k=3)`（**3 写死在工具里**）。有 registry 时为每个非空 hit 分配 `source_id`，不把 `file_name` 给模型。 |
+| 成功 | `{fragments: [{content, file_name?, heading_path?, start_char?, end_char?, source_id?}], count}`。内部 `retrieval.search(query, top_k=3)`（**3 写死在工具里**）。 |
 | 失败 | `{error}` |
-| 副作用 | 不写 Chroma、不改笔记；成功时注册检索来源 |
+| 副作用 | 不写 Chroma、不改笔记；有 registry 时为每个非空 hit 注册检索来源并给出 `source_id` |
 
-未索引或空库时 fragments 可为空列表，不算工具实现错误。点上的 `file_name` / `distance` 与审批后如何写入见 [retrieval.md](./retrieval.md)。最终答案里真正出现的引用才写入该条 assistant 的 `messages.citations`，编号按该条正文首次出现重排为 1..n。渲染见 [frontend.md](./frontend.md)。
+**片段始终自带定位信息**：`file_name`、`heading_path`、`start_char`/`end_char` 来自向量点 metadata（见 [retrieval.md](./retrieval.md) §4），与 registry 是否存在无关——模型不必解析 `source_id` 去猜文件名或章节。`source_id` 反过来仍然只是服务端编号，用来把答案里的 `[[cite:N]]` 映射回 `file_name` / `chunk_index` / `quote`。
+
+未索引或空库时 fragments 可为空列表，不算工具实现错误；**空结果是"没检索到"，与工具执行错误（`{error}`）是两种状态**。点上的 `file_name` / `distance` 与审批后如何写入见 [retrieval.md](./retrieval.md)。最终答案里真正出现的引用才写入该条 assistant 的 `messages.citations`，编号按该条正文首次出现重排为 1..n。渲染见 [frontend.md](./frontend.md)。
 
 ### 4.4 `propose_note`
 

@@ -7,12 +7,12 @@
 
 | metric | passed/total | rate |
 |---|---|---|
-| Agent 任务成功率（历史场景） | 25/30 | 0.8333 |
-| Agent 任务成功率（严格引用口径） | 25/30 | 0.8333 |
+| Agent 任务成功率（历史场景） | 27/30 | 0.9 |
+| Agent 任务成功率（严格引用口径） | 27/30 | 0.9 |
 | 历史任务检索调用率 | 25/30 | 0.8333 |
 | 无需检索误调用率 | 0/6 | 0.0 |
 | 普通对话不写盘 | 5/6 | 0.8333 |
-| 历史无答案正确处理率 | 4/6 | 0.6667 |
+| 历史无答案正确处理率 | 6/6 | 1.0 |
 | 检索片段覆盖必需证据 | 18/24 | 0.75 |
 | 靠 read_file 兜回正确笔记 | 4/30 | 0.1333 |
 | 引用可定位到文件 | 39/39 | 1.0 |
@@ -24,7 +24,7 @@
 |---|---|---|---|---|
 | history_answer | 12/12 | 12/12 | 12/12 | 0 |
 | history_append | 9/12 | 9/12 | 7/12 | 0 |
-| history_unanswerable | 4/6 | 4/6 | 6/6 | 0 |
+| history_unanswerable | 6/6 | 6/6 | 6/6 | 0 |
 | plain_chat | 5/6 | 5/6 | 0/6 | 0 |
 
 ## Per case (逐次成功分布)
@@ -40,7 +40,7 @@
 | a07 | 3 | 2 | 2 |
 | a08 | 3 | 3 | 3 |
 | a09 | 3 | 3 | 3 |
-| a10 | 3 | 1 | 1 |
+| a10 | 3 | 3 | 3 |
 | a11 | 3 | 3 | 3 |
 | a12 | 3 | 2 | 2 |
 
@@ -74,8 +74,8 @@
 - `a09` r2 success=True tools=['search_relative_from_chromadb', 'list_files', 'search_relative_from_chromadb'] failed=none
 - `a09` r3 success=True tools=['search_relative_from_chromadb', 'search_relative_from_chromadb', 'search_relative_from_chromadb', 'list_files'] failed=none
 - `a10` r1 success=True tools=['search_relative_from_chromadb', 'list_files', 'read_file'] failed=none
-- `a10` r2 success=False tools=['search_relative_from_chromadb', 'list_files', 'read_file'] failed=['states_no_evidence']
-- `a10` r3 success=False tools=['search_relative_from_chromadb', 'list_files', 'read_file', 'search_relative_from_chromadb'] failed=['states_no_evidence']
+- `a10` r2 success=True tools=['search_relative_from_chromadb', 'list_files', 'read_file'] failed=none
+- `a10` r3 success=True tools=['search_relative_from_chromadb', 'list_files', 'read_file', 'search_relative_from_chromadb'] failed=none
 - `a11` r1 success=True tools=[] failed=none
 - `a11` r2 success=True tools=[] failed=none
 - `a11` r3 success=True tools=[] failed=none

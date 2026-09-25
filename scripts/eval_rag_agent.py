@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from noteagent.bootstrap.settings import Settings
 from noteagent.observability.logging import setup_logging
-from noteagent.rag_eval.agent_run import run_agent_eval
+from noteagent.rag_eval.agent_run import rescore_run, run_agent_eval
 
 DEFAULT_PROMPT = Path("src/noteagent/chat/prompts/system.txt")
 
@@ -35,10 +35,29 @@ def main() -> int:
     parser.add_argument("--prompt", type=Path, default=DEFAULT_PROMPT)
     parser.add_argument("--var-root", type=Path, default=Path("var/evals/rag"))
     parser.add_argument("--results-root", type=Path, default=Path("evals/agent/results"))
+    parser.add_argument(
+        "--rescore",
+        action="store_true",
+        help="不改动模型输出，只用当前判定规则重算已有 run 的结论（修正测量口径时用）",
+    )
     args = parser.parse_args()
 
     settings = Settings()
     setup_logging(settings.log_dir, level=logging.DEBUG)
+    if args.rescore:
+        summary = rescore_run(
+            corpus_dir=args.corpus,
+            cases_path=args.cases,
+            queries_path=args.queries,
+            run_id=args.run_id,
+            var_root=args.var_root,
+            results_root=args.results_root,
+        )
+        success = summary["agent_task_success"]
+        print(f"agent success {success['passed']}/{success['total']}"
+              f" search-call {summary['history_search_call_rate']['passed']}/{summary['history_search_call_rate']['total']}"
+              f" unanswerable {summary['history_unanswerable_correct']['passed']}/{summary['history_unanswerable_correct']['total']}")
+        return 0
     only_ids = [item.strip() for item in args.ids.split(",") if item.strip()] or None
     summary = run_agent_eval(
         corpus_dir=args.corpus,

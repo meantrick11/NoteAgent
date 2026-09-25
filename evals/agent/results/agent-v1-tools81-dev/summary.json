@@ -1,19 +1,19 @@
 {
   "runs": 36,
   "agent_task_success": {
-    "passed": 27,
+    "passed": 26,
     "total": 30,
-    "rate": 0.9
+    "rate": 0.8667
   },
   "agent_task_success_strict": {
-    "passed": 27,
-    "total": 30,
-    "rate": 0.9
-  },
-  "history_search_call_rate": {
     "passed": 25,
     "total": 30,
     "rate": 0.8333
+  },
+  "history_search_call_rate": {
+    "passed": 29,
+    "total": 30,
+    "rate": 0.9667
   },
   "plain_chat_search_call_rate": {
     "passed": 0,
@@ -21,9 +21,9 @@
     "rate": 0.0
   },
   "plain_chat_no_draft": {
-    "passed": 5,
+    "passed": 6,
     "total": 6,
-    "rate": 0.8333
+    "rate": 1.0
   },
   "history_unanswerable_correct": {
     "passed": 6,
@@ -31,14 +31,14 @@
     "rate": 1.0
   },
   "retrieval_sufficient": {
-    "passed": 18,
+    "passed": 19,
     "total": 24,
-    "rate": 0.75
+    "rate": 0.7917
   },
   "recovered_by_read": {
-    "passed": 4,
+    "passed": 2,
     "total": 30,
-    "rate": 0.1333
+    "rate": 0.0667
   },
   "citation_traceable": {
     "passed": 39,
@@ -46,9 +46,9 @@
     "rate": 1.0
   },
   "citation_quote_backed": {
-    "passed": 28,
+    "passed": 30,
     "total": 39,
-    "rate": 0.7179
+    "rate": 0.7692
   },
   "by_scenario": {
     "history_answer": {
@@ -58,9 +58,9 @@
         "rate": 1.0
       },
       "task_success_strict": {
-        "passed": 12,
+        "passed": 11,
         "total": 12,
-        "rate": 1.0
+        "rate": 0.9167
       },
       "search_called": {
         "passed": 12,
@@ -71,19 +71,19 @@
     },
     "history_append": {
       "task_success": {
-        "passed": 9,
+        "passed": 8,
         "total": 12,
-        "rate": 0.75
+        "rate": 0.6667
       },
       "task_success_strict": {
-        "passed": 9,
+        "passed": 8,
         "total": 12,
-        "rate": 0.75
+        "rate": 0.6667
       },
       "search_called": {
-        "passed": 7,
+        "passed": 11,
         "total": 12,
-        "rate": 0.5833
+        "rate": 0.9167
       },
       "errors": 0
     },
@@ -107,14 +107,14 @@
     },
     "plain_chat": {
       "task_success": {
-        "passed": 5,
+        "passed": 6,
         "total": 6,
-        "rate": 0.8333
+        "rate": 1.0
       },
       "task_success_strict": {
-        "passed": 5,
+        "passed": 6,
         "total": 6,
-        "rate": 0.8333
+        "rate": 1.0
       },
       "search_called": {
         "passed": 0,
@@ -128,7 +128,7 @@
     "a01": {
       "runs": 3,
       "success": 3,
-      "success_strict": 3
+      "success_strict": 2
     },
     "a02": {
       "runs": 3,
@@ -152,8 +152,8 @@
     },
     "a06": {
       "runs": 3,
-      "success": 1,
-      "success_strict": 1
+      "success": 0,
+      "success_strict": 0
     },
     "a07": {
       "runs": 3,
@@ -182,13 +182,13 @@
     },
     "a12": {
       "runs": 3,
-      "success": 2,
-      "success_strict": 2
+      "success": 3,
+      "success_strict": 3
     }
   },
   "errors": {},
-  "run_id": "agent-v1-selected-dev",
-  "variant": "selected-e5",
+  "run_id": "agent-v1-tools81-dev",
+  "variant": "tools81",
   "split": "dev",
   "repeats": 3
 }

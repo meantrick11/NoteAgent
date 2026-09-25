@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import shutil
 import time
 from dataclasses import asdict, dataclass, field
@@ -35,22 +36,13 @@ from noteagent.retrieval.vector_store import ChromaVectorStore
 
 _logger = logging.getLogger(__name__)
 
-# 判定「明确说明没有历史依据」的关键词；命中情况会连原文一起落进报告，供人工复核。
-NO_EVIDENCE_MARKERS = (
-    "没有找到",
-    "未找到",
-    "没找到",
-    "没有记录",
-    "未记录",
-    "没有保存",
-    "没有相关",
-    "没有关于",
-    "笔记中没有",
-    "笔记里没有",
-    "没有查到",
-    "没有搜到",
-    "未查到",
-    "未提及",
+# 「明确说明笔记里没有」的判定是**代理指标**：措辞无法穷举，所以用「否定词 + 存在性动词」
+# 与「笔记/记录 + 否定」两类窗口规则，而不是固定短语表。原始回答仍会写进本地报告供人工复核。
+_ABSENCE_PATTERNS = (
+    re.compile(r"(?:没有|未|没|无)[^。；\n]{0,12}(?:找到|记录|提到|涉及|出现|包含|命中|保存|检索到|查到)"),
+    re.compile(r"(?:笔记|记录|资料|材料)[^。；\n]{0,20}(?:没有|未|没|不含)"),
+    re.compile(r"(?:没有|未|没)[^。；\n]{0,10}(?:任何)?(?:相关)?(?:内容|记录|信息|材料|推导|说明|描述|讨论)"),
+    re.compile(r"(?:仅|只)[^。；\n]{0,12}(?:定性|概括|提及)"),
 )
 
 # 判定「识别出内容已存在、无需重复写入」的关键词。
@@ -65,6 +57,16 @@ DUPLICATE_MARKERS = (
     "不需要重复",
     "重复",
 )
+
+
+def states_no_evidence(answer: str) -> bool:
+    """True when the answer says the notes do not contain the asked-for information.
+
+    This is a proxy, not a semantic judgement: it matches a negation close to an
+    existence verb (or a note reference), which is what "明确说明未找到" looks like in
+    practice. The verbatim answer is kept in the local report for human review.
+    """
+    return any(pattern.search(answer) for pattern in _ABSENCE_PATTERNS)
 
 DEFAULT_REPEATS = 3
 
@@ -427,7 +429,7 @@ def evaluate_checks(
         )
     if case.scenario == "history_unanswerable":
         answer = outcome.final_answer or ""
-        checks["states_no_evidence"] = any(marker in answer for marker in NO_EVIDENCE_MARKERS)
+        checks["states_no_evidence"] = states_no_evidence(answer)
     if case.scenario == "history_append" and outcome.draft is None:
         answer = outcome.final_answer or ""
         checks["no_draft_explained"] = any(marker in answer for marker in DUPLICATE_MARKERS)
@@ -602,6 +604,89 @@ def summarize(outcomes: list[CaseOutcome]) -> dict:
         "per_case": per_case,
         "errors": {f"{item.case_id}-r{item.repeat_index}": item.error for item in outcomes if item.error is not None},
     }
+
+
+def _outcome_from_row(row: dict) -> CaseOutcome:
+    """Rebuild a stored outcome, restoring the nested dataclasses JSON flattened."""
+    searches = [
+        SearchRecord(
+            query=str(item.get("query") or ""),
+            top_k=int(item.get("top_k") or 0),
+            hits=[HitRecord(**hit) for hit in item.get("hits") or []],
+        )
+        for item in row.get("searches") or []
+    ]
+    restored = dict(row)
+    restored["searches"] = searches
+    restored["checks"] = dict(row.get("checks") or {})
+    return CaseOutcome(**restored)
+
+
+def rescore_run(
+    *,
+    corpus_dir: Path,
+    cases_path: Path,
+    queries_path: Path,
+    run_id: str,
+    var_root: Path,
+    results_root: Path,
+) -> dict:
+    """Recompute verdicts from a stored run without calling the model again.
+
+    Only the deterministic scoring is redone: the stored answers, tool trajectories and
+    search records are reused verbatim, and the sandbox notes are re-read for the checks
+    that need the post-commit file. This is what makes a *measurement* fix safe to apply
+    to runs that were already paid for — the model's behaviour is untouched.
+    """
+    from noteagent.rag_eval.dataset import load_agent_cases, load_corpus, load_queries
+
+    corpus = load_corpus(corpus_dir)
+    queries_list = load_queries(queries_path, corpus)
+    queries = {query.id: query for query in queries_list}
+    cases = {case.id: case for case in load_agent_cases(cases_path, queries_list)}
+
+    run_dir = var_root / run_id
+    rows = [
+        json.loads(line)
+        for line in (run_dir / "results.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    before = summarize([_outcome_from_row(row) for row in rows])
+    outcomes: list[CaseOutcome] = []
+    for row in rows:
+        case = cases[row["case_id"]]
+        sandbox = run_dir / "cases" / f"{row['case_id']}-r{row['repeat_index']}" / "notes"
+        try:
+            row["checks"] = evaluate_checks(
+                case,
+                _outcome_from_row(row),
+                queries=queries,
+                notes=FileNoteRepository(sandbox),
+                corpus=corpus,
+            )
+        except Exception as exc:  # noqa: BLE001 - 沙箱缺失时保留原判定并记录
+            _logger.warning("rescore skipped id=%s: %s", row["case_id"], exc)
+        outcome = _outcome_from_row(row)
+        outcome.task_success = _task_success(case, outcome)
+        outcome.task_success_strict = _task_success(case, outcome, strict=True)
+        outcomes.append(outcome)
+
+    stored = json.loads((results_root / run_id / "summary.json").read_text(encoding="utf-8"))
+    summary = summarize(outcomes)
+    for key in ("run_id", "variant", "split", "repeats"):
+        if key in stored:
+            summary[key] = stored[key]
+    _write_agent_outputs(
+        run_dir=run_dir, results_root=results_root, run_id=run_id, summary=summary, outcomes=outcomes
+    )
+    after = summarize(outcomes)
+    print(f"rescore {run_id}: {len(outcomes)} runs（模型输出未改动，只重算判定）")
+    for key in ("agent_task_success", "agent_task_success_strict", "history_search_call_rate",
+                "history_unanswerable_correct", "citation_quote_backed"):
+        old, new = before[key], after[key]
+        mark = "  " if old == new else "->"
+        print(f"  {key:32} {old['passed']}/{old['total']} {mark} {new['passed']}/{new['total']}")
+    return summary
 
 
 def run_agent_eval(

@@ -48,7 +48,10 @@ def build_chat_tools(
     #从RAG中检索工具
     @tool(
         "search_relative_from_chromadb",
-        description="按问题语义检索笔记片段。询问历史知识点时优先使用。",
+        description=(
+            "按问题语义检索笔记片段。询问历史知识点时优先使用。"
+            "每条片段带 file_name、heading_path 与 start_char/end_char，可直接据此定位原文。"
+        ),
     )
     def search_relative_from_chromadb(query: str) -> dict:
         try:
@@ -60,10 +63,22 @@ def build_chat_tools(
         for hit in hits:
             if not hit.content:
                 continue
+            metadata = hit.metadata or {}
+            file_name = str(metadata.get("file_name") or "")
+            # 片段自带定位信息：模型不该靠解析 source_id 猜文件名或章节。
             item: dict = {"content": hit.content}
-            file_name = str((hit.metadata or {}).get("file_name") or "")
+            if file_name:
+                item["file_name"] = file_name
+            heading_path = str(metadata.get("heading_path") or "")
+            if heading_path:
+                item["heading_path"] = heading_path
+            start_char = metadata.get("start_char")
+            end_char = metadata.get("end_char")
+            if isinstance(start_char, int) and isinstance(end_char, int):
+                item["start_char"] = start_char
+                item["end_char"] = end_char
             if registry is not None and file_name:
-                raw_index = (hit.metadata or {}).get("chunk_index")
+                raw_index = metadata.get("chunk_index")
                 chunk_index = int(raw_index) if raw_index is not None else None
                 item["source_id"] = registry.register(
                     file_name=file_name,

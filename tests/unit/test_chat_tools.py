@@ -9,9 +9,21 @@ from noteagent.retrieval.models import SearchHit
 
 
 class FakeRetrieval:
+    """Retrieval stub: one located fragment, so the tool can return positions too."""
+
     def search(self, query: str, top_k: int = 3):
         return [
-            SearchHit(content=f"hit:{query}", distance=0.1, metadata={"file_name": "A.md"}),
+            SearchHit(
+                content=f"hit:{query}",
+                distance=0.1,
+                metadata={
+                    "file_name": "A.md",
+                    "chunk_index": 0,
+                    "heading_path": "A > 第一节",
+                    "start_char": 10,
+                    "end_char": 20,
+                },
+            ),
         ]
 
 
@@ -38,10 +50,22 @@ def test_agent_tools_do_not_write_files(tmp_path: Path):
 
 
 def test_search_tool_returns_fragments(tmp_path: Path):
+    """片段必须自带定位信息，且在没有引用 registry 时也要能拿到文件名。"""
     repo = FileNoteRepository(tmp_path)
     tools = _tool_map(repo)
     result = tools["search_relative_from_chromadb"].invoke({"query": "transformer"})
-    assert result == {"fragments": [{"content": "hit:transformer"}], "count": 1}
+    assert result == {
+        "fragments": [
+            {
+                "content": "hit:transformer",
+                "file_name": "A.md",
+                "heading_path": "A > 第一节",
+                "start_char": 10,
+                "end_char": 20,
+            }
+        ],
+        "count": 1,
+    }
 
 
 def test_search_tool_assigns_source_id(tmp_path: Path):
@@ -56,7 +80,16 @@ def test_search_tool_assigns_source_id(tmp_path: Path):
     finally:
         current_citations.reset(token)
     assert result == {
-        "fragments": [{"content": "hit:transformer", "source_id": 1}],
+        "fragments": [
+            {
+                "content": "hit:transformer",
+                "file_name": "A.md",
+                "heading_path": "A > 第一节",
+                "start_char": 10,
+                "end_char": 20,
+                "source_id": 1,
+            }
+        ],
         "count": 1,
     }
 
