@@ -165,4 +165,3 @@
 新增：`src/noteagent/retrieval/instructions.py`。
 
 修改：`src/noteagent/{bootstrap/runtime.py,model_management/{catalog,router,schemas,service,store}.py,retrieval/{embedder,service,vector_store}.py}`、`scripts/index_notes.py`、`src/noteagent/web/static/model-settings.{js,css}`、`src/noteagent/web/templates/home.html`、`tests/{unit/{test_embedder,test_model_management,test_model_settings_store}.py,integration/{test_app,test_model_settings_api,test_notes_api,test_retrieval_service}.py}`、`docs/architecture/{architecture,frontend,retrieval}.md`、`src/noteagent/model_management/README.md`、`src/noteagent/retrieval/README.md`、`README.md`、`.env.example`、`docker-compose.yml`。
-
