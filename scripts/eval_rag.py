@@ -9,6 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from noteagent.bootstrap.settings import Settings
 from noteagent.rag_eval.run import run_retrieval_eval
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
@@ -24,6 +25,22 @@ def main() -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--probe-k", type=int, default=20, help="诊断用的更深候选数")
+    # 默认就是生产配置，直接跑一次即代表线上；复现旧基线要显式给 --strategy char --no-embed-heading-prefix。
+    settings = Settings()
+    parser.add_argument(
+        "--strategy",
+        choices=("char", "heading"),
+        default=settings.chunk_strategy,
+        help="char=按字符切块；heading=章节感知切块（默认取 CHUNK_STRATEGY）",
+    )
+    parser.add_argument(
+        "--embed-heading-prefix",
+        action=argparse.BooleanOptionalAction,
+        default=settings.embed_heading_prefix,
+        help="把章节路径拼在被嵌入的文本前面（只影响向量，不影响引用原文）",
+    )
+    parser.add_argument("--chunk-size", type=int, default=500)
+    parser.add_argument("--chunk-overlap", type=int, default=50)
     parser.add_argument("--repeats", type=int, default=3, help="每条查询的热延迟重复次数")
     parser.add_argument("--warmup", type=int, default=5)
     parser.add_argument("--var-root", type=Path, default=Path("var/evals/rag"))
@@ -42,6 +59,10 @@ def main() -> int:
         probe_k=args.probe_k,
         repeats=args.repeats,
         warmup=args.warmup,
+        strategy=args.strategy,
+        embed_heading_prefix=args.embed_heading_prefix,
+        chunk_size=args.chunk_size,
+        chunk_overlap=args.chunk_overlap,
     )
     answerable = summary["answerable"]
     print(
@@ -50,6 +71,7 @@ def main() -> int:
         f"hit@3 {answerable['hit_at_3']['passed']}/{answerable['hit_at_3']['total']} "
         f"probe@{summary['probe_k']} {answerable['full_recall_at_probe_k']['passed']}/"
         f"{answerable['full_recall_at_probe_k']['total']} "
+        f"truncated {summary['token_budget']['over_limit']}/{summary['token_budget']['chunks']} "
         f"min {summary['latency']['min_ms']}ms p95 {summary['latency']['p95_ms']}ms"
     )
     return 0

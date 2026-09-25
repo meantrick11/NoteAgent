@@ -28,3 +28,15 @@ class SentenceTransformerEmbedder:
     def embed_query(self, query: str) -> list[float]:
         """Encode a single search query."""
         return self._model.encode([query]).tolist()[0]
+
+    def max_tokens(self) -> int | None:
+        """Input limit this model truncates at, if it reports one."""
+        return int(getattr(self._model, "max_seq_length", 0)) or None
+
+    def count_tokens(self, texts: list[str]) -> list[int]:
+        """Token count per text, using this model's own tokenizer.
+
+        Special tokens are included on purpose: the budget that matters is what the
+        model actually receives, not the visible character count.
+        """
+        return [len(ids) for ids in self._model.tokenizer(texts)["input_ids"]]

@@ -5,6 +5,15 @@ from chromadb.config import Settings as ChromaSettings
 
 from noteagent.retrieval.models import SearchHit
 
+# 存进 collection metadata 的配置指纹键。
+CONFIG_FINGERPRINT_KEY = "noteagent_index_config"
+# 加指纹之前建出来的索引，等价于当时的默认配置。
+LEGACY_FINGERPRINT = "char:500/50|all-MiniLM-L6-v2|content"
+
+
+class IndexConfigMismatch(RuntimeError):
+    """The existing collection was built with a different index configuration."""
+
 
 class ChromaVectorStore:
     """Persistent Chroma collection for note-chunk embeddings."""
@@ -16,6 +25,37 @@ class ChromaVectorStore:
             settings=ChromaSettings(anonymized_telemetry_enabled=False),
         )
         self._collection = self._client.get_or_create_collection(collection_name)
+
+    def stored_config(self) -> str | None:
+        """Fingerprint recorded in this collection, or None when it has none yet."""
+        stored = (self._collection.metadata or {}).get(CONFIG_FINGERPRINT_KEY)
+        if stored is None and self._collection.count():
+            return LEGACY_FINGERPRINT
+        return stored
+
+    def ensure_config(self, fingerprint: str) -> None:
+        """Record what this index's vectors and offsets mean, or refuse to mix.
+
+        Vectors, chunk boundaries and offsets are only comparable inside one
+        configuration: a new embedding model or a new chunking strategy makes every
+        stored point meaningless, so reusing the collection would silently return
+        garbage. A collection built before fingerprints existed counts as the legacy
+        default, which lets an unchanged deployment keep working while catching a
+        changed one.
+        """
+        stored = (self._collection.metadata or {}).get(CONFIG_FINGERPRINT_KEY)
+        if stored is None and self._collection.count():
+            stored = LEGACY_FINGERPRINT
+        if stored == fingerprint:
+            return
+        if stored is not None:
+            raise IndexConfigMismatch(
+                f"collection was built with {stored!r} but the current configuration is "
+                f"{fingerprint!r}; rebuild the index before searching (旧向量与新配置不兼容)"
+            )
+        self._collection.modify(
+            metadata={**(self._collection.metadata or {}), CONFIG_FINGERPRINT_KEY: fingerprint}
+        )
 
     def upsert(
         self,

@@ -1,6 +1,6 @@
 {
-  "run_id": "rag-v1-baseline-dev",
-  "variant": "baseline",
+  "run_id": "rag-v1-char320-dev",
+  "variant": "char320",
   "split": "dev",
   "corpus": "evals\\rag\\corpus\\v1",
   "queries_path": "evals\\rag\\queries.v1.jsonl",
@@ -8,34 +8,34 @@
   "probe_k": 20,
   "answerable": {
     "full_recall_at_k": {
-      "passed": 5,
+      "passed": 7,
       "total": 18,
-      "rate": 0.2778
+      "rate": 0.3889
     },
-    "mean_recall_at_k": 0.2778,
+    "mean_recall_at_k": 0.3889,
     "hit_at_3": {
-      "passed": 3,
+      "passed": 2,
       "total": 18,
-      "rate": 0.1667
+      "rate": 0.1111
     },
-    "mrr_at_k": 0.1639,
-    "mean_recall_at_probe_k": 0.6944,
+    "mrr_at_k": 0.1472,
+    "mean_recall_at_probe_k": 0.5278,
     "full_recall_at_probe_k": {
-      "passed": 12,
+      "passed": 9,
       "total": 18,
-      "rate": 0.6667
+      "rate": 0.5
     },
     "mapping_errors": 0
   },
   "unanswerable": {
     "count": 6,
     "top1_distance": [
-      0.6053,
-      0.8076,
-      0.8319,
-      1.0189,
-      1.0839,
-      1.2359
+      0.6277,
+      0.6317,
+      0.8225,
+      0.8432,
+      0.9822,
+      1.2192
     ]
   },
   "by_category": {
@@ -47,73 +47,71 @@
       },
       "mean_recall_at_k": 0.4286,
       "hit_at_3": {
-        "passed": 2,
+        "passed": 1,
         "total": 7,
-        "rate": 0.2857
+        "rate": 0.1429
       },
-      "mrr_at_k": 0.3214,
-      "mean_recall_at_probe_k": 0.7143
+      "mrr_at_k": 0.2143,
+      "mean_recall_at_probe_k": 0.5714
     },
     "mixed_language": {
       "recall_at_k": {
-        "passed": 2,
-        "total": 3,
-        "rate": 0.6667
-      },
-      "mean_recall_at_k": 0.6667,
-      "hit_at_3": {
         "passed": 1,
         "total": 3,
         "rate": 0.3333
       },
-      "mrr_at_k": 0.2333,
-      "mean_recall_at_probe_k": 1.0
+      "mean_recall_at_k": 0.3333,
+      "hit_at_3": {
+        "passed": 0,
+        "total": 3,
+        "rate": 0.0
+      },
+      "mrr_at_k": 0.0667,
+      "mean_recall_at_probe_k": 0.6667
     },
     "multi_evidence": {
       "recall_at_k": {
-        "passed": 0,
+        "passed": 2,
         "total": 4,
-        "rate": 0.0
+        "rate": 0.5
       },
-      "mean_recall_at_k": 0.0,
+      "mean_recall_at_k": 0.5,
       "hit_at_3": {
-        "passed": 0,
+        "passed": 1,
         "total": 4,
-        "rate": 0.0
+        "rate": 0.25
       },
-      "mrr_at_k": 0.0,
-      "mean_recall_at_probe_k": 0.875
+      "mrr_at_k": 0.175,
+      "mean_recall_at_probe_k": 0.625
     },
     "paraphrase": {
       "recall_at_k": {
-        "passed": 0,
+        "passed": 1,
         "total": 4,
-        "rate": 0.0
+        "rate": 0.25
       },
-      "mean_recall_at_k": 0.0,
+      "mean_recall_at_k": 0.25,
       "hit_at_3": {
         "passed": 0,
         "total": 4,
         "rate": 0.0
       },
-      "mrr_at_k": 0.0,
+      "mrr_at_k": 0.0625,
       "mean_recall_at_probe_k": 0.25
     }
   },
   "failures": {
     "q01": "evidence_not_in_returned_fragments",
-    "q02": "ranked_below_top_k",
+    "q04": "ranked_below_top_k",
     "q05": "evidence_not_in_returned_fragments",
     "q08": "evidence_not_in_returned_fragments",
     "q09": "evidence_not_in_returned_fragments",
-    "q11": "ranked_below_top_k",
     "q12": "evidence_not_in_returned_fragments",
-    "q13": "ranked_below_top_k",
-    "q16": "ranked_below_top_k",
-    "q19": "ranked_below_top_k",
+    "q16": "evidence_not_in_returned_fragments",
     "q21": "ranked_below_top_k",
     "q22": "ranked_below_top_k",
-    "q24": "ranked_below_top_k"
+    "q24": "evidence_not_in_returned_fragments",
+    "q29": "evidence_not_in_returned_fragments"
   },
   "unanswerable_ids": [
     "q31",
@@ -127,29 +125,23 @@
     "queries": 24,
     "repeats": 3,
     "samples": 72,
-    "min_ms": 65.43,
-    "p50_ms": 173.35,
-    "p95_ms": 238.51
+    "min_ms": 8.21,
+    "p50_ms": 11.27,
+    "p95_ms": 196.19
   },
-  "index_ms": 6293,
+  "index_ms": 6861,
   "token_budget": {
     "model_max_tokens": 256,
-    "chunks": 107,
-    "max_tokens": 449,
-    "p50_tokens": 247,
-    "mean_tokens": 246.2,
-    "over_limit": 50,
+    "chunks": 180,
+    "max_tokens": 297,
+    "p50_tokens": 148,
+    "mean_tokens": 147.0,
+    "over_limit": 5,
     "over_limit_notes": [
-      "Agent_Design_Patterns",
-      "Backtracking",
       "BinaryTree",
-      "OWL2_Document_Overview",
       "Python_Tutorial_Interpreter",
-      "Python_Tutorial_Intro",
       "Python_Tutorial_Overview",
-      "SQLAlchemy_psycopg",
-      "Software_Architecture_Design",
-      "Writing_Effective_Tools_for_Agents"
+      "Software_Architecture_Design"
     ]
   }
 }

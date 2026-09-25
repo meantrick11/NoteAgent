@@ -1,12 +1,14 @@
 from pathlib import Path
 
+import pytest
+
 from noteagent.chat.drafts import DraftStore, NoteDraft, commit_review
 from noteagent.chat.history import ConversationStore
 from noteagent.db import Base, create_engine_from_url, create_session_factory
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.retrieval.chunker import MarkdownChunker
 from noteagent.retrieval.service import RetrievalService
-from noteagent.retrieval.vector_store import ChromaVectorStore
+from noteagent.retrieval.vector_store import ChromaVectorStore, IndexConfigMismatch
 
 _INDEX_TRACE = "noteagent.observability.index_trace"
 
@@ -92,6 +94,12 @@ class _EmptyChunker:
     def split(self, content: str) -> list[str]:
         return []
 
+    def split_with_metadata(self, content: str) -> list[object]:
+        return []
+
+    def describe(self) -> str:
+        return "empty-chunker"
+
 
 def test_index_skip_empty_logs(tmp_path: Path, caplog):
     notes = FileNoteRepository(tmp_path / "notes")
@@ -129,3 +137,97 @@ def test_commit_review_create_is_searchable(tmp_path: Path):
     hits = service.search("注意力", top_k=2)
     assert hits
     assert hits[0].metadata["file_name"] == "Go.md"
+
+
+# --- 任务六：位置与章节元数据、配置指纹 ---------------------------------------
+
+HEAVY_NOTE = (
+    "# 根\n\n## 第一节\n\n回溯是递归的副产品，有递归必有回溯。\n\n"
+    "```python\n# 这是代码注释，不是标题\nx = 1\n```\n\n## 第二节\n\n队列用于层序遍历。\n"
+)
+
+
+def test_index_records_offsets_and_heading_paths(tmp_path: Path):
+    notes = FileNoteRepository(tmp_path / "notes")
+    notes.create("Tree.md", "Tree")
+    notes.write("Tree.md", HEAVY_NOTE, append=False)
+    service = RetrievalService(
+        notes=notes,
+        chunker=MarkdownChunker(chunk_size=500, chunk_overlap=0, strategy="heading"),
+        embedder=FakeEmbedder(),
+        store=ChromaVectorStore(tmp_path / "chroma", "meta"),
+    )
+    service.index_note("Tree.md")
+    body = (tmp_path / "notes" / "Tree.md").read_text(encoding="utf-8")
+    metas = (
+        service._store._collection.get(where={"file_name": "Tree.md"}, include=["metadatas"]).get("metadatas") or []
+    )
+    docs = (
+        service._store._collection.get(where={"file_name": "Tree.md"}, include=["documents"]).get("documents") or []
+    )
+    assert metas and docs
+    for meta, document in zip(metas, docs):
+        assert body[meta["start_char"] : meta["end_char"]] == document
+        assert meta["content_sha256"]
+        assert meta["heading_path"].startswith("根")
+
+
+def test_heading_prefix_changes_only_the_embedded_text(tmp_path: Path):
+    class RecordingEmbedder(FakeEmbedder):
+        def __init__(self):
+            self.seen: list[str] = []
+
+        def embed_documents(self, texts: list[str]) -> list[list[float]]:
+            self.seen.extend(texts)
+            return super().embed_documents(texts)
+
+    notes = FileNoteRepository(tmp_path / "notes")
+    notes.create("Tree.md", "Tree")
+    notes.write("Tree.md", HEAVY_NOTE, append=False)
+    embedder = RecordingEmbedder()
+    service = RetrievalService(
+        notes=notes,
+        chunker=MarkdownChunker(chunk_size=500, chunk_overlap=0, strategy="heading"),
+        embedder=embedder,
+        store=ChromaVectorStore(tmp_path / "chroma", "prefix"),
+        embed_heading_prefix=True,
+    )
+    service.index_note("Tree.md")
+    assert any("根 > 第一节" in text for text in embedder.seen)
+    docs = (service._store._collection.get(where={"file_name": "Tree.md"}, include=["documents"]).get("documents") or [])
+    assert all("根 > 第一节" not in document for document in docs)
+
+
+def test_reusing_a_collection_with_another_configuration_is_refused(tmp_path: Path):
+    notes = FileNoteRepository(tmp_path / "notes")
+    notes.create("Tree.md", "Tree")
+    notes.write("Tree.md", HEAVY_NOTE, append=False)
+    store = ChromaVectorStore(tmp_path / "chroma", "shared")
+    RetrievalService(
+        notes=notes,
+        chunker=MarkdownChunker(500, 50, strategy="char"),
+        embedder=FakeEmbedder(),
+        store=store,
+    ).index_note("Tree.md")
+    with pytest.raises(IndexConfigMismatch):
+        RetrievalService(
+            notes=notes,
+            chunker=MarkdownChunker(500, 50, strategy="heading"),
+            embedder=FakeEmbedder(),
+            store=ChromaVectorStore(tmp_path / "chroma", "shared"),
+        )
+
+
+def test_a_collection_from_before_fingerprints_is_adopted(tmp_path: Path):
+    from noteagent.retrieval.vector_store import LEGACY_FINGERPRINT
+
+    store = ChromaVectorStore(tmp_path / "chroma", "legacy")
+    store.upsert(
+        ids=["Go.md_0"],
+        embeddings=[[1.0, 2.0]],
+        documents=["旧内容"],
+        metadatas=[{"file_name": "Go.md", "chunk_index": 0}],
+    )
+    store.ensure_config(LEGACY_FINGERPRINT)
+    with pytest.raises(IndexConfigMismatch):
+        store.ensure_config("heading:500/50|all-MiniLM-L6-v2|content")

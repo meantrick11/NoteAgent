@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Literal
 
 from noteagent.rag_eval.metrics import Interval
+from noteagent.retrieval.markdown import Heading, note_headings
 
 _logger = logging.getLogger(__name__)
 
@@ -23,8 +24,6 @@ SPLITS = ("dev", "holdout")
 SOURCE_STATUSES = ("available", "missing", "synthetic")
 REVIEW_STATUSES = ("reviewed", "provisional")
 
-_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*?)[ \t]*$")
-_FENCE_RE = re.compile(r"^\s*(```|~~~)")
 _LATIN_TERM_RE = re.compile(r"[A-Za-z][A-Za-z0-9_.+-]{2,}")
 _CJK_RUN_RE = re.compile(r"[\u4e00-\u9fff]+")
 _CJK_NGRAM = 3
@@ -49,17 +48,6 @@ class NoteRecord:
     source_status: str
     review_status: str
     issues: tuple[str, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class Heading:
-    """One Markdown heading, with its joined path and its own char range."""
-
-    level: int
-    text: str
-    path: str
-    start: int
-    end: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,53 +124,6 @@ class AgentCase:
     conflict_markers: tuple[str, ...]
     expect_no_write: bool
     notes: str
-
-
-def note_headings(text: str) -> tuple[Heading, ...]:
-    """Parse ATX headings, ignoring ``#`` lines inside fenced code blocks."""
-    headings: list[Heading] = []
-    stack: list[tuple[int, str]] = []
-    offset = 0
-    in_fence = False
-    for line in text.splitlines(keepends=True):
-        stripped = line.rstrip("\n").rstrip("\r")
-        if _FENCE_RE.match(stripped):
-            in_fence = not in_fence
-        elif not in_fence:
-            match = _HEADING_RE.match(stripped)
-            if match and match.group(2):
-                level = len(match.group(1))
-                label = match.group(2)
-                while stack and stack[-1][0] >= level:
-                    stack.pop()
-                stack.append((level, label))
-                headings.append(
-                    Heading(
-                        level=level,
-                        text=label,
-                        path=" > ".join(item[1] for item in stack),
-                        start=offset,
-                        end=offset + len(line),
-                    )
-                )
-        offset += len(line)
-    if in_fence:
-        _logger.warning("note ends inside an unclosed code fence")
-    return tuple(headings)
-
-
-def heading_path_at(headings: tuple[Heading, ...], offset: int) -> str:
-    """Path of the innermost heading whose section contains ``offset``.
-
-    Returns an empty string when the offset sits before the first heading.
-    """
-    path = ""
-    for heading in headings:
-        if heading.start <= offset:
-            path = heading.path
-        else:
-            break
-    return path
 
 
 def load_corpus(corpus_dir: Path) -> Corpus:

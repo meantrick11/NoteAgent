@@ -426,7 +426,7 @@ ORM：[`db/models.py`](../../src/noteagent/db/models.py)。连接：[`db/engine.
 | 离线跑分产物 | [evals/prompt/results/](../../evals/prompt/results/README.md)、[evals/rag/results/](../../evals/rag/README.md)、[evals/agent/results/](../../evals/agent/README.md) |
 | 实测报告 | [docs/evaluations/rag-v1-report.md](../evaluations/rag-v1-report.md)（检索与 Agent 基线、失败样例、重建/回退） |
 
-三本账互不合成一个 Agent 总分：笔记正文（学习型走 v0.2；旧题仍用 v0.1）、工具轨迹、检索（Recall@5 / Hit@3 / MRR、调用率、引用可追溯）。评测只服务离线迭代 [`system.txt`](../../src/noteagent/chat/prompts/system.txt)，不拦截草稿、不按分数自动再生成。现行生成提示词是 v9：在 `l01` 上硬门与复习题可通过，结构/加工未达合格线。检索侧现行配置是 `all-MiniLM-L6-v2` + 500/50 字符切块，dev 基线未达门槛，失败主因是排序而非内容缺失（见实测报告）。
+三本账互不合成一个 Agent 总分：笔记正文（学习型走 v0.2；旧题仍用 v0.1）、工具轨迹、检索（Recall@5 / Hit@3 / MRR、调用率、引用可追溯）。评测只服务离线迭代 [`system.txt`](../../src/noteagent/chat/prompts/system.txt)，不拦截草稿、不按分数自动再生成。现行生成提示词是 v9：在 `l01` 上硬门与复习题可通过，结构/加工未达合格线。检索侧现行配置是 `all-MiniLM-L6-v2` + 章节感知切块（500/50，`embed_heading_prefix=True`）；dev 基线未达门槛，但切块对照已验证收益（Recall@5 5/18 → 9/18），剩余缺口指向向量模型选型，见实测报告。
 
 **为什么。** 改提示词需要固定考题和可重复的尺子。若把打分接进 Agent，会变成「生成 → 打分 → 再生成」，与「LLM 只出提案、磁盘只走人类操作」冲突。v0.2 不得与 v0.1 直接比较总分或排名。
 

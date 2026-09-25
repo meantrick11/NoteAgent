@@ -24,11 +24,12 @@ from noteagent.chat.history import ConversationStore, start_turn
 from noteagent.chat.tools import build_chat_tools
 from noteagent.db import Base, create_engine_from_url, create_session_factory
 from noteagent.notes.repository import FileNoteRepository
-from noteagent.rag_eval.dataset import AgentCase, Corpus, QueryCase, heading_path_at
+from noteagent.rag_eval.dataset import AgentCase, Corpus, QueryCase
 from noteagent.rag_eval.metrics import Interval, covered_units
 from noteagent.rag_eval.run import HitRecord, chunk_spans
 from noteagent.retrieval.chunker import MarkdownChunker
 from noteagent.retrieval.embedder import SentenceTransformerEmbedder
+from noteagent.retrieval.markdown import heading_path_at
 from noteagent.retrieval.service import RetrievalService
 from noteagent.retrieval.vector_store import ChromaVectorStore
 
@@ -182,7 +183,8 @@ def build_sandbox(
     notes_root = case_dir / "notes"
     _copy_corpus_notes(corpus, notes_root)
     notes = FileNoteRepository(notes_root)
-    chunker = MarkdownChunker(500, 50)
+    # 与生产同构：切块策略与嵌入文本取自 Settings，否则 Agent 层测的不是线上配置。
+    chunker = MarkdownChunker(strategy=settings.chunk_strategy)
     lookup: dict[str, tuple[list[str], list[Interval | None]]] = {}
     for note_id, text in corpus.texts.items():
         chunks = chunker.split(text)
@@ -193,7 +195,13 @@ def build_sandbox(
         local_files_only=settings.embedding_local_files_only,
     )
     store = ChromaVectorStore(case_dir / "chroma", f"ragagent-{case_dir.name}"[:63])
-    service = RetrievalService(notes=notes, chunker=chunker, embedder=embedder, store=store)
+    service = RetrievalService(
+        notes=notes,
+        chunker=chunker,
+        embedder=embedder,
+        store=store,
+        embed_heading_prefix=settings.embed_heading_prefix,
+    )
     for record in corpus.notes.values():
         service.index_note(record.file)
     retrieval = RecordingRetrieval(service, lookup, corpus)

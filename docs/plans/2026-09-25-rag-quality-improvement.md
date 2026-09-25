@@ -226,13 +226,13 @@ uv run python scripts/eval_rag_agent.py --cases evals/agent/rag_cases.v1.jsonl -
 
 **修改：** `retrieval/chunker.py`、`models.py`、`service.py`、相关单测和集成测试。
 
-- [ ] 先以真实失败写回归用例：标题与正文分离、定义与限制分离、代码围栏中的 # 被误判为标题、长代码/表格、重复段落偏移。
-- [ ] 在现有字符切块外增加 Markdown 章节识别；短章节保留整体，长章节继续递归切分。保留原 split(content) 返回字符串列表的兼容入口，新建 split_with_metadata(content) 供索引调用。
-- [ ] chunk 数据包括 content、heading_path、start_char、end_char；metadata 增加这些值及 note_id、内容版本/hash。heading_path 在 Chroma 中存字符串，偏移存整数，避免不支持的复杂 metadata 类型。
-- [ ] 区分用于 embedding 的文本和用于引用的原文。embedding 文本可以加标题路径；引用内容必须可映射回原文，不把添加的标题误当连续原文。
-- [ ] 实测 tokenizer 长度，包含标题与特殊 token 的预算。每个候选模型输入都记录是否截断；超长代码/表格分段并保留来源位置，不允许为保持整块而静默截断。
-- [ ] 固定模型、距离、归一化和 top-k，在 dev 比较原切块与章节切块；最多比较两种长度预算，避免一次引入大量参数。
-- [ ] 同时复核引用和更新/删除流程。章节方案无收益时保留基线并记录失败分析。
+- [x] 先以真实失败写回归用例：标题与正文分离、定义与限制分离、代码围栏中的 # 被误判为标题、长代码/表格、重复段落偏移。
+- [x] 在现有字符切块外增加 Markdown 章节识别；短章节保留整体，长章节继续递归切分。保留原 split(content) 返回字符串列表的兼容入口，新建 split_with_metadata(content) 供索引调用。
+- [x] chunk 数据包括 content、heading_path、start_char、end_char；metadata 增加这些值及 note_id、内容版本/hash。heading_path 在 Chroma 中存字符串，偏移存整数，避免不支持的复杂 metadata 类型。
+- [x] 区分用于 embedding 的文本和用于引用的原文。embedding 文本可以加标题路径；引用内容必须可映射回原文，不把添加的标题误当连续原文。
+- [x] 实测 tokenizer 长度，包含标题与特殊 token 的预算。每个候选模型输入都记录是否截断；超长代码/表格分段并保留来源位置，不允许为保持整块而静默截断。
+- [x] 固定模型、距离、归一化和 top-k，在 dev 比较原切块与章节切块；最多比较两种长度预算，避免一次引入大量参数。
+- [x] 同时复核引用和更新/删除流程。章节方案无收益时保留基线并记录失败分析。
 
 ```powershell
 uv run pytest tests/unit/test_chunker.py tests/integration/test_retrieval_service.py tests/unit/test_citations.py -q

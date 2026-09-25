@@ -2,11 +2,11 @@
 
 - variant: `baseline` split: `dev` top_k: 5 probe_k: 20
 - model: `all-MiniLM-L6-v2` revision `None`
-- chunker: {'chunk_size': 500, 'chunk_overlap': 50} distance: chroma-default-l2
+- chunker: {'strategy': 'char', 'chunk_size': 500, 'chunk_overlap': 50} distance: chroma-default-l2
 - corpus manifest sha256: `67cb5e504bbae91e693ea3835a5f83ecac9a0c7f7a9eebf2886f4a2fc5b7f4ad`
 - queries sha256: `295300838802bc90243fb9e6451ab68c3fb07499ebefaf7fb32896a814aee636`
-- git: `9e951ac1edd19396968e7107d59668096d00bc32` dirty: yes
-- index build: 7781 ms
+- git: `5a0745292fe31e56da6d49bc6d21f5c8cdbf5e6b` dirty: yes
+- index build: 6293 ms
 
 ## Metrics
 
@@ -31,9 +31,15 @@
 ## Latency (hot queries)
 
 - samples: 72 (warmup 3x24)
-- min: 65.57 ms, p50: 191.15 ms, p95: 240.14 ms
-- index build: 7781 ms
+- min: 65.43 ms, p50: 173.35 ms, p95: 238.51 ms
+- index build: 6293 ms
 - 同机其他进程会显著干扰本机延迟；跨 run 比较以 min 为准，并注明测量时段。
+
+## Token budget（模型实际收到的输入）
+
+- model max tokens: 256
+- chunks: 107 (p50 247, max 449, mean 246.2)
+- 超限（被模型静默截断）的块数: **50** ['Agent_Design_Patterns', 'Backtracking', 'BinaryTree', 'OWL2_Document_Overview', 'Python_Tutorial_Interpreter', 'Python_Tutorial_Intro', 'Python_Tutorial_Overview', 'SQLAlchemy_psycopg', 'Software_Architecture_Design', 'Writing_Effective_Tools_for_Agents']
 
 ## Failures
 

@@ -46,6 +46,10 @@ class Settings(BaseSettings):
         default=False,
         validation_alias="EMBEDDING_LOCAL_FILES_ONLY",
     )
+    # 切块配置由评测选出，见 docs/evaluations/rag-v1-report.md。与应用装配必须一致，
+    # 否则脚本建的索引与应用的配置指纹对不上。
+    chunk_strategy: str = Field(default="heading", validation_alias="CHUNK_STRATEGY")
+    embed_heading_prefix: bool = Field(default=True, validation_alias="EMBED_HEADING_PREFIX")
 
     host: str = "127.0.0.1"
     port: int = 8000

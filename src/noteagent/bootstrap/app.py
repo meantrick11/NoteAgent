@@ -56,9 +56,10 @@ def build_container(settings: Settings) -> AppContainer:
 
     retrieval = RetrievalService(
         notes=notes,
-        chunker=MarkdownChunker(),
+        chunker=MarkdownChunker(strategy=settings.chunk_strategy),
         embedder=embedder,
         store=ChromaVectorStore(settings.chroma_dir, settings.chroma_collection),
+        embed_heading_prefix=settings.embed_heading_prefix,
     )
      #Retrieval service initialization
     drafts = DraftStore(history)

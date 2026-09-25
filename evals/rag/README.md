@@ -28,12 +28,19 @@ uv run python scripts/build_rag_queries.py \
   --output evals/rag/queries.v1.jsonl
 
 # 直接检索评测：真 RetrievalService + 真 embedding + 独立 Chroma
+# 默认就是生产配置（章节切块 + 标题路径进嵌入文本），跑一次即代表线上
 uv run python scripts/eval_rag.py --corpus evals/rag/corpus/v1 \
   --queries evals/rag/queries.v1.jsonl --split dev \
-  --variant baseline --run-id rag-v1-baseline-dev
+  --variant selected --run-id rag-v1-selected-dev
+
+# 复现旧基线（char 500/50 + 正文嵌入）
+uv run python scripts/eval_rag.py --split dev --variant baseline \
+  --strategy char --no-embed-heading-prefix --run-id rag-v1-baseline-dev
 ```
 
-参数：`--top-k`（主指标口径，默认 5）、`--probe-k`（诊断用的更深候选，默认 20）、`--repeats`、`--warmup`。每个 run 在 `var/evals/rag/<run-id>/` 新建独立 Chroma，不复用生产索引，也不写生产 `notes/`。
+参数：`--strategy char|heading`（默认取 `CHUNK_STRATEGY`）、`--embed-heading-prefix / --no-embed-heading-prefix`（默认取 `EMBED_HEADING_PREFIX`）、`--chunk-size`、`--chunk-overlap`、`--top-k`（主指标口径，默认 5）、`--probe-k`（诊断用的更深候选，默认 20）、`--repeats`、`--warmup`。每个 run 在 `var/evals/rag/<run-id>/` 新建独立 Chroma，不复用生产索引，也不写生产 `notes/`。
+
+任务六的五个对照 run 都留在 `results/`：`rag-v1-baseline-dev`、`rag-v1-heading-dev`、`rag-v1-heading-prefix-dev`（选定配置）、`rag-v1-char320-dev`、`rag-v1-heading-prefix-320-dev`；结论见 [docs/evaluations/rag-v1-report.md](../../docs/evaluations/rag-v1-report.md) §5。
 
 ## 查询集字段
 

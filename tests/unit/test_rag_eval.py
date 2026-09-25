@@ -6,13 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from noteagent.rag_eval.dataset import (
-    DatasetError,
-    load_corpus,
-    load_queries,
-    heading_path_at,
-    note_headings,
-)
+from noteagent.rag_eval.dataset import DatasetError, load_corpus, load_queries
+from noteagent.retrieval.markdown import heading_path_at, note_headings
 from noteagent.rag_eval.metrics import (
     Interval,
     covered_units,

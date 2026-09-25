@@ -22,7 +22,8 @@ from pathlib import Path
 
 from noteagent.bootstrap.settings import Settings, project_root
 from noteagent.notes.repository import FileNoteRepository
-from noteagent.rag_eval.dataset import Corpus, QueryCase, heading_path_at, load_corpus, load_queries
+from noteagent.rag_eval.dataset import Corpus, QueryCase, load_corpus, load_queries
+from noteagent.retrieval.markdown import heading_path_at
 from noteagent.rag_eval.metrics import Interval, covered_units, evidence_recall, hit_at, reciprocal_rank
 from noteagent.retrieval.chunker import MarkdownChunker
 from noteagent.retrieval.embedder import SentenceTransformerEmbedder
@@ -103,6 +104,7 @@ def build_index(
     chunker: MarkdownChunker,
     embedder: SentenceTransformerEmbedder,
     collection_name: str,
+    embed_heading_prefix: bool = False,
 ) -> RetrievalService:
     """Create a fresh private Chroma collection and index every manifest note."""
     store = ChromaVectorStore(run_dir / "chroma", collection_name)
@@ -112,11 +114,49 @@ def build_index(
         chunker=chunker,
         embedder=embedder,
         store=store,
+        embed_heading_prefix=embed_heading_prefix,
     )
     for record in corpus.notes.values():
         written = service.index_note(record.file)
         _logger.info("indexed note_id=%s file=%s chunks=%d", record.note_id, record.file, written)
     return service
+
+
+def measure_token_budget(
+    corpus: Corpus,
+    lookup: dict[str, tuple[list[str], list[Interval | None]]],
+    embedder: SentenceTransformerEmbedder,
+    embed_heading_prefix: bool,
+) -> dict[str, object]:
+    """Measure what the model actually receives, per chunk, against its input limit.
+
+    Characters are a poor proxy: the model truncates at its own token limit and does so
+    silently, so a run must report how many chunks never reach the vector intact.
+    """
+    texts: list[str] = []
+    owners: list[str] = []
+    for note_id, (chunks, _spans) in lookup.items():
+        for chunk_text in chunks:
+            heading = heading_path_at(corpus.headings[note_id], corpus.texts[note_id].find(chunk_text))
+            texts.append(
+                f"{heading}\n{chunk_text}"
+                if embed_heading_prefix and heading
+                else chunk_text
+            )
+            owners.append(note_id)
+    counts = embedder.count_tokens(texts)
+    limit = embedder.max_tokens()
+    ordered = sorted(counts)
+    over = [owner for owner, count in zip(owners, counts) if limit and count > limit]
+    return {
+        "model_max_tokens": limit,
+        "chunks": len(counts),
+        "max_tokens": ordered[-1] if ordered else None,
+        "p50_tokens": ordered[len(ordered) // 2] if ordered else None,
+        "mean_tokens": round(statistics.mean(counts), 1) if counts else None,
+        "over_limit": len(over),
+        "over_limit_notes": sorted(set(over)),
+    }
 
 
 def _span_lookup(
@@ -137,6 +177,43 @@ def _note_id_of(corpus: Corpus, file_name: str) -> str | None:
     """Map a stored relative file path back to its manifest note_id."""
     stem = Path(file_name).stem
     return stem if stem in corpus.notes else None
+
+
+def _locate_hit(
+    hit,
+    file_name: str,
+    chunk_index: int | None,
+    note_id: str | None,
+    corpus: Corpus,
+    lookup: dict[str, tuple[list[str], list[Interval | None]]],
+) -> tuple[Interval | None, str | None]:
+    """Locate a returned fragment in its note, preferring the stored offsets.
+
+    New indexes carry ``start_char``/``end_char``, which are verified against the
+    returned text so a stale metadata field cannot silently move an evidence range.
+    Older indexes fall back to re-splitting the note and finding the chunk by index.
+    """
+    if note_id is None:
+        return None, f"unknown note for file_name={file_name!r}"
+    meta = hit.metadata or {}
+    start = meta.get("start_char")
+    end = meta.get("end_char")
+    if isinstance(start, int) and isinstance(end, int):
+        text = corpus.texts[note_id]
+        if not 0 <= start < end <= len(text):
+            return None, f"metadata range [{start}, {end}) outside {note_id}"
+        if text[start:end] != hit.content:
+            return None, "metadata offsets do not match the returned fragment"
+        return Interval(note_id, start, end), None
+    if chunk_index is None:
+        return None, "chunk_index missing from metadata"
+    chunks, spans = lookup[note_id]
+    if not 0 <= chunk_index < len(spans):
+        return None, f"chunk_index {chunk_index} outside {len(spans)} chunks"
+    if spans[chunk_index] is None:
+        return None, "chunk text could not be located in the note"
+    span = spans[chunk_index]
+    return Interval(note_id, span.start, span.end), None
 
 
 def evaluate_query(
@@ -162,21 +239,7 @@ def evaluate_query(
         raw_index = (hit.metadata or {}).get("chunk_index")
         chunk_index = int(raw_index) if raw_index is not None else None
         note_id = _note_id_of(corpus, file_name)
-        interval: Interval | None = None
-        error: str | None = None
-        if note_id is None:
-            error = f"unknown note for file_name={file_name!r}"
-        elif chunk_index is None:
-            error = "chunk_index missing from metadata"
-        else:
-            chunks, spans = lookup[note_id]
-            if not 0 <= chunk_index < len(spans):
-                error = f"chunk_index {chunk_index} outside {len(spans)} chunks"
-            elif spans[chunk_index] is None:
-                error = "chunk text could not be located in the note"
-            else:
-                span = spans[chunk_index]
-                interval = Interval(note_id, span.start, span.end)
+        interval, error = _locate_hit(hit, file_name, chunk_index, note_id, corpus, lookup)
         heading = (
             heading_path_at(corpus.headings[note_id], interval.start)
             if interval is not None and note_id is not None
@@ -342,6 +405,10 @@ def run_retrieval_eval(
     probe_k: int = DEFAULT_PROBE_K,
     repeats: int = DEFAULT_REPEATS,
     warmup: int = DEFAULT_WARMUP,
+    strategy: str = "heading",
+    embed_heading_prefix: bool = True,
+    chunk_size: int = 500,
+    chunk_overlap: int = 50,
 ) -> dict:
     """Full direct-retrieval run: index, score, report. Returns the summary dict."""
     corpus = load_corpus(corpus_dir)
@@ -352,8 +419,9 @@ def run_retrieval_eval(
 
     run_dir = var_root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-    chunk_size, chunk_overlap = 500, 50
-    chunker = MarkdownChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    chunker = MarkdownChunker(
+        chunk_size=chunk_size, chunk_overlap=chunk_overlap, strategy=strategy
+    )
     settings = Settings()
     settings_model = settings.embedding_model
     embedder = SentenceTransformerEmbedder(
@@ -364,8 +432,9 @@ def run_retrieval_eval(
     collection = f"raggrade-{variant}-{corpus_dir.name}-{settings_model.replace('/', '_')}"[:63]
     index_started = time.monotonic()
     lookup = _span_lookup(corpus, chunker, chunk_overlap)
-    service = build_index(corpus, run_dir, chunker, embedder, collection)
+    service = build_index(corpus, run_dir, chunker, embedder, collection, embed_heading_prefix)
     index_ms = round((time.monotonic() - index_started) * 1000)
+    token_budget = measure_token_budget(corpus, lookup, embedder, embed_heading_prefix)
 
     outcomes: list[QueryOutcome] = []
     for query in queries:
@@ -460,6 +529,7 @@ def run_retrieval_eval(
         "unanswerable_ids": [item.query_id for item in unanswerable],
         "latency": latency,
         "index_ms": index_ms,
+        "token_budget": token_budget,
     }
     config = {
         "run_id": run_id,
@@ -475,7 +545,13 @@ def run_retrieval_eval(
         "embedding_model": settings_model,
         "embedding_revision": _model_revision(settings.embedding_cache_dir, settings_model),
         "embedding_normalized": False,
-        "chunker": {"chunk_size": chunk_size, "chunk_overlap": chunk_overlap},
+        "chunker": {
+            "strategy": strategy,
+            "chunk_size": chunk_size,
+            "chunk_overlap": chunk_overlap,
+        },
+        "embed_heading_prefix": embed_heading_prefix,
+        "token_budget": token_budget,
         "collection": collection,
         "chroma_dir": str(run_dir / "chroma"),
         "distance": "chroma-default-l2",
@@ -618,6 +694,15 @@ def _render_report(
         f"p95: {summary['latency']['p95_ms']} ms",
         f"- index build: {summary['index_ms']} ms",
         "- 同机其他进程会显著干扰本机延迟；跨 run 比较以 min 为准，并注明测量时段。",
+        "",
+        "## Token budget（模型实际收到的输入）",
+        "",
+        f"- model max tokens: {summary['token_budget']['model_max_tokens']}",
+        f"- chunks: {summary['token_budget']['chunks']} "
+        f"(p50 {summary['token_budget']['p50_tokens']}, max {summary['token_budget']['max_tokens']}, "
+        f"mean {summary['token_budget']['mean_tokens']})",
+        f"- 超限（被模型静默截断）的块数: **{summary['token_budget']['over_limit']}** "
+        f"{summary['token_budget']['over_limit_notes']}",
         "",
         "## Failures",
         "",

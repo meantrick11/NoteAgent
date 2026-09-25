@@ -1,0 +1,145 @@
+{
+  "run_id": "rag-v1-heading-prefix-320-dev",
+  "variant": "heading-prefix-320",
+  "split": "dev",
+  "corpus": "evals\\rag\\corpus\\v1",
+  "queries_path": "evals\\rag\\queries.v1.jsonl",
+  "top_k": 5,
+  "probe_k": 20,
+  "answerable": {
+    "full_recall_at_k": {
+      "passed": 8,
+      "total": 18,
+      "rate": 0.4444
+    },
+    "mean_recall_at_k": 0.4444,
+    "hit_at_3": {
+      "passed": 7,
+      "total": 18,
+      "rate": 0.3889
+    },
+    "mrr_at_k": 0.3074,
+    "mean_recall_at_probe_k": 0.6667,
+    "full_recall_at_probe_k": {
+      "passed": 12,
+      "total": 18,
+      "rate": 0.6667
+    },
+    "mapping_errors": 0
+  },
+  "unanswerable": {
+    "count": 6,
+    "top1_distance": [
+      0.465,
+      0.6208,
+      0.6911,
+      0.7252,
+      0.8942,
+      1.2034
+    ]
+  },
+  "by_category": {
+    "fact": {
+      "recall_at_k": {
+        "passed": 4,
+        "total": 7,
+        "rate": 0.5714
+      },
+      "mean_recall_at_k": 0.5714,
+      "hit_at_3": {
+        "passed": 3,
+        "total": 7,
+        "rate": 0.4286
+      },
+      "mrr_at_k": 0.4571,
+      "mean_recall_at_probe_k": 0.7143
+    },
+    "mixed_language": {
+      "recall_at_k": {
+        "passed": 0,
+        "total": 3,
+        "rate": 0.0
+      },
+      "mean_recall_at_k": 0.0,
+      "hit_at_3": {
+        "passed": 0,
+        "total": 3,
+        "rate": 0.0
+      },
+      "mrr_at_k": 0.0,
+      "mean_recall_at_probe_k": 0.6667
+    },
+    "multi_evidence": {
+      "recall_at_k": {
+        "passed": 3,
+        "total": 4,
+        "rate": 0.75
+      },
+      "mean_recall_at_k": 0.75,
+      "hit_at_3": {
+        "passed": 3,
+        "total": 4,
+        "rate": 0.75
+      },
+      "mrr_at_k": 0.4583,
+      "mean_recall_at_probe_k": 0.75
+    },
+    "paraphrase": {
+      "recall_at_k": {
+        "passed": 1,
+        "total": 4,
+        "rate": 0.25
+      },
+      "mean_recall_at_k": 0.25,
+      "hit_at_3": {
+        "passed": 1,
+        "total": 4,
+        "rate": 0.25
+      },
+      "mrr_at_k": 0.125,
+      "mean_recall_at_probe_k": 0.5
+    }
+  },
+  "failures": {
+    "q01": "evidence_not_in_returned_fragments",
+    "q05": "evidence_not_in_returned_fragments",
+    "q08": "evidence_not_in_returned_fragments",
+    "q09": "evidence_not_in_returned_fragments",
+    "q12": "ranked_below_top_k",
+    "q21": "evidence_not_in_returned_fragments",
+    "q22": "evidence_not_in_returned_fragments",
+    "q24": "ranked_below_top_k",
+    "q26": "ranked_below_top_k",
+    "q29": "ranked_below_top_k"
+  },
+  "unanswerable_ids": [
+    "q31",
+    "q32",
+    "q33",
+    "q34",
+    "q35",
+    "q36"
+  ],
+  "latency": {
+    "queries": 24,
+    "repeats": 3,
+    "samples": 72,
+    "min_ms": 6.25,
+    "p50_ms": 10.15,
+    "p95_ms": 11.02
+  },
+  "index_ms": 3003,
+  "token_budget": {
+    "model_max_tokens": 256,
+    "chunks": 223,
+    "max_tokens": 295,
+    "p50_tokens": 128,
+    "mean_tokens": 140.4,
+    "over_limit": 7,
+    "over_limit_notes": [
+      "Python_Tutorial_Interpreter",
+      "Python_Tutorial_Overview",
+      "Writing_Effective_Tools_for_Agents"
+    ]
+  }
+}
