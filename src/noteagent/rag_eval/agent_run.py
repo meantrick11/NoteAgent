@@ -703,6 +703,8 @@ def run_agent_eval(
     repeats: int = DEFAULT_REPEATS,
     only_ids: list[str] | None = None,
     embedding_model: str | None = None,
+    strategy: str | None = None,
+    embed_heading_prefix: bool | None = None,
 ) -> dict:
     """Run every case in the split ``repeats`` times and write local + committed reports."""
     from noteagent.llm.factory import create_chat_model
@@ -720,8 +722,15 @@ def run_agent_eval(
     if not cases:
         raise ValueError(f"no agent cases with split={split!r} in {cases_path}")
     settings = Settings()
+    overrides: dict[str, object] = {}
     if embedding_model:
-        settings = settings.model_copy(update={"embedding_model": embedding_model})
+        overrides["embedding_model"] = embedding_model
+    if strategy:
+        overrides["chunk_strategy"] = strategy
+    if embed_heading_prefix is not None:
+        overrides["embed_heading_prefix"] = embed_heading_prefix
+    if overrides:
+        settings = settings.model_copy(update=overrides)
     model = create_chat_model(settings)
     run_dir = var_root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)

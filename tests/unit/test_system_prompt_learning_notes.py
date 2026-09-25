@@ -13,6 +13,7 @@ _PROMPTS = (
 )
 _SYSTEM_PROMPT = _PROMPTS / "system.txt"
 _V9_PROMPT = _PROMPTS / "iterations" / "v9-2026-09-10-learning-notes.txt"
+_V10_PROMPT = _PROMPTS / "iterations" / "v10-2026-09-25-conflict-before-replace.txt"
 
 
 def _prompt() -> str:
@@ -104,6 +105,12 @@ def test_example_contrasts_literal_translation_with_tradeoff_grouping():
     assert "相比之下，Python 更易用，并能跨 Windows、macOS 和 Unix 运行" in prompt
 
 
-def test_v9_archive_is_byte_identical_to_production_prompt():
-    """The immutable v9 archive must capture the exact released prompt."""
-    assert _V9_PROMPT.read_bytes() == _SYSTEM_PROMPT.read_bytes()
+def test_latest_prompt_archive_is_byte_identical_to_production_prompt():
+    """入库约定：**最新一版**归档必须与现行 system.txt 字节一致；旧档不再改动。"""
+    assert _V10_PROMPT.read_bytes() == _SYSTEM_PROMPT.read_bytes()
+
+
+def test_older_prompt_archives_are_kept():
+    """旧归档保持可追溯：v9 仍在，且与 v10 不同（说明确实改过）。"""
+    assert _V9_PROMPT.is_file()
+    assert _V9_PROMPT.read_bytes() != _V10_PROMPT.read_bytes()

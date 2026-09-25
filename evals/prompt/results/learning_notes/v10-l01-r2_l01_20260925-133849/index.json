@@ -1,0 +1,47 @@
+{
+  "cases_path": "evals/prompt/learning_notes.jsonl",
+  "case_filter": [
+    "l01"
+  ],
+  "label": "v10-l01-r2",
+  "sort": "worst_first",
+  "review_questions": {
+    "answered": 8,
+    "total": 8
+  },
+  "cases": [
+    {
+      "file": "l01.md",
+      "id": "l01",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": null,
+      "parents": {
+        "faithful": 100.0,
+        "complete": null,
+        "structure": null,
+        "fluent": null,
+        "form": 83.33,
+        "retrievable": 80.0
+      },
+      "qualified": false,
+      "semantic_completed": true,
+      "hard_gates": {
+        "task_alignment": true,
+        "faithful": true,
+        "complete": true
+      },
+      "dimensions": {
+        "structure": 4,
+        "fluent": 4,
+        "form": 4,
+        "retrievable": 4,
+        "processing": 2
+      },
+      "review_questions": {
+        "answered": 8,
+        "total": 8
+      }
+    }
+  ]
+}

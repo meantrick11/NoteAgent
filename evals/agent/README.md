@@ -52,7 +52,7 @@ uv run python scripts/eval_rag_agent.py --split dev --variant baseline \
 - `evidence_cited`：回答里的引用能否反查回必需证据单元；
 - `retrieval_sufficient`：检索片段本身是否覆盖必需证据（与上一条分开报）；
 - `must_preserve` / `must_not_contain`：把草稿应用到沙箱副本后，目标文件是否保留了原有事实、是否重复写入已有内容；
-- `states_no_evidence`：历史无答案场景是否明确说明未找到；
-- `flags_conflict`：用户说法与笔记冲突时是否指出冲突。
+- `states_no_evidence`：历史无答案场景是否明确说明未找到。判定是**代理指标**：用「否定词 + 存在性动词」与「笔记/记录 + 否定」的窗口规则（`states_no_evidence()`），不是固定短语表——固定短语曾把「没有。…没有命中任何相关内容」这种正确回答判成失败。措辞无法穷举，所以完整回答会写进本地报告供人工复核，不能把自动通过当作独立验收。
+- `flags_conflict`：用户说法与笔记冲突时是否指出冲突（关键词取自 case 自己的 `conflict_markers`）。
 
-命中关键词（`NO_EVIDENCE_MARKERS` / `DUPLICATE_MARKERS` / `conflict_markers`）只是确定性代理，完整回答与草稿会写进本地报告供人工复核；不能把自动通过当作独立验收。
+修口径不用重跑模型：`--rescore` 会复用已存的模型输出、只重算判定，并打印前后指标对比；重算是幂等的，前后一致即说明落盘结论与当前规则自洽。

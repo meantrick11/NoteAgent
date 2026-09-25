@@ -1,0 +1,472 @@
+{
+  "cases_path": "evals/prompt/cases.jsonl",
+  "case_filter": null,
+  "label": "rag-v10",
+  "sort": "worst_first",
+  "review_questions": {
+    "answered": 0,
+    "total": 0
+  },
+  "cases": [
+    {
+      "file": "n03.md",
+      "id": "n03",
+      "kind": "quality",
+      "behavior_pass": false,
+      "total": null,
+      "parents": {
+        "faithful": null,
+        "complete": null,
+        "structure": null,
+        "fluent": null,
+        "form": null,
+        "retrievable": null
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "b01.md",
+      "id": "b01",
+      "kind": "behavior",
+      "behavior_pass": true,
+      "total": null,
+      "parents": {
+        "faithful": null,
+        "complete": null,
+        "structure": null,
+        "fluent": null,
+        "form": null,
+        "retrievable": null
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "b03.md",
+      "id": "b03",
+      "kind": "behavior",
+      "behavior_pass": true,
+      "total": null,
+      "parents": {
+        "faithful": null,
+        "complete": null,
+        "structure": null,
+        "fluent": null,
+        "form": null,
+        "retrievable": null
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "b04.md",
+      "id": "b04",
+      "kind": "behavior",
+      "behavior_pass": true,
+      "total": null,
+      "parents": {
+        "faithful": null,
+        "complete": null,
+        "structure": null,
+        "fluent": null,
+        "form": null,
+        "retrievable": null
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "n10.md",
+      "id": "n10",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 72.28,
+      "parents": {
+        "faithful": 50.0,
+        "complete": 100.0,
+        "structure": 55.0,
+        "fluent": null,
+        "form": 78.12,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "n09.md",
+      "id": "n09",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 79.52,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 82.35,
+        "structure": 50.0,
+        "fluent": null,
+        "form": 96.88,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "n11.md",
+      "id": "n11",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 80.85,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 77.27,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "n07.md",
+      "id": "n07",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 81.72,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 77.27,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "n13.md",
+      "id": "n13",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 83.63,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 91.18,
+        "structure": 55.0,
+        "fluent": null,
+        "form": 95.45,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "n12.md",
+      "id": "n12",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 83.7,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 100.0,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "b05.md",
+      "id": "b05",
+      "kind": "behavior",
+      "behavior_pass": true,
+      "total": 84.11,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 85.0,
+        "structure": 70.0,
+        "fluent": null,
+        "form": 77.27,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "n01.md",
+      "id": "n01",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 87.23,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 55.0,
+        "fluent": null,
+        "form": 93.75,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "b06.md",
+      "id": "b06",
+      "kind": "behavior",
+      "behavior_pass": true,
+      "total": 89.35,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 70.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 100.0,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "b07.md",
+      "id": "b07",
+      "kind": "behavior",
+      "behavior_pass": true,
+      "total": 89.87,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 70.0,
+        "fluent": null,
+        "form": 77.27,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "n06.md",
+      "id": "n06",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 90.17,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 82.35,
+        "structure": 90.0,
+        "fluent": null,
+        "form": 84.38,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "b02.md",
+      "id": "b02",
+      "kind": "behavior",
+      "behavior_pass": true,
+      "total": 91.85,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 70.0,
+        "fluent": null,
+        "form": 100.0,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "n05.md",
+      "id": "n05",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 97.99,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 76.92,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "n02.md",
+      "id": "n02",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 98.37,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 81.25,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "n08.md",
+      "id": "n08",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 99.78,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 97.5,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "n04.md",
+      "id": "n04",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 100.0,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 100.0,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    }
+  ]
+}

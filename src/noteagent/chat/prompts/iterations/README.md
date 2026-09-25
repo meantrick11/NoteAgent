@@ -2,7 +2,7 @@
 
 运行时只读上一级 [`system.txt`](../system.txt)。本目录是归档，**不要**改 `ChatAgent` 去加载这里的文件。
 
-从 `system.txt` 入库到现在一共 **9 版**。
+从 `system.txt` 入库到现在一共 **10 版**。
 
 | 版 | 日期 | 来源 | 文件 | 改了什么 |
 |----|------|------|------|----------|
@@ -14,7 +14,8 @@
 | v6 | 2026-09-01 | Markdown 写法 | [v6-2026-09-01-md-syntax.txt](./v6-2026-09-01-md-syntax.txt) | 形态合适：围栏代码、行内 code、`>` 引用、块间空行。与当时 `system.txt` 相同 |
 | v7 | 2026-09-01 | 写模式 | [v7-2026-09-01-replace-delete.txt](./v7-2026-09-01-replace-delete.txt) | `propose_note` 增加 replace（整文件覆盖）与 delete；模型先判断 append/create/replace/delete |
 | v8 | 2026-09-05 | 一层目录 | [v8-2026-09-05-one-level-folders.txt](./v8-2026-09-05-one-level-folders.txt) | `file_name` 可为 `Folder/Note.md`；list_files 带文件夹；禁止擅自 mkdir。与当时 `system.txt` 相同 |
-| v9 | 2026-09-10 | 学习型笔记 | [v9-2026-09-10-learning-notes.txt](./v9-2026-09-10-learning-notes.txt) | 默认学习型笔记；语义忠实与覆盖；允许有依据的重组；新增知识加工增益。与现行 `system.txt` 字节一致 |
+| v9 | 2026-09-10 | 学习型笔记 | [v9-2026-09-10-learning-notes.txt](./v9-2026-09-10-learning-notes.txt) | 默认学习型笔记；语义忠实与覆盖；允许有依据的重组；新增知识加工增益 |
+| v10 | 2026-09-25 | 更正前的冲突核对 | [v10-2026-09-25-conflict-before-replace.txt](./v10-2026-09-25-conflict-before-replace.txt) | 用户要更正时，若新说法与读到的原文冲突，先指出冲突与原文依据再问，不要直接 replace 掉原有结论。与现行 `system.txt` 字节一致 |
 
 加新版时：复制当时的 `system.txt` 为 `vN-日期-短名.txt`，在本表追加一行，不要改旧档。人工回归见 [evals/prompt/](../../../../../evals/prompt/README.md)。
 
@@ -35,3 +36,16 @@ Judge 留痕写入该次结果目录：`config.json` 记录生成模型、Judge 
 2026-09-10 用 deepseek-v4-flash 对四固定候选做同模型校准（`judge_independent=false`）：good/literal 的 fluent 均可为 4，结构/加工/维度总和区分仍成立。校准契约已从「优秀 fluent 严格高于机械译文」改为双方 fluent 均须达阈值；优秀靠结构和加工增益领先。早期失败跑次（非逐字证据、协议外字段）按设计留痕，未放宽契约。通过结果在 [`evals/prompt/results/learning_notes/calibration_l01_20260910-135238-835257/`](../../../../../evals/prompt/results/learning_notes/calibration_l01_20260910-135238-835257/)。正式 Prompt 比较仍应固定与生成模型不同的独立 `JUDGE_MODEL`。
 
 v9 对 `l01` 的 `--judge` 实跑（[`v9-learning_l01_20260910-215727`](../../../../../evals/prompt/results/learning_notes/v9-learning_l01_20260910-215727/)）：行为门通过，三道硬门通过，复习题 8/8；`qualified=false`（structure 2/4、processing 1/4、fluent 4/4）。草稿仍是按原文顺序的译文。v9 是现行生成提示词，不是已合格版本。
+
+## v10：更正前先核对冲突
+
+来源是检索 Agent 评测的失败样例：`a06`（用户说「回溯法和递归其实没关系，帮我改一下」，而笔记里写的是「回溯是递归的副产品，有递归必有回溯」）在 3 次真实运行里有 2 次被模型直接 `replace` 掉原有结论、且没有指出冲突（`must_preserve=false`）。写盘仍有人审兜底，但草稿本身不安全，属于任务 8.3「命中后使用错误」的目标。
+
+v10 只在「用户明确要更正」那一条上加一句：新说法与原文冲突时先指出冲突与依据、问清按哪一个。其余不动——同一轮的失败样例里「历史无答案」在修正判定口径后已是 6/6，不需要再改提示词。
+
+运行：
+
+```bash
+python scripts/eval_notes.py --name v10 --judge --cases evals/prompt/learning_notes.jsonl --ids l01 --prompt src/noteagent/chat/prompts/system.txt
+python scripts/eval_rag_agent.py --split dev --variant v10 --run-id agent-v1-v10-dev --repeat 3 --model intfloat/multilingual-e5-small
+```

@@ -31,6 +31,18 @@ def main() -> int:
         default="",
         help="向量模型完整 id（默认取 EMBEDDING_MODEL）；用于与检索层同一配置对比",
     )
+    parser.add_argument(
+        "--strategy",
+        choices=("char", "heading"),
+        default="",
+        help="切块策略；留空取 CHUNK_STRATEGY。复现旧基线用 char",
+    )
+    parser.add_argument(
+        "--embed-heading-prefix",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="是否把章节路径拼进嵌入文本；留空取 EMBED_HEADING_PREFIX",
+    )
     parser.add_argument("--ids", default="", help="逗号分隔的 case id，用于小范围冒烟")
     parser.add_argument("--prompt", type=Path, default=DEFAULT_PROMPT)
     parser.add_argument("--var-root", type=Path, default=Path("var/evals/rag"))
@@ -72,6 +84,8 @@ def main() -> int:
         repeats=args.repeat,
         only_ids=only_ids,
         embedding_model=args.model or None,
+        strategy=args.strategy or None,
+        embed_heading_prefix=args.embed_heading_prefix,
     )
     success = summary["agent_task_success"]
     print(

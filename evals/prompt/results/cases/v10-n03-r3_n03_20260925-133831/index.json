@@ -1,0 +1,37 @@
+{
+  "cases_path": "evals/prompt/cases.jsonl",
+  "case_filter": [
+    "n03"
+  ],
+  "label": "v10-n03-r3",
+  "sort": "worst_first",
+  "review_questions": {
+    "answered": 0,
+    "total": 0
+  },
+  "cases": [
+    {
+      "file": "n03.md",
+      "id": "n03",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 99.73,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 96.88,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    }
+  ]
+}
