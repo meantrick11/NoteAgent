@@ -6,7 +6,7 @@
 
 | 文件 | 作用 |
 |------|------|
-| `index_notes.py` | 按篇重建 Chroma（与审批后的 `index_note` 相同；collection 损坏时用） |
+| `index_notes.py` | 按篇重建 Chroma（与审批后的 `index_note` 相同；collection 损坏时用）。目标枚举与界面共用 `retrieval.service.index_targets`，排除规则一致 |
 | `sdk_smoke.py` | 用 `DEEPSEEK_API_KEY` ping 一次聊天 API |
 | `eval_notes.py` | 离线提示词评测：进程内 `ChatAgent`，结果写入 `evals/prompt/results/<jsonl 主文件名>/` |
 | `calibrate_learning_notes.py` | 用四个固定候选校准 v0.2 Judge（不生成草稿） |
@@ -24,6 +24,12 @@ uv run python scripts/index_notes.py Agent.md
 # 成功会打印 indexed Agent.md: N chunks
 uv run python scripts/index_notes.py --help
 ```
+
+注意它与界面切换向量模型的关系：
+
+- 脚本与运行时用同一套解析：`MODEL_SETTINGS_DIR/settings.json` 里持久化的 active（模型 + collection）优先，没有保存过才用 `.env` 的 `EMBEDDING_MODEL` / `CHROMA_COLLECTION`。开头会打印 `model` / `collection` / `target from`，先看这三行再动手。
+- 界面正在重建（维护窗口）时不要同时跑脚本：外部进程不受门禁约束，脚本的写入会让界面的"外部修改"校验失败并放弃发布。
+- 界面切换用的集合名是 `{CHROMA_COLLECTION}__{模型短名}`；脚本按上面的规则写同一个集合，不会去改旧模型建的库。
 
 检查 DeepSeek 密钥是否可用：
 
