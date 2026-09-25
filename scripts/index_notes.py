@@ -3,6 +3,9 @@
 Rebuild is the supported recovery path: the index is derived data, and a configuration
 change (embedding model or chunking strategy) makes every stored vector incomparable,
 so the collection must be rebuilt rather than mixed.
+
+目标模型与 collection 以界面持久化的 active 为准（与运行时同一套解析），否则界面切到
+新 collection 后本脚本会继续更新旧库。
 """
 
 from __future__ import annotations
@@ -12,19 +15,46 @@ import logging
 import sys
 
 from noteagent.bootstrap.settings import Settings
+from noteagent.model_management.store import ModelSettingsCorruptError, ModelSettingsStore
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.retrieval.chunker import MarkdownChunker
 from noteagent.retrieval.embedder import build_embedder
-from noteagent.retrieval.service import RetrievalService, index_config_fingerprint
+from noteagent.retrieval.service import (
+    RetrievalService,
+    index_config_fingerprint,
+    index_targets,
+)
 from noteagent.retrieval.vector_store import ChromaVectorStore
 
 _logger = logging.getLogger(__name__)
 
 
-def _build(settings: Settings, notes: FileNoteRepository) -> tuple[RetrievalService, str]:
-    """Assemble the production retrieval stack and report its config fingerprint."""
+def resolve_index_target(settings: Settings) -> tuple[str, str, str]:
+    """Return (model_id, collection, source) for the index this script should write.
+
+    The interface's persisted choice wins, so the CLI cannot keep updating the old
+    collection after someone switched models in the browser. With no saved choice the
+    values are exactly the ones from .env.
+    """
+    store = ModelSettingsStore(settings.model_settings_dir)
+    try:
+        document = store.load_effective(settings)
+    except ModelSettingsCorruptError as exc:
+        print(f"模型配置不可用：{exc}")
+        raise SystemExit(2) from exc
+    active = document.active_embedding
+    if active is None:
+        return settings.embedding_model, settings.chroma_collection, ".env"
+    source = str(store.path) if store.path.exists() else ".env（界面尚未保存过选择）"
+    return active.model_id, active.collection, source
+
+
+def _build(
+    settings: Settings, notes: FileNoteRepository, *, model_id: str, collection: str
+) -> tuple[RetrievalService, str]:
+    """Assemble the retrieval stack for one model and collection."""
     embedder = build_embedder(
-        settings.embedding_model,
+        model_id,
         settings.embedding_cache_dir,
         local_files_only=settings.embedding_local_files_only,
     )
@@ -34,27 +64,10 @@ def _build(settings: Settings, notes: FileNoteRepository) -> tuple[RetrievalServ
         notes=notes,
         chunker=chunker,
         embedder=embedder,
-        store=ChromaVectorStore(settings.chroma_dir, settings.chroma_collection),
+        store=ChromaVectorStore(settings.chroma_dir, collection),
         embed_heading_prefix=settings.embed_heading_prefix,
     )
     return service, fingerprint
-
-
-def _rebuild_targets(notes: FileNoteRepository) -> tuple[list[str], list[str]]:
-    """Every indexable note, plus the files skipped on purpose.
-
-    ``README.md`` is the data-directory description and ``bak/`` holds backups; the
-    repository already treats both as not-notes, so a bulk rebuild must not quietly
-    put them into the retrieval index.
-    """
-    keep: list[str] = []
-    skipped: list[str] = []
-    for name in notes.list_notes():
-        if name == "README.md" or name.split("/")[0] == "bak":
-            skipped.append(name)
-            continue
-        keep.append(name)
-    return keep, skipped
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -73,17 +86,23 @@ def main(argv: list[str] | None = None) -> int:
 
     settings = Settings()
     notes = FileNoteRepository(settings.notes_dir)
+    model_id, collection, source = resolve_index_target(settings)
+    print(f"model: {model_id}")
+    print(f"collection: {collection}")
+    print(f"target from: {source}")
     if args.all:
-        targets, skipped = _rebuild_targets(notes)
+        targets, skipped = index_targets(notes)
         if skipped:
             print("skipped: " + ", ".join(skipped))
     else:
         targets = [notes.normalize(args.file_name)]
 
     if args.dry_run:
-        return _dry_run(settings, notes, targets)
+        return _dry_run(settings, notes, targets, model_id=model_id, collection=collection)
 
-    service, fingerprint = _build(settings, notes)
+    service, fingerprint = _build(
+        settings, notes, model_id=model_id, collection=collection
+    )
     for name in targets:
         count = service.index_note(name)
         print(f"indexed {name}: {count} chunks")
@@ -91,14 +110,21 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _dry_run(settings: Settings, notes: FileNoteRepository, targets: list[str]) -> int:
+def _dry_run(
+    settings: Settings,
+    notes: FileNoteRepository,
+    targets: list[str],
+    *,
+    model_id: str,
+    collection: str,
+) -> int:
     """Report the rebuild plan and whether the existing index matches the configuration."""
     chunker = MarkdownChunker(strategy=settings.chunk_strategy)
-    store = ChromaVectorStore(settings.chroma_dir, settings.chroma_collection)
+    store = ChromaVectorStore(settings.chroma_dir, collection)
     wanted = index_config_fingerprint(
         chunker,
         build_embedder(
-            settings.embedding_model,
+            model_id,
             settings.embedding_cache_dir,
             local_files_only=True,
         ),

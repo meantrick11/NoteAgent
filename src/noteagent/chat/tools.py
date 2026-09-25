@@ -16,10 +16,15 @@ from noteagent.retrieval.service import RetrievalService
 
 def build_chat_tools(
     notes: FileNoteRepository,
-    retrieval: RetrievalService,
+    retrieval: RetrievalService | None,
     drafts: DraftStore,
 ) -> list[BaseTool]:
-    """Build list/read/search/propose tools. Disk writes happen only after review."""
+    """Build list/read/search/propose tools. Disk writes happen only after review.
+
+    ``retrieval`` may be None while the embedding index is unavailable (for example after
+    a model switch that has not been rebuilt yet); the search tool then reports that
+    instead of returning an empty result that would read as "no matching note".
+    """
     #列处所有文件的工具
     @tool("list_files", description="列出 notes/ 下已有笔记相对路径（含 Folder/Note.md）和一层文件夹名。提案前必须先调用。")
     def list_files() -> dict:
@@ -54,6 +59,8 @@ def build_chat_tools(
         ),
     )
     def search_relative_from_chromadb(query: str) -> dict:
+        if retrieval is None:
+            return {"error": "检索索引当前不可用（向量模型需要重建），请改用 read_file 读取指定笔记"}
         try:
             hits = retrieval.search(query, top_k=3)
         except Exception as exc:

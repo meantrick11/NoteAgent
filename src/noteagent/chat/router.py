@@ -22,6 +22,8 @@ from noteagent.chat.schemas import (
     ReviewRequest,
     ToolStepOut,
 )       #获取对应的路由请求体或者响应体的pydantic模型
+from noteagent.model_management.router import chat_lease, write_lease
+from noteagent.model_management.service import RuntimeSnapshot
 from noteagent.web import read_home_html    #返回前端初始网页
 
 _logger = logging.getLogger(__name__)
@@ -129,10 +131,12 @@ async def delete_conversation(conversation_id: str, request: Request) -> None:
 async def resolve_conversation(
     require: Annotated[RequestModel, Body()],
     request: Request,
+    snapshot: Annotated[RuntimeSnapshot, Depends(chat_lease)],
 ) -> ConversationRecord:
     """Resolve or create the target conversation; 404 on an unknown id.
 
-    Runs as a dependency so the 404 is raised before SSE streaming starts.
+    Runs as a dependency so both the maintenance check and the 404 happen before SSE
+    streaming starts, which is why the lease is required here.
     """
     history = request.app.state.container.history
     conv_id = require.conversation_id or require.thread_id
@@ -149,6 +153,7 @@ async def chat_with(
     request: Request,
     require: Annotated[RequestModel, Body()],
     record: Annotated[ConversationRecord, Depends(resolve_conversation)],
+    snapshot: Annotated[RuntimeSnapshot, Depends(chat_lease)],
 ) -> AsyncIterator[ServerSentEvent]:
     """Persist user/assistant messages and stream chat tokens."""
     history = request.app.state.container.history
@@ -160,7 +165,8 @@ async def chat_with(
         data={"id": record.id, "title": record.title},
     )
 
-    agent = request.app.state.container.chat_agent
+    # 这一轮固定用获取租约时拿到的 Agent：期间切换模型也不会把旧轮换到新对象。
+    agent = snapshot.chat_agent
     _logger.info("[conversation=%s] SSE request: %.80s", record.id, require.question)
     assistant_text = ""
     final_text: str | None = None
@@ -198,9 +204,13 @@ async def chat_with(
 async def chat_review(
     request: Request,
     require: Annotated[ReviewRequest, Body()],
+    snapshot: Annotated[RuntimeSnapshot, Depends(write_lease)],
 ) -> dict:
-    """Apply or discard the pending note draft after human approval."""
-    agent = request.app.state.container.chat_agent
+    """Apply or discard the pending note draft after human approval.
+
+    Approval writes notes and reindexes them, so it is gated like any other write.
+    """
+    agent = snapshot.chat_agent
     _logger.info(
         "[thread=%s] review action=%s write_action=%s file=%s",
         require.thread_id,
