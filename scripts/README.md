@@ -12,6 +12,7 @@
 | `calibrate_learning_notes.py` | 用四个固定候选校准 v0.2 Judge（不生成草稿） |
 | `build_rag_queries.py` | 从人工标注草稿生成带偏移的检索查询集，并跑正式校验 |
 | `verify_rag_corpus.py` | 复核语料审查结论与 10 条无答案标注；任一条不成立即以非零码退出 |
+| `download_models.py` | 走镜像把候选向量模型取到 `EMBEDDING_CACHE_DIR`（huggingface_hub 会因镜像不回 `x-repo-commit` 头而拒下，故手工构建缓存布局；按 LFS sha256 校验） |
 | `eval_rag.py` | 直接检索评测：真 `RetrievalService` + 独立 Chroma，指标与失败分类 |
 | `eval_rag_agent.py` | 真实 `ChatAgent` 场景评测：调用时机、结果使用、引用、写入安全 |
 
@@ -49,6 +50,14 @@ python scripts/build_rag_queries.py --corpus evals/rag/corpus/v1 \
   --draft evals/rag/queries.v1.draft.json --output evals/rag/queries.v1.jsonl
 python scripts/eval_rag.py --split dev --variant baseline --run-id rag-v1-baseline-dev
 python scripts/eval_rag_agent.py --split dev --variant baseline --run-id agent-v1-baseline-dev --repeat 3
+# 换向量模型：编码指令按模型自动应用；复现旧基线要显式给 --strategy char --no-embed-heading-prefix
+python scripts/eval_rag.py --split holdout --variant selected --model intfloat/multilingual-e5-small \n  --run-id rag-v1-selected-holdout
+python scripts/eval_rag_agent.py --split holdout --variant selected --model intfloat/multilingual-e5-small \n  --run-id agent-v1-selected-holdout --repeat 3
+# 只修判定口径、不重跑模型：复用已存结果重算结论（幂等）
+python scripts/eval_rag_agent.py --split dev --variant x --run-id agent-v1-v10-dev --rescore
+# 候选模型下载（会写 EMBEDDING_CACHE_DIR，先跑 --dry-run 看清单）
+python scripts/download_models.py --dry-run
+python scripts/download_models.py
 # 完整报告在 var/evals/rag/<run-id>/ ；提交版 summary 在 evals/{rag,agent}/results/<run-id>/
 ```
 

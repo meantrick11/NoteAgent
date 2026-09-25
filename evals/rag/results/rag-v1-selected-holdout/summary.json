@@ -1,0 +1,128 @@
+{
+  "run_id": "rag-v1-selected-holdout",
+  "variant": "selected",
+  "split": "holdout",
+  "corpus": "evals\\rag\\corpus\\v1",
+  "queries_path": "evals\\rag\\queries.v1.jsonl",
+  "top_k": 5,
+  "probe_k": 20,
+  "answerable": {
+    "full_recall_at_k": {
+      "passed": 11,
+      "total": 12,
+      "rate": 0.9167
+    },
+    "mean_recall_at_k": 0.9167,
+    "hit_at_3": {
+      "passed": 11,
+      "total": 12,
+      "rate": 0.9167
+    },
+    "mrr_at_k": 0.9167,
+    "mean_recall_at_probe_k": 1.0,
+    "full_recall_at_probe_k": {
+      "passed": 12,
+      "total": 12,
+      "rate": 1.0
+    },
+    "mapping_errors": 0
+  },
+  "unanswerable": {
+    "count": 4,
+    "top1_distance": [
+      0.2185,
+      0.2209,
+      0.2673,
+      0.2852
+    ]
+  },
+  "by_category": {
+    "fact": {
+      "recall_at_k": {
+        "passed": 0,
+        "total": 1,
+        "rate": 0.0
+      },
+      "mean_recall_at_k": 0.0,
+      "hit_at_3": {
+        "passed": 0,
+        "total": 1,
+        "rate": 0.0
+      },
+      "mrr_at_k": 0.0,
+      "mean_recall_at_probe_k": 1.0
+    },
+    "mixed_language": {
+      "recall_at_k": {
+        "passed": 3,
+        "total": 3,
+        "rate": 1.0
+      },
+      "mean_recall_at_k": 1.0,
+      "hit_at_3": {
+        "passed": 3,
+        "total": 3,
+        "rate": 1.0
+      },
+      "mrr_at_k": 1.0,
+      "mean_recall_at_probe_k": 1.0
+    },
+    "multi_evidence": {
+      "recall_at_k": {
+        "passed": 4,
+        "total": 4,
+        "rate": 1.0
+      },
+      "mean_recall_at_k": 1.0,
+      "hit_at_3": {
+        "passed": 4,
+        "total": 4,
+        "rate": 1.0
+      },
+      "mrr_at_k": 1.0,
+      "mean_recall_at_probe_k": 1.0
+    },
+    "paraphrase": {
+      "recall_at_k": {
+        "passed": 4,
+        "total": 4,
+        "rate": 1.0
+      },
+      "mean_recall_at_k": 1.0,
+      "hit_at_3": {
+        "passed": 4,
+        "total": 4,
+        "rate": 1.0
+      },
+      "mrr_at_k": 1.0,
+      "mean_recall_at_probe_k": 1.0
+    }
+  },
+  "failures": {
+    "q28": "ranked_below_top_k"
+  },
+  "unanswerable_ids": [
+    "q37",
+    "q38",
+    "q39",
+    "q40"
+  ],
+  "latency": {
+    "queries": 16,
+    "repeats": 3,
+    "samples": 48,
+    "min_ms": 10.37,
+    "p50_ms": 14.67,
+    "p95_ms": 16.51
+  },
+  "index_ms": 4845,
+  "token_budget": {
+    "model_max_tokens": 512,
+    "chunks": 176,
+    "max_tokens": 371,
+    "p50_tokens": 127,
+    "mean_tokens": 151.6,
+    "over_limit": 0,
+    "over_limit_notes": []
+  }
+}

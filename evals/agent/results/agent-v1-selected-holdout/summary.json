@@ -1,0 +1,184 @@
+{
+  "runs": 24,
+  "agent_task_success": {
+    "passed": 18,
+    "total": 18,
+    "rate": 1.0
+  },
+  "agent_task_success_strict": {
+    "passed": 18,
+    "total": 18,
+    "rate": 1.0
+  },
+  "history_search_call_rate": {
+    "passed": 18,
+    "total": 18,
+    "rate": 1.0
+  },
+  "retrieval_dependent_search_call_rate": {
+    "passed": 12,
+    "total": 12,
+    "rate": 1.0
+  },
+  "history_append_search_call_rate": {
+    "passed": 6,
+    "total": 6,
+    "rate": 1.0
+  },
+  "plain_chat_search_call_rate": {
+    "passed": 0,
+    "total": 6,
+    "rate": 0.0
+  },
+  "plain_chat_no_draft": {
+    "passed": 6,
+    "total": 6,
+    "rate": 1.0
+  },
+  "history_unanswerable_correct": {
+    "passed": 6,
+    "total": 6,
+    "rate": 1.0
+  },
+  "retrieval_sufficient": {
+    "passed": 9,
+    "total": 12,
+    "rate": 0.75
+  },
+  "recovered_by_read": {
+    "passed": 0,
+    "total": 18,
+    "rate": 0.0
+  },
+  "citation_traceable": {
+    "passed": 24,
+    "total": 24,
+    "rate": 1.0
+  },
+  "citation_quote_backed": {
+    "passed": 19,
+    "total": 24,
+    "rate": 0.7917
+  },
+  "by_scenario": {
+    "history_answer": {
+      "task_success": {
+        "passed": 6,
+        "total": 6,
+        "rate": 1.0
+      },
+      "task_success_strict": {
+        "passed": 6,
+        "total": 6,
+        "rate": 1.0
+      },
+      "search_called": {
+        "passed": 6,
+        "total": 6,
+        "rate": 1.0
+      },
+      "errors": 0
+    },
+    "history_append": {
+      "task_success": {
+        "passed": 6,
+        "total": 6,
+        "rate": 1.0
+      },
+      "task_success_strict": {
+        "passed": 6,
+        "total": 6,
+        "rate": 1.0
+      },
+      "search_called": {
+        "passed": 6,
+        "total": 6,
+        "rate": 1.0
+      },
+      "errors": 0
+    },
+    "history_unanswerable": {
+      "task_success": {
+        "passed": 6,
+        "total": 6,
+        "rate": 1.0
+      },
+      "task_success_strict": {
+        "passed": 6,
+        "total": 6,
+        "rate": 1.0
+      },
+      "search_called": {
+        "passed": 6,
+        "total": 6,
+        "rate": 1.0
+      },
+      "errors": 0
+    },
+    "plain_chat": {
+      "task_success": {
+        "passed": 6,
+        "total": 6,
+        "rate": 1.0
+      },
+      "task_success_strict": {
+        "passed": 6,
+        "total": 6,
+        "rate": 1.0
+      },
+      "search_called": {
+        "passed": 0,
+        "total": 6,
+        "rate": 0.0
+      },
+      "errors": 0
+    }
+  },
+  "per_case": {
+    "a13": {
+      "runs": 3,
+      "success": 3,
+      "success_strict": 3
+    },
+    "a14": {
+      "runs": 3,
+      "success": 3,
+      "success_strict": 3
+    },
+    "a15": {
+      "runs": 3,
+      "success": 3,
+      "success_strict": 3
+    },
+    "a16": {
+      "runs": 3,
+      "success": 3,
+      "success_strict": 3
+    },
+    "a17": {
+      "runs": 3,
+      "success": 3,
+      "success_strict": 3
+    },
+    "a18": {
+      "runs": 3,
+      "success": 3,
+      "success_strict": 3
+    },
+    "a19": {
+      "runs": 3,
+      "success": 3,
+      "success_strict": 3
+    },
+    "a20": {
+      "runs": 3,
+      "success": 3,
+      "success_strict": 3
+    }
+  },
+  "errors": {},
+  "run_id": "agent-v1-selected-holdout",
+  "variant": "selected",
+  "split": "holdout",
+  "repeats": 3
+}

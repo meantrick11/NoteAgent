@@ -1,0 +1,65 @@
+{
+  "run_id": "rag-v1-baseline-holdout",
+  "variant": "baseline",
+  "split": "holdout",
+  "started_at": "2026-09-25T07:33:48.770780+00:00",
+  "git": {
+    "commit": "1b0c60f52ff2518ca2e9f13cf28d747f324f3c6f",
+    "status": "M \"docs/references/\\346\\200\\235\\350\\200\\203.md\"\n M evals/agent/README.md\n M src/noteagent/chat/prompts/README.md\n M src/noteagent/chat/prompts/iterations/README.md\n M src/noteagent/chat/prompts/system.txt\n?? \"docs/references/\\344\\272\\256\\347\\202\\271\\347\\232\\204\\345\\234\\260\\346\\226\\271.md\"\n?? \"docs/roadmap/\\347\\211\\210\\346\\234\\2541.1\\344\\273\\243\\347\\240\\201\\350\\247\\243\\346\\236\\220.md\"\n?? evals/agent/results/agent-v1-v10-dev/\n?? evals/prompt/results/cases/\n?? evals/prompt/results/learning_notes/rag-v10_l01_20260925-132440/\n?? evals/prompt/results/learning_notes/v10-l01-r2_l01_20260925-133849/\n?? src/noteagent/chat/prompts/iterations/v10-2026-09-25-conflict-before-replace.txt"
+  },
+  "corpus_dir": "evals\\rag\\corpus\\v1",
+  "corpus_manifest_sha256": "67cb5e504bbae91e693ea3835a5f83ecac9a0c7f7a9eebf2886f4a2fc5b7f4ad",
+  "note_sha256": {
+    "Python_Tutorial_Intro": "60b3b8e2cb282437ba642591f77a4183f9568a4e3350c1288ca4c833b71aa657",
+    "Python_Tutorial_Interpreter": "b02c5657d54d12dd2e260309d9a2e4d5ad12b38786fe76ad79b5dd5cdaef45cd",
+    "Python_Tutorial_Overview": "39557f58056be1fb5f848d625e32f194223adf4f616cd3747f28e82fe703ff6a",
+    "Backtracking": "3ebef78d40aadf075aaebdcbe8f30a515b2e43505df3a898423886ffa209b3da",
+    "BinaryTree": "fc9bbb80376c3bd5e52cfc012e798e2a6d766fbc43835112a51865193d82f959",
+    "Agent_Design_Patterns": "17f9b45fdaf54799a37ce37be48f4bcbb9915c88b525fe3436347b6ddd44f706",
+    "Writing_Effective_Tools_for_Agents": "f4c8e27a424a904d5158c739b2a927559bb8a663825d25d53d02873fd3716afd",
+    "Software_Architecture_Design": "e4d5e24d34c850aadc824fcc3fb79fe55901caa1e4efea627462654964f3dca2",
+    "SQLAlchemy_psycopg": "e4bcc3fbaacb3bd08da42e94f9426761621b674d781afb766f5865f394acdac3",
+    "OWL2_Document_Overview": "40c999b6a8416d32620fe512897c6fe07f9008da8e7db4511c160ba7e68b80e3"
+  },
+  "queries_path": "evals\\rag\\queries.v1.jsonl",
+  "queries_sha256": "295300838802bc90243fb9e6451ab68c3fb07499ebefaf7fb32896a814aee636",
+  "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "embedding_revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+  "embedding_normalized": false,
+  "chunker": {
+    "strategy": "char",
+    "chunk_size": 500,
+    "chunk_overlap": 50
+  },
+  "embed_heading_prefix": false,
+  "token_budget": {
+    "model_max_tokens": 256,
+    "chunks": 107,
+    "max_tokens": 449,
+    "p50_tokens": 247,
+    "mean_tokens": 246.2,
+    "over_limit": 50,
+    "over_limit_notes": [
+      "Agent_Design_Patterns",
+      "Backtracking",
+      "BinaryTree",
+      "OWL2_Document_Overview",
+      "Python_Tutorial_Interpreter",
+      "Python_Tutorial_Intro",
+      "Python_Tutorial_Overview",
+      "SQLAlchemy_psycopg",
+      "Software_Architecture_Design",
+      "Writing_Effective_Tools_for_Agents"
+    ]
+  },
+  "collection": "raggrade-baseline-v1-sentence-transformers_all-MiniLM-L6-v2",
+  "chroma_dir": "var\\evals\\rag\\rag-v1-baseline-holdout\\chroma",
+  "distance": "chroma-default-l2",
+  "top_k": 5,
+  "probe_k": 20,
+  "repeats": 3,
+  "warmup": 5,
+  "python": "3.13.5",
+  "platform": "Windows-11-10.0.22635-SP0",
+  "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel"
+}

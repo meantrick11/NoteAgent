@@ -48,7 +48,7 @@ uv run python scripts/eval_rag.py --split dev --variant candidate-multi \
 
 模型文件用 [`scripts/download_models.py`](../../scripts/download_models.py) 走镜像取（hf.co 直连不通；huggingface_hub 因镜像不回 `x-repo-commit` 头而拒绝下载，脚本改为手工构建 HF 缓存布局）。缓存在 `EMBEDDING_CACHE_DIR`（当前 `D:\develop\aidevelop\transformer_models`）。
 
-对照 run 都留在 `results/`：切块五项见 §5（`rag-v1-baseline-dev`、`rag-v1-heading-dev`、`rag-v1-heading-prefix-dev` = 选定、`rag-v1-char320-dev`、`rag-v1-heading-prefix-320-dev`），向量模型两项为 `rag-v1-candidate-zh-dev`、`rag-v1-candidate-multi-dev`；结论见 [docs/evaluations/rag-v1-report.md](../../docs/evaluations/rag-v1-report.md)。
+对照 run 都留在 `results/`：切块五项（`rag-v1-baseline-dev`、`rag-v1-heading-dev`、`rag-v1-heading-prefix-dev`、`rag-v1-char320-dev`、`rag-v1-heading-prefix-320-dev`）、向量模型两项（`rag-v1-candidate-zh-dev` = bge-small-zh、`rag-v1-candidate-multi-dev` = 选定 e5-small），以及最终验收两项（`rag-v1-baseline-holdout`、`rag-v1-selected-holdout`）。结论见 [docs/evaluations/rag-v1-report.md](../../docs/evaluations/rag-v1-report.md) §5、§6、§1.1。
 
 ## 查询集字段
 
