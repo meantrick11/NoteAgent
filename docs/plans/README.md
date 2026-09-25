@@ -23,4 +23,6 @@
 | [2026-09-09-cite-pane-isolation.md](./2026-09-09-cite-pane-isolation.md) | 出处侧栏按会话快照；每条助手消息引用重排 1..n |
 | [2026-09-10-chat-trace-tense.md](./2026-09-10-chat-trace-tense.md) | 过程排时态：ing / Thought·Explored；generating 不再画成 Thinking；无工具结束藏排 |
 | [2026-09-10-learning-note-quality.md](./2026-09-10-learning-note-quality.md) | 学习型笔记 v0.2：语义硬门、知识加工增益、Judge 与 Prompt 迭代留痕 |
+| [2026-09-25-rag-quality-improvement.md](./2026-09-25-rag-quality-improvement.md) | 待执行：基础笔记语料、RAG 证据标准、真实检索与 Agent 评测、按指标逐步优化 |
+| [2026-09-25-model-switching-ui.md](./2026-09-25-model-switching-ui.md) | 已实现：输入框下侧右方切换聊天/本地向量模型，配置持久化、索引重建与统一运行状态。结果、浏览器验收与未完成项见文末 §9 |
 | [draft-generation.md](./draft-generation.md) | 入库 Job / URL 源 / 自动索引设想，不是现行架构 |

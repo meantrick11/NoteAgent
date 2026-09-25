@@ -6,6 +6,8 @@ from noteagent.bootstrap.app import AppContainer, create_app
 from noteagent.bootstrap.settings import Settings
 from noteagent.chat.history import ConversationStore
 from noteagent.db import Base, create_engine_from_url, create_session_factory
+from noteagent.model_management.service import ModelRuntimeService
+from noteagent.model_management.store import ModelSettingsStore
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.retrieval.chunker import MarkdownChunker
 from noteagent.retrieval.service import RetrievalService
@@ -28,6 +30,22 @@ class FakeEmbedder:
         return [float(len(query)), 1.0]
 
 
+class FixedAssembler:
+    """Hands out the retrieval under test instead of loading a real embedder."""
+
+    def __init__(self, retrieval: RetrievalService):
+        self._retrieval = retrieval
+
+    def build_chat_model(self, profile):
+        raise AssertionError("notes API tests must not build a real chat model")
+
+    def build_retrieval(self, *, model_id, collection, local_files_only):
+        return self._retrieval
+
+    def build_agent(self, *, profile, retrieval):
+        return FakeAgent()
+
+
 def _client(tmp_path: Path) -> tuple[TestClient, FileNoteRepository, RetrievalService]:
     notes = FileNoteRepository(tmp_path / "notes")
     retrieval = RetrievalService(
@@ -38,13 +56,24 @@ def _client(tmp_path: Path) -> tuple[TestClient, FileNoteRepository, RetrievalSe
     )
     engine = create_engine_from_url("sqlite:///:memory:")
     Base.metadata.create_all(engine)
-    container = AppContainer(
-        settings=Settings(notes_dir=tmp_path / "notes", chroma_dir=tmp_path / "chroma"),
+    settings = Settings(
+        notes_dir=tmp_path / "notes",
+        chroma_dir=tmp_path / "chroma",
+        model_settings_dir=tmp_path / "model_settings",
+    )
+    runtime = ModelRuntimeService(
+        settings=settings,
+        store=ModelSettingsStore(settings.model_settings_dir),
         notes=notes,
-        retrieval=retrieval,
-        chat_agent=FakeAgent(),  # type: ignore[arg-type]
+        assembler=FixedAssembler(retrieval),
+    )
+    runtime.initialize()
+    container = AppContainer(
+        settings=settings,
+        notes=notes,
         engine=engine,
         history=ConversationStore(create_session_factory(engine)),
+        model_runtime=runtime,
     )
     return TestClient(create_app(container)), notes, retrieval
 

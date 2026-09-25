@@ -82,6 +82,20 @@ class ChromaVectorStore:
         got = self._collection.get(where={"file_name": file_name}, include=["metadatas"])
         return bool(got.get("ids"))
 
+    def list_file_names(self) -> set[str]:
+        """Every note path that currently has vectors in this collection.
+
+        A full rebuild needs this to drop vectors of notes that no longer exist on disk:
+        per-file upserts alone would leave those behind forever.
+        """
+        got = self._collection.get(include=["metadatas"])
+        names: set[str] = set()
+        for metadata in got.get("metadatas") or []:
+            value = (metadata or {}).get("file_name")
+            if value:
+                names.add(str(value))
+        return names
+
     def query(self, embedding: list[float], top_k: int) -> list[SearchHit]:
         """Nearest-neighbor search; empty Chroma fields become empty hits."""
         results = self._collection.query(

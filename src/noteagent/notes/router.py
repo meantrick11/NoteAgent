@@ -1,8 +1,11 @@
 import logging
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
+from noteagent.model_management.router import write_lease
+from noteagent.model_management.service import RuntimeSnapshot
 from noteagent.notes.repository import FileNoteRepository, NotePathError
 from noteagent.notes.schemas import (
     FolderCreateIn,
@@ -29,8 +32,9 @@ def _notes(request: Request) -> FileNoteRepository:
     return request.app.state.container.notes
 
 
-def _retrieval(request: Request) -> RetrievalService | None:
-    return getattr(request.app.state.container, "retrieval", None)
+def _read_snapshot(request: Request) -> RuntimeSnapshot:
+    """Read-only snapshot: listing and reading notes stay available during maintenance."""
+    return request.app.state.container.model_runtime.snapshot()
 
 
 def _raise_notes_error(exc: Exception) -> None:
@@ -89,7 +93,7 @@ def _folder_of(file_name: str) -> str:
 async def list_notes(request: Request) -> NotesListOut:
     """List folders and notes with mtime and index status. No notes table."""
     notes = _notes(request)
-    retrieval = _retrieval(request)
+    retrieval = _read_snapshot(request).retrieval
     files = [
         NoteFileOut(
             file_name=file_name,
@@ -105,10 +109,14 @@ async def list_notes(request: Request) -> NotesListOut:
 
 
 @router.post("/notes", response_model=NoteWriteOut)
-async def create_note(body: NoteCreateIn, request: Request) -> NoteWriteOut:
+async def create_note(
+    body: NoteCreateIn,
+    request: Request,
+    snapshot: Annotated[RuntimeSnapshot, Depends(write_lease)],
+) -> NoteWriteOut:
     """Create a note then index it. Documents human-write path, not chat review."""
     notes = _notes(request)
-    retrieval = _retrieval(request)
+    retrieval = snapshot.retrieval
     try:
         name = notes.normalize(body.file_name)
         name = notes.create(name, Path(name).stem)
@@ -121,7 +129,11 @@ async def create_note(body: NoteCreateIn, request: Request) -> NoteWriteOut:
 
 
 @router.post("/notes/folders", response_model=FolderOut)
-async def create_folder(body: FolderCreateIn, request: Request) -> FolderOut:
+async def create_folder(
+    body: FolderCreateIn,
+    request: Request,
+    snapshot: Annotated[RuntimeSnapshot, Depends(write_lease)],
+) -> FolderOut:
     """Create an empty one-level folder."""
     try:
         name = _notes(request).create_folder(body.name)
@@ -133,10 +145,14 @@ async def create_folder(body: FolderCreateIn, request: Request) -> FolderOut:
 
 
 @router.post("/notes/folders/rename", response_model=FolderRenameOut)
-async def rename_folder(body: FolderRenameIn, request: Request) -> FolderRenameOut:
+async def rename_folder(
+    body: FolderRenameIn,
+    request: Request,
+    snapshot: Annotated[RuntimeSnapshot, Depends(write_lease)],
+) -> FolderRenameOut:
     """Rename a real folder and reindex every note under the new path."""
     notes = _notes(request)
-    retrieval = _retrieval(request)
+    retrieval = snapshot.retrieval
     try:
         old, new, pairs = notes.rename_folder(body.from_path, body.to_path)
     except Exception as exc:
@@ -151,10 +167,14 @@ async def rename_folder(body: FolderRenameIn, request: Request) -> FolderRenameO
 
 
 @router.delete("/notes/folders/{name}", response_model=FolderDeleteOut)
-async def delete_folder(name: str, request: Request) -> FolderDeleteOut:
+async def delete_folder(
+    name: str,
+    request: Request,
+    snapshot: Annotated[RuntimeSnapshot, Depends(write_lease)],
+) -> FolderDeleteOut:
     """Delete a real folder, its notes, and their vectors. Must be before /notes/{path}."""
     notes = _notes(request)
-    retrieval = _retrieval(request)
+    retrieval = snapshot.retrieval
     try:
         deleted = notes.delete_folder(name)
     except Exception as exc:
@@ -167,10 +187,14 @@ async def delete_folder(name: str, request: Request) -> FolderDeleteOut:
 
 
 @router.post("/notes/move", response_model=NoteWriteOut)
-async def move_note(body: NoteMoveIn, request: Request) -> NoteWriteOut:
+async def move_note(
+    body: NoteMoveIn,
+    request: Request,
+    snapshot: Annotated[RuntimeSnapshot, Depends(write_lease)],
+) -> NoteWriteOut:
     """Move a note and reindex under the new relative path."""
     notes = _notes(request)
-    retrieval = _retrieval(request)
+    retrieval = snapshot.retrieval
     try:
         src = notes.normalize(body.from_path)
         dest = notes.move(body.from_path, body.to_path)
@@ -185,10 +209,14 @@ async def move_note(body: NoteMoveIn, request: Request) -> NoteWriteOut:
 
 
 @router.post("/notes/{file_name:path}/index", response_model=NoteWriteOut)
-async def index_note(file_name: str, request: Request) -> NoteWriteOut:
+async def index_note(
+    file_name: str,
+    request: Request,
+    snapshot: Annotated[RuntimeSnapshot, Depends(write_lease)],
+) -> NoteWriteOut:
     """Rebuild vectors for an existing note without changing the Markdown file."""
     notes = _notes(request)
-    retrieval = _retrieval(request)
+    retrieval = snapshot.retrieval
     try:
         name = notes.normalize(file_name)
         if not notes.exists(name):
@@ -215,10 +243,15 @@ async def read_note(file_name: str, request: Request) -> NoteContentOut:
 
 
 @router.put("/notes/{file_name:path}", response_model=NoteWriteOut)
-async def save_note(file_name: str, body: NoteWriteIn, request: Request) -> NoteWriteOut:
+async def save_note(
+    file_name: str,
+    body: NoteWriteIn,
+    request: Request,
+    snapshot: Annotated[RuntimeSnapshot, Depends(write_lease)],
+) -> NoteWriteOut:
     """Overwrite Markdown (user save = review) then rebuild vectors."""
     notes = _notes(request)
-    retrieval = _retrieval(request)
+    retrieval = snapshot.retrieval
     try:
         name = notes.normalize(file_name)
         notes.write(name, body.content, append=False)
@@ -231,10 +264,14 @@ async def save_note(file_name: str, body: NoteWriteIn, request: Request) -> Note
 
 
 @router.delete("/notes/{file_name:path}", response_model=NoteWriteOut)
-async def delete_note(file_name: str, request: Request) -> NoteWriteOut:
+async def delete_note(
+    file_name: str,
+    request: Request,
+    snapshot: Annotated[RuntimeSnapshot, Depends(write_lease)],
+) -> NoteWriteOut:
     """Delete the Markdown file and drop its vectors."""
     notes = _notes(request)
-    retrieval = _retrieval(request)
+    retrieval = snapshot.retrieval
     try:
         name = notes.normalize(file_name)
         notes.delete(name)

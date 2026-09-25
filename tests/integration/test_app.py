@@ -7,6 +7,8 @@ from noteagent.bootstrap.app import AppContainer, create_app
 from noteagent.bootstrap.settings import Settings
 from noteagent.chat.history import ConversationStore, start_turn
 from noteagent.db import Base, create_engine_from_url, create_session_factory
+from noteagent.model_management.service import ModelRuntimeService
+from noteagent.model_management.store import ModelSettingsStore
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.web import read_home_html
 
@@ -20,23 +22,69 @@ class FakeAgent:
         return {"status": "rejected"} if action == "reject" else {"status": "written", "file_name": "Go.md"}
 
 
+class StubRetrieval:
+    """Placeholder index for tests that never search it."""
+
+    def config_fingerprint(self) -> str:
+        return "stub-config"
+
+
+class StubAssembler:
+    """Hands back the agent a test injected; never builds a real model."""
+
+    def __init__(self, agent, retrieval=None):
+        self._agent = agent
+        self._retrieval = retrieval if retrieval is not None else StubRetrieval()
+
+    def build_chat_model(self, profile):
+        raise AssertionError("integration tests must not build a real chat model")
+
+    def build_retrieval(self, *, model_id, collection, local_files_only):
+        return self._retrieval
+
+    def build_agent(self, *, profile, retrieval):
+        return self._agent
+
+
 def _sqlite_history():
     engine = create_engine_from_url("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     return engine, ConversationStore(create_session_factory(engine))
 
 
-def _client(tmp_path: Path) -> tuple[TestClient, ConversationStore]:
-    settings = Settings(notes_dir=tmp_path, chroma_dir=tmp_path / "chroma")
-    engine, history = _sqlite_history()
-    container = AppContainer(
+def _container(
+    settings: Settings,
+    notes: FileNoteRepository,
+    engine,
+    history: ConversationStore,
+    agent,
+    retrieval=None,
+) -> AppContainer:
+    """Build a container whose runtime hands out the injected fakes."""
+    runtime = ModelRuntimeService(
         settings=settings,
-        notes=FileNoteRepository(tmp_path),
-        retrieval=None,  # type: ignore[arg-type]
-        chat_agent=FakeAgent(),  # type: ignore[arg-type]
+        store=ModelSettingsStore(settings.model_settings_dir),
+        notes=notes,
+        assembler=StubAssembler(agent, retrieval),
+    )
+    runtime.initialize()
+    return AppContainer(
+        settings=settings,
+        notes=notes,
         engine=engine,
         history=history,
+        model_runtime=runtime,
     )
+
+
+def _client(tmp_path: Path) -> tuple[TestClient, ConversationStore]:
+    settings = Settings(
+        notes_dir=tmp_path,
+        chroma_dir=tmp_path / "chroma",
+        model_settings_dir=tmp_path / "model_settings",
+    )
+    engine, history = _sqlite_history()
+    container = _container(settings, FileNoteRepository(tmp_path), engine, history, FakeAgent())
     return TestClient(create_app(container)), history
 
 
@@ -175,15 +223,14 @@ def test_chat_persists_final_assistant_not_tool_hop_tokens(tmp_path: Path):
         def review(self, thread_id: str, action: str, write_action=None, file_name=None):
             return {"status": "rejected"}
 
-    settings = Settings(notes_dir=tmp_path, chroma_dir=tmp_path / "chroma")
+    settings = Settings(
+        notes_dir=tmp_path,
+        chroma_dir=tmp_path / "chroma",
+        model_settings_dir=tmp_path / "model_settings",
+    )
     engine, history = _sqlite_history()
-    container = AppContainer(
-        settings=settings,
-        notes=FileNoteRepository(tmp_path),
-        retrieval=None,  # type: ignore[arg-type]
-        chat_agent=FakeToolHopAgent(),  # type: ignore[arg-type]
-        engine=engine,
-        history=history,
+    container = _container(
+        settings, FileNoteRepository(tmp_path), engine, history, FakeToolHopAgent()
     )
     client = TestClient(create_app(container))
     chat = client.post("/chat", json={"question": "hi"})
@@ -207,15 +254,14 @@ def test_chat_sse_forwards_multiple_token_events(tmp_path: Path):
         def review(self, thread_id: str, action: str, write_action=None, file_name=None):
             return {"status": "rejected"}
 
-    settings = Settings(notes_dir=tmp_path, chroma_dir=tmp_path / "chroma")
+    settings = Settings(
+        notes_dir=tmp_path,
+        chroma_dir=tmp_path / "chroma",
+        model_settings_dir=tmp_path / "model_settings",
+    )
     engine, history = _sqlite_history()
-    container = AppContainer(
-        settings=settings,
-        notes=FileNoteRepository(tmp_path),
-        retrieval=None,  # type: ignore[arg-type]
-        chat_agent=FakeChunkAgent(),  # type: ignore[arg-type]
-        engine=engine,
-        history=history,
+    container = _container(
+        settings, FileNoteRepository(tmp_path), engine, history, FakeChunkAgent()
     )
     client = TestClient(create_app(container))
     chat = client.post("/chat", json={"question": "hi"})
@@ -359,15 +405,12 @@ def test_review_clears_pending_draft(tmp_path: Path):
                 notes, drafts, thread_id, action, write_action, file_name,
             )
 
-    settings = Settings(notes_dir=tmp_path, chroma_dir=tmp_path / "chroma")
-    container = AppContainer(
-        settings=settings,
-        notes=notes,
-        retrieval=None,  # type: ignore[arg-type]
-        chat_agent=ReviewAgent(),  # type: ignore[arg-type]
-        engine=engine,
-        history=history,
+    settings = Settings(
+        notes_dir=tmp_path,
+        chroma_dir=tmp_path / "chroma",
+        model_settings_dir=tmp_path / "model_settings",
     )
+    container = _container(settings, notes, engine, history, ReviewAgent())
     client = TestClient(create_app(container))
     record = history.create("t")
     drafts.put(record.id, NoteDraft(

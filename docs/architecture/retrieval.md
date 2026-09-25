@@ -8,6 +8,7 @@
 | 触发 | 聊天 `commit_review` 写盘成功后同步该 `file_name`；Documents `/notes*` 写盘或点芯片同样走 `index_note` / `delete_note`；`reject` 不碰向量 |
 | 切块 / 模型 | `MarkdownChunker` 500/50、策略 `heading`、`embed_heading_prefix=True`（由 [rag-v1-report.md](../evaluations/rag-v1-report.md) 的任务六对照选出，可用 `CHUNK_STRATEGY` / `EMBED_HEADING_PREFIX` 覆盖）；默认 `intfloat/multilingual-e5-small`（由评测选出，可用 `EMBEDDING_MODEL` 覆盖），按其官方要求自动加 `query:` / `passage:` 前缀。换模型、换切块策略或换编码指令都必须重建 |
 | 配置一致性 | collection metadata 存配置指纹 `策略\|模型\|被嵌入文本`；与当前配置不符时构造 `RetrievalService` 即报错要求重建 |
+| 运行期选择 | 界面可切换本地向量模型。启动时以持久化的 active 为准（优先于 `EMBEDDING_MODEL`），切换走 §7.1 的维护窗口 |
 | 不是 | 用户勾选入库、PDF 直接 embed、命中阈值 |
 
 `retrieval` 不改笔记文件、不写 PostgreSQL、不调聊天模型。`notes` / `retrieval` 不得 import `chat`。
@@ -73,6 +74,8 @@ PUT / POST / DELETE /notes* 、POST /notes/{path}/index
 ## 4. 一个向量点里有什么
 
 Chroma collection 名来自 `CHROMA_COLLECTION`（默认 `my_knowledge`），目录 `CHROMA_DIR`。
+
+界面切换向量模型时，重建写入的是**该模型专属的 collection**：`{CHROMA_COLLECTION}__{模型短名}`（如 `my_knowledge__multilingual-e5-small`）。不同模型的向量不可比，所以切换不会写进旧模型建的集合；模型加载失败或构建失败时旧集合原样保留，也不会有任何旧集合被自动删除。切换回原模型时按 `{CHROMA_COLLECTION}` 之外的专属名重建一次全量索引，因此不会拿过期集合冒充新索引。
 
 | 字段 | 现行值 |
 |------|--------|
@@ -162,6 +165,20 @@ collection 自身的 metadata 另存配置指纹（见上表「配置一致性�
 
 索引步骤 logger 与一次 `index_note` 的日志顺序见 [observability.md](./observability.md) §4。INFO 不打切块原文。`RetrievalService` 只做删点/切块/embed/入库，并在步骤边界调用 `IndexTrace`。人审侧另有 `draft indexed` / `draft index failed`。
 
+### 7.1 界面切换向量模型（维护窗口）
+
+单进程串行维护，不做双写或增量追赶。`ModelRuntimeService`（[`model_management/service.py`](../../src/noteagent/model_management/service.py)）持有唯一的 `RuntimeSnapshot`（chat agent + retrieval + embedding 状态 + revision），请求通过 `read` / `write` / `chat` 取一次快照并在整个操作内使用：
+
+1. 门禁锁内确认没有正在进行的聊天/写操作，再开维护窗口（检查与设置必须原子）。已有请求继续持有旧快照到 `finally` 释放。
+2. 后台线程用 `local_files_only=true` 加载目标模型，按 `{collection}__{模型短名}` 建全新 collection。
+3. 逐篇 `index_note` 并汇报进度；目标集合里磁盘上已不存在的 `file_name` 会删掉（`indexed_files()`，避免残留幽灵片段）。`scripts/index_notes.py` 与界面共用 `index_targets()`，README.md 与 `bak/` 的排除规则一致。
+4. 构建前后比对笔记清单与内容 hash；不一致（外部改过文件）则任务失败，旧索引保留。非空语料必须切出至少一块，并至少用真实语料搜到一次命中；空语料允许成功建空索引。
+5. 原子写 `active_embedding` 与 revision，然后用**一次替换**发布新的检索对象与绑定它的 Agent/工具。任一步失败都保留旧对象，job 记为 `failed`。
+6. 维护期间 `/chat`、审批的 approve/override、所有 `/notes` 写接口返回 409（`code=busy`），拒绝发生在建会话/写消息/落盘之前；reject 草稿走只读租约因此仍可用；读笔记、读历史、`GET /model-settings` 不受影响。
+7. 重启时读最后一次成功的 active；`running` 的 job 记为 `interrupted`，绝不自动启用半成品。lifespan 退出时停止接受新任务，并阻止进行中的任务发布。
+
+维护窗口内不要同时跑索引 CLI：外部进程不受内存门禁约束，会让步骤 4 的 hash 比对失败。本期单进程单 worker。
+
 ---
 
 ## 8. 本文件不覆盖
@@ -189,13 +206,15 @@ collection 自身的 metadata 另存配置指纹（见上表「配置一致性�
 | [`src/noteagent/retrieval/markdown.py`](../../src/noteagent/retrieval/markdown.py) | 围栏感知的标题解析与 `heading_path`（检索与评测共用） |
 | [`src/noteagent/retrieval/embedder.py`](../../src/noteagent/retrieval/embedder.py) | 本地句向量 |
 | [`src/noteagent/retrieval/vector_store.py`](../../src/noteagent/retrieval/vector_store.py) | upsert / query / `delete_by_file_name` |
-| [`src/noteagent/retrieval/service.py`](../../src/noteagent/retrieval/service.py) | `index_note`、`delete_note`、`search` |
+| [`src/noteagent/retrieval/service.py`](../../src/noteagent/retrieval/service.py) | `index_note`、`delete_note`、`search`、`indexed_files`、`index_targets` |
 | [`src/noteagent/observability/index_trace.py`](../../src/noteagent/observability/index_trace.py) | 索引/检索步骤 INFO |
 | [`src/noteagent/retrieval/models.py`](../../src/noteagent/retrieval/models.py) | `SearchHit`、`NoteChunk` |
 | [`src/noteagent/chat/drafts.py`](../../src/noteagent/chat/drafts.py) | `_sync_index` |
 | [`src/noteagent/chat/agent.py`](../../src/noteagent/chat/agent.py) | `review` 注入 `retrieval` |
-| [`src/noteagent/bootstrap/app.py`](../../src/noteagent/bootstrap/app.py) | 装配 `RetrievalService` |
-| [`scripts/index_notes.py`](../../scripts/index_notes.py) | 按篇重建 |
-| [`src/noteagent/bootstrap/settings.py`](../../src/noteagent/bootstrap/settings.py) | `CHROMA_*`、`EMBEDDING_*` |
+| [`src/noteagent/bootstrap/runtime.py`](../../src/noteagent/bootstrap/runtime.py) | 唯一的 Agent/工具/检索装配入口（`BootstrapAssembler`） |
+| [`src/noteagent/bootstrap/app.py`](../../src/noteagent/bootstrap/app.py) | 装配 `ModelRuntimeService` 并注册路由 |
+| [`src/noteagent/model_management/service.py`](../../src/noteagent/model_management/service.py) | 运行快照、门禁、向量重建任务 |
+| [`scripts/index_notes.py`](../../scripts/index_notes.py) | 按篇重建（与界面共用 `index_targets`） |
+| [`src/noteagent/bootstrap/settings.py`](../../src/noteagent/bootstrap/settings.py) | `CHROMA_*`、`EMBEDDING_*`、`MODEL_SETTINGS_DIR` |
 
 包说明（与代码同步的目录表）：[`src/noteagent/retrieval/README.md`](../../src/noteagent/retrieval/README.md)。

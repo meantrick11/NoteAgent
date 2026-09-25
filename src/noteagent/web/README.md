@@ -7,8 +7,8 @@
 | 路径 | 作用 |
 |------|------|
 | [`templates/`](templates/README.md) | `home.html`：Chat / Documents。布局见 [docs/architecture/frontend.md](../../../docs/architecture/frontend.md) |
-| [`static/`](static/README.md) | 预留 CSS/图片，尚未挂 StaticFiles |
-| `__init__.py` | `TEMPLATES_DIR`、`read_home_html()` |
+| [`static/`](static/README.md) | `model-settings.css` / `model-settings.js`；由 `create_app` 挂到 `/static` |
+| `__init__.py` | `TEMPLATES_DIR`、`STATIC_DIR`、`read_home_html()` |
 
 ## 基础使用
 

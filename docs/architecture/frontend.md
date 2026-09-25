@@ -64,6 +64,30 @@ Chat 的会话删除 overlay（`.modal-overlay` + `deleteOverlay`）与 Document
 
 用户气泡 `.msg-row.user .msg-body` 为 `pre-wrap`；助手走 marked。
 
+### 3.1 模型入口（输入框下方右侧）
+
+聊天模型与本地向量模型两个入口固定在输入框下侧靠右（`.model-toolbar`，`justify-content: flex-end`，窄屏换行）。功能区只在 Chat 输入栏，不挤占 Documents 编辑器。
+
+弹层向上展开在**整个输入区之上**（`.input-area` 为定位基准），不遮挡输入框、发送按钮与引用面板。Escape 或点击功能以外区域关闭，焦点回到触发按钮；按钮 `aria-expanded` / 弹层 `role="dialog"`；长模型名省略显示，`title` 给全名。
+
+| 入口 | 内容 | 动作 |
+|------|------|------|
+| 聊天：模型名 ▾ | 已保存 profile 列表（provider、model、凭据来源、Base URL、上下文窗口） | 点「已启用/点击启用」走验证事务；「编辑」只回填表单；「＋新增配置」 |
+| 向量：模型名 ▾ | 服务端候选（`availability` + `reason`） | 可用项「重建并切换」；不完整项禁用并显示原因；当前项标「已启用」 |
+
+表单字段：配置名称、provider、模型名、Base URL（提示填服务根地址，不要填 `/chat/completions`）、API Key（password，编辑时留空表示保留）、该服务无需 API Key（仅 deepseek 以外）、上下文窗口。按钮是「测试连接」与「保存并启用」——新增配置不需要先保存再启用；保存与启用是后端的一次事务，测试不通过则原配置不变。
+
+向量切换期间（维护窗口）：
+
+- 进度条按 `stage` 显示（排队中 → 加载模型 → 建立索引 → 校验索引 → 发布切换），每 1 秒轮询 `GET /model-settings/jobs/{id}`；任务结束、页面隐藏或视图退出即停，刷新页面用 `GET /model-settings` 的 `embedding_job` 恢复展示。
+- 发送、审批（同意/覆盖）、Documents 保存/删除按钮禁用，输入框底部提示「向量索引重建中：暂时不能发送消息或保存笔记，已有内容仍可查看」。禁用状态只**叠加**在原有「空输入」「未保存 dirty」判断之上，不覆盖它们。
+- 失败或中断时显示旧模型仍生效；后端拒绝（409）时保留用户输入与未保存正文，发送被拒时把清掉的输入还原（仅在输入框仍为空时，不覆盖随后输入的新文字）。
+- 生成中禁用两个入口；本轮结束前不切换。
+
+页面接口（`web/static/model-settings.js` 的 `ModelSettings`）：`init()`、`setStreaming(bool)`、`canSend()`、`refreshIfStale()`、`onBusyChange(fn)`。多标签页在窗口 focus、发送前、保存前刷新状态（`refreshIfStale` 以 5 秒为界）。
+
+样式与脚本外置在 `web/static/`，由 `create_app` 显式 `app.mount("/static", StaticFiles(...))`；模板不会自动提供静态资源路由。
+
 ---
 
 ## 4. Documents 布局
@@ -171,6 +195,8 @@ flowchart LR
 
 成功 INFO 在 `noteagent.notes.router`（`notes http create/save/move/delete/index/folder *`）。切块步骤仍走 `IndexTrace`。
 
+维护窗口内这些写接口返回 409（`code=busy`），消息结构与「不泄露凭据」见 [retrieval.md](./retrieval.md) 与 [../plans/2026-09-25-model-switching-ui.md](../plans/2026-09-25-model-switching-ui.md)；前端用 `errorMessage()` 统一读 `message` / `detail`。
+
 ---
 
 ## 6. 两条写盘路径（不要混）
@@ -198,9 +224,12 @@ Agent 工具    propose_note       → conversations.pending_draft，不写盘
 
 | 文件 | 内容 |
 |------|------|
-| [`web/templates/home.html`](../../src/noteagent/web/templates/home.html) | 布局、样式、Chat/Documents JS |
-| [`web/__init__.py`](../../src/noteagent/web/__init__.py) | `read_home_html()` |
+| [`web/templates/home.html`](../../src/noteagent/web/templates/home.html) | 布局、样式、Chat/Documents JS；模型入口按钮与页面接线 |
+| [`web/static/model-settings.js`](../../src/noteagent/web/static/model-settings.js) | `ModelSettings`：状态轮询、聊天表单、向量候选与进度 |
+| [`web/static/model-settings.css`](../../src/noteagent/web/static/model-settings.css) | 工具栏、弹层、表单、进度与错误样式 |
+| [`web/__init__.py`](../../src/noteagent/web/__init__.py) | `read_home_html()`、`STATIC_DIR` |
 | [`chat/router.py`](../../src/noteagent/chat/router.py) | `GET /`、`GET /documents`、会话与聊天 HTTP |
 | [`notes/router.py`](../../src/noteagent/notes/router.py) | Documents 笔记 HTTP |
+| [`model_management/router.py`](../../src/noteagent/model_management/router.py) | `/model-settings*`，并导出请求级租约依赖 |
 
-包说明：[`web/README.md`](../../src/noteagent/web/README.md)、[`web/templates/README.md`](../../src/noteagent/web/templates/README.md)。
+包说明：[`web/README.md`](../../src/noteagent/web/README.md)、[`web/templates/README.md`](../../src/noteagent/web/templates/README.md)、[`model_management/README.md`](../../src/noteagent/model_management/README.md)。

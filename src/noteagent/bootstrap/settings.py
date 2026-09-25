@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     chunk_strategy: str = Field(default="heading", validation_alias="CHUNK_STRATEGY")
     embed_heading_prefix: bool = Field(default=True, validation_alias="EMBED_HEADING_PREFIX")
 
+    # UI 选择模型后持久化的配置目录（含聊天 profile 与 active 指针）。环境变量只负责
+    # 提供目录位置，模型选择本身由 UI 配置优先。
+    model_settings_dir: Path = Field(
+        default=Path("var/model_settings"),
+        validation_alias="MODEL_SETTINGS_DIR",
+    )
+
     host: str = "127.0.0.1"
     port: int = 8000
     log_dir: Path = Path("var/logs")
@@ -75,6 +82,7 @@ class Settings(BaseSettings):
         "chroma_dir",
         "log_dir",
         "embedding_cache_dir",
+        "model_settings_dir",
         mode="after",
     )
     @classmethod

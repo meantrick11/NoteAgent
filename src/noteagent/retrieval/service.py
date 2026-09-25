@@ -40,6 +40,24 @@ def index_config_fingerprint(
     return "|".join(parts)
 
 
+def index_targets(notes: FileNoteRepository) -> tuple[list[str], list[str]]:
+    """Every indexable note, plus the files skipped on purpose.
+
+    ``README.md`` is the data-directory description and ``bak/`` holds backups; the
+    repository already treats both as not-notes, so a bulk rebuild must not quietly put
+    them into the retrieval index. Shared by the CLI and the UI rebuild so the two can
+    never disagree about what belongs in the index.
+    """
+    keep: list[str] = []
+    skipped: list[str] = []
+    for name in notes.list_notes():
+        if name == "README.md" or name.split("/")[0] == "bak":
+            skipped.append(name)
+            continue
+        keep.append(name)
+    return keep, skipped
+
+
 class RetrievalService:
     """Chunk notes, write embeddings to Chroma, and search by query vector."""
 
@@ -127,6 +145,14 @@ class RetrievalService:
     def is_indexed(self, file_name: str) -> bool:
         """True if Chroma has at least one chunk for this relative path."""
         return self._store.has_file_name(file_name)
+
+    def indexed_files(self) -> set[str]:
+        """Every note path with vectors in this collection.
+
+        A full rebuild uses this to drop vectors of notes that no longer exist on disk;
+        per-file upserts alone would leave those behind.
+        """
+        return self._store.list_file_names()
 
     def search(self, query: str, top_k: int = 3) -> list[SearchHit]:
         """Return the top_k nearest note chunks for the query."""

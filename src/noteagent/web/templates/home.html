@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NoteAgent</title>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link rel="stylesheet" href="/static/model-settings.css">
 <style>
   :root {
     --bg: #f9fafb;
@@ -930,6 +931,27 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
       </button>
     </div>
+    <div class="model-toolbar" id="modelToolbar">
+      <div class="model-picker" id="chatPicker">
+        <button type="button" class="model-btn" id="btnChatModel"
+          aria-haspopup="dialog" aria-expanded="false" aria-controls="chatModelPopover"
+          title="聊天模型设置">
+          <span class="model-btn-kind">聊天</span>
+          <span class="model-btn-name" id="chatModelName">读取中…</span>
+          <span class="model-btn-caret" aria-hidden="true">▾</span>
+        </button>
+      </div>
+      <div class="model-picker" id="embeddingPicker">
+        <button type="button" class="model-btn" id="btnEmbeddingModel"
+          aria-haspopup="dialog" aria-expanded="false" aria-controls="embeddingModelPopover"
+          title="本地向量模型设置">
+          <span class="model-btn-kind">向量</span>
+          <span class="model-btn-name" id="embeddingModelName">读取中…</span>
+          <span class="model-btn-caret" aria-hidden="true">▾</span>
+        </button>
+      </div>
+    </div>
+    <p class="model-toolbar-note" id="modelToolbarNote" hidden></p>
   </div>
 </div>
 </div>
@@ -977,10 +999,20 @@
 
 <div id="saveToast" class="save-toast" role="status">文件已保存</div>
 
+<script src="/static/model-settings.js"></script>
 <script>
 // ========== 状态 ==========
 let currentConversationId = null;
 let isStreaming = false;
+// docsText/保存/删除是否可用；维护窗口会在它之上再叠加一层禁用。
+let docsEditorEnabled = false;
+
+/** 统一读取错误提示：优先模型管理的 message，其次 FastAPI 的 detail。 */
+function errorMessage(json, res) {
+  if (json && typeof json.message === "string" && json.message) return json.message;
+  if (json && typeof json.detail === "string" && json.detail) return json.detail;
+  return "HTTP " + res.status;
+}
 
 const chatInner = document.getElementById("chatInner");
 const chatContainer = document.getElementById("chatContainer");
@@ -1236,7 +1268,7 @@ async function saveCitedNote() {
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    await docsAlert("保存失败", String(json.detail || res.status));
+    await docsAlert("保存失败", errorMessage(json, res));
     return;
   }
   citeDirty = false;
@@ -1465,9 +1497,16 @@ document.getElementById("docsModalInput").addEventListener("keydown", (e) => {
 });
 
 function setDocsEnabled(on) {
-  document.getElementById("docsText").disabled = !on;
-  document.getElementById("btnSaveDoc").disabled = !on;
-  document.getElementById("btnDeleteDoc").disabled = !on;
+  docsEditorEnabled = on;
+  applyDocsEditingState();
+}
+
+/** 编辑区同时受"是否已打开笔记"和"维护窗口"约束，两者不互相覆盖。 */
+function applyDocsEditingState() {
+  const editable = docsEditorEnabled && ModelSettings.canSend();
+  document.getElementById("docsText").disabled = !editable;
+  document.getElementById("btnSaveDoc").disabled = !editable;
+  document.getElementById("btnDeleteDoc").disabled = !editable;
 }
 
 function renderDocsPreview() {
@@ -1749,6 +1788,8 @@ async function openDocument(fileName) {
 
 async function saveDocument() {
   if (!docsCurrent) return;
+  // 另一标签页可能刚进入向量维护窗口：保存前刷新状态，提示会更准确。
+  await ModelSettings.refreshIfStale();
   const res = await fetch(noteUrl(docsCurrent), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -1756,7 +1797,8 @@ async function saveDocument() {
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    await docsAlert("保存失败", String(json.detail || res.status));
+    // 失败时保留编辑器内容与 dirty 状态，用户不必重打。
+    await docsAlert("保存失败", errorMessage(json, res));
     return;
   }
   docsDirty = false;
@@ -1779,7 +1821,7 @@ async function deleteNoteByName(fileName) {
   const res = await fetch(noteUrl(fileName), { method: "DELETE" });
   if (!res.ok) {
     const json = await res.json().catch(() => ({}));
-    await docsAlert("删除失败", String(json.detail || res.status));
+    await docsAlert("删除失败", errorMessage(json, res));
     return;
   }
   if (docsCurrent === fileName) {
@@ -1800,7 +1842,7 @@ async function moveNoteTo(fromPath, toPath) {
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    await docsAlert("移动失败", String(json.detail || res.status));
+    await docsAlert("移动失败", errorMessage(json, res));
     return;
   }
   if (docsCurrent === fromPath) docsCurrent = json.file_name;
@@ -1821,7 +1863,7 @@ async function indexDocument(fileName, chipEl) {
   const json = await res.json().catch(() => ({}));
   docsIndexing.delete(fileName);
   if (!res.ok) {
-    await docsAlert("入库失败", String(json.detail || res.status));
+    await docsAlert("入库失败", errorMessage(json, res));
     await loadDocuments();
     return;
   }
@@ -1855,7 +1897,7 @@ async function renameFolder(name) {
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    await docsAlert("重命名失败", String(json.detail || res.status));
+    await docsAlert("重命名失败", errorMessage(json, res));
     return;
   }
   if (docsCurrent && docsParent(docsCurrent) === name) {
@@ -1881,7 +1923,7 @@ async function deleteFolder(name) {
   const res = await fetch("/notes/folders/" + encodeURIComponent(name), { method: "DELETE" });
   if (!res.ok) {
     const json = await res.json().catch(() => ({}));
-    await docsAlert("删除失败", String(json.detail || res.status));
+    await docsAlert("删除失败", errorMessage(json, res));
     return;
   }
   if (docsCurrent && docsParent(docsCurrent) === name) {
@@ -1909,7 +1951,7 @@ async function createFolder() {
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    await docsAlert("创建失败", String(json.detail || res.status));
+    await docsAlert("创建失败", errorMessage(json, res));
     return;
   }
   docsAnchor = { kind: "folder", id: json.name };
@@ -1932,7 +1974,7 @@ async function createNote() {
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    await docsAlert("创建失败", String(json.detail || res.status));
+    await docsAlert("创建失败", errorMessage(json, res));
     return;
   }
   await loadDocuments();
@@ -1998,9 +2040,21 @@ docsTreeMenu.querySelector('[data-docs-menu="delete"]').addEventListener("click"
 });
 
 // ========== 输入处理 ==========
-textarea.addEventListener("input", () => {
-  btnSend.disabled = textarea.value.trim().length === 0;
-});
+/** 发送按钮的禁用状态 = 空输入 或 维护窗口，两者都不能被对方覆盖。 */
+function applySendState() {
+  btnSend.disabled = !ModelSettings.canSend() || textarea.value.trim().length === 0;
+}
+
+/** 维护窗口变化时，重新计算所有写操作的按钮状态。 */
+function applyModelBusyState() {
+  applySendState();
+  applyDocsEditingState();
+  document
+    .querySelectorAll('[data-act="approve"], [data-act="override-append"], [data-act="override-create"]')
+    .forEach((btn) => { btn.disabled = !ModelSettings.canSend(); });
+}
+
+textarea.addEventListener("input", applySendState);
 
 function autoResize(el) {
   el.style.height = "auto";
@@ -2261,8 +2315,17 @@ async function ask() {
   const question = textarea.value.trim();
   if (!question) return;
 
+  // 另一个标签页可能刚开了向量维护窗口：发送前刷新一次服务端状态。
+  await ModelSettings.refreshIfStale();
+  if (!ModelSettings.canSend()) {
+    appendMessage("assistant", "向量索引重建中，暂时不能发送消息；已有内容仍可查看。");
+    applyModelBusyState();
+    return;
+  }
+
   isStreaming = true;
-  btnSend.disabled = true;
+  ModelSettings.setStreaming(true);
+  applyModelBusyState();
   textarea.value = "";
   textarea.style.height = "auto";
 
@@ -2285,7 +2348,14 @@ async function ask() {
       body: JSON.stringify({ question, conversation_id: currentConversationId })
     });
     if (!res.ok) {
-      throw new Error(res.status === 404 ? "会话不存在" : "HTTP " + res.status);
+      const json = await res.json().catch(() => ({}));
+      // 服务端拒绝（例如维护窗口返回 409）时把这次输入还给用户；
+      // 只在输入框仍为空时恢复，避免覆盖用户随后打的新字。
+      if (!textarea.value.trim()) {
+        textarea.value = question;
+        autoResize(textarea);
+      }
+      throw new Error(res.status === 404 ? "会话不存在" : errorMessage(json, res));
     }
 
     const reader = res.body.getReader();
@@ -2400,7 +2470,8 @@ async function ask() {
     finishTrace(assistEl, steps);
   } finally {
     isStreaming = false;
-    btnSend.disabled = false;
+    ModelSettings.setStreaming(false);
+    applyModelBusyState();
     textarea.focus();
     chatContainer.scrollTop = chatContainer.scrollHeight;
   }
@@ -2746,6 +2817,10 @@ async function sendReview(body, card) {
 
 // ========== 页面加载：载入历史 ==========
 document.addEventListener("DOMContentLoaded", async () => {
+  // 先注册回调再初始化：初始化会立刻拉一次状态并触发一次 busy 回调。
+  ModelSettings.onBusyChange(applyModelBusyState);
+  ModelSettings.init();
+  applyModelBusyState();
   showView(isDocumentsPath() ? "documents" : "chat", false);
   const list = await loadConversations();
   if (list.length && !isDocumentsPath()) openConversation(list[0].id);
