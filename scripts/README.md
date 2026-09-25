@@ -10,6 +10,10 @@
 | `sdk_smoke.py` | 用 `DEEPSEEK_API_KEY` ping 一次聊天 API |
 | `eval_notes.py` | 离线提示词评测：进程内 `ChatAgent`，结果写入 `evals/prompt/results/<jsonl 主文件名>/` |
 | `calibrate_learning_notes.py` | 用四个固定候选校准 v0.2 Judge（不生成草稿） |
+| `build_rag_queries.py` | 从人工标注草稿生成带偏移的检索查询集，并跑正式校验 |
+| `verify_rag_corpus.py` | 复核语料审查结论与 10 条无答案标注；任一条不成立即以非零码退出 |
+| `eval_rag.py` | 直接检索评测：真 `RetrievalService` + 独立 Chroma，指标与失败分类 |
+| `eval_rag_agent.py` | 真实 `ChatAgent` 场景评测：调用时机、结果使用、引用、写入安全 |
 
 ## 基础使用
 
@@ -37,3 +41,15 @@ python scripts/eval_notes.py --name v9 --judge --cases evals/prompt/learning_not
 python scripts/calibrate_learning_notes.py
 # 结果在 evals/prompt/results/<jsonl 主文件名>/<标签_>题号_时间/ ；未设置密钥时退出码 1
 ```
+
+跑检索与 Agent 评测（不改生产 `notes/`、不改生产 Chroma、不人审写盘）：
+
+```bash
+python scripts/build_rag_queries.py --corpus evals/rag/corpus/v1 \
+  --draft evals/rag/queries.v1.draft.json --output evals/rag/queries.v1.jsonl
+python scripts/eval_rag.py --split dev --variant baseline --run-id rag-v1-baseline-dev
+python scripts/eval_rag_agent.py --split dev --variant baseline --run-id agent-v1-baseline-dev --repeat 3
+# 完整报告在 var/evals/rag/<run-id>/ ；提交版 summary 在 evals/{rag,agent}/results/<run-id>/
+```
+
+准则与字段契约：[docs/evaluations/rag-quality.md](../docs/evaluations/rag-quality.md)；数据位置：[evals/rag/README.md](../evals/rag/README.md)、[evals/agent/README.md](../evals/agent/README.md)。

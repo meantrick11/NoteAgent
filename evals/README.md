@@ -9,8 +9,10 @@
 | 目录 | 用途 |
 |------|------|
 | [prompt/](prompt/README.md) | 系统提示 / 笔记正文考题（`cases.jsonl` 20 条 + `learning_notes.jsonl` 的 `l01`）+ 意图门 behavior 条；结果在 [prompt/results/](prompt/results/README.md) |
-| [rag/](rag/README.md) | 检索 query（尚未填） |
-| [agent/](agent/README.md) | 多 hop 轨迹（尚未单开；能复用 prompt 集则先复用） |
+| [rag/](rag/README.md) | 冻结语料 v1（10 篇）+ 40 条带证据标注的检索查询；结果在 `rag/results/` |
+| [agent/](agent/README.md) | 20 条真实 `ChatAgent` 场景（调用时机、结果使用、引用、写入安全）；结果在 `agent/results/` |
+
+检索与 Agent 语料的**正文不进仓库**（与 `notes/*` 同一隐私口径）：只提交 manifest 哈希、审查摘要与不含正文的报告结论，完整版在 `var/evals/rag/`。准则见 [docs/evaluations/rag-quality.md](../docs/evaluations/rag-quality.md)。
 
 ## 怎么跑
 
@@ -19,6 +21,10 @@ python scripts/eval_notes.py --ids b06,n05
 python scripts/eval_notes.py --name v8 --ids n01,n03 --prompt src/noteagent/chat/prompts/system.txt
 python scripts/eval_notes.py --name v9 --judge --cases evals/prompt/learning_notes.jsonl --ids l01
 python scripts/calibrate_learning_notes.py
+
+# 检索与 Agent（真检索 / 真 ChatAgent；独立语料与索引）
+python scripts/eval_rag.py --split dev --variant baseline --run-id rag-v1-baseline-dev
+python scripts/eval_rag_agent.py --split dev --variant baseline --run-id agent-v1-baseline-dev --repeat 3
 ```
 
 进程内 `ChatAgent`（`CHAT_MODEL` + 四工具），临时 notes / SQLite，不启动 HTTP，不人审写盘。无 `DEEPSEEK_API_KEY` 时退出码 1。

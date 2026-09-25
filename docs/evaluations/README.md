@@ -17,8 +17,10 @@
 | 文件 | 内容 | 状态 |
 |------|------|------|
 | [note-quality.md](./note-quality.md) | 笔记正文质量 v0.2：三道硬门、原六维、知识加工增益与证据契约 | 现行准则 |
+| [rag-quality.md](./rag-quality.md) | 检索（RAG）v1：语料、证据标注契约、九项指标、失败分类与报告契约 | 现行准则 |
+| [rag-v1-report.md](./rag-v1-report.md) | RAG v1 的实测报告：基线、各次对照、最终配置、失败样例、重建/回退 | 进行中（批次 1 已交付） |
 | 工具 / Agent 轨迹 | 该不该 `propose_note`、工具顺序、create/append/replace/delete | 以后写本目录；数据仍用 [`evals/agent/`](../../evals/agent/README.md) 与 prompt 集里的 behavior 条 |
-| RAG | Recall、命中文件/章节、引用 | 以后写本目录；数据在 [`evals/rag/`](../../evals/rag/README.md)（尚空） |
+| RAG | Recall、命中文件/章节、引用 | 见 [rag-quality.md](./rag-quality.md)；数据在 [`evals/rag/`](../../evals/rag/README.md) |
 
 三本账**不要合成**一个 Agent 总分。改提示词看笔记正文分；改工具策略看行为门；改切块/embedding 看 RAG。
 

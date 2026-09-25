@@ -20,6 +20,15 @@ build/
 notes/*
 !notes/README.md
 
+# RAG eval: corpus note bodies and annotated datasets stay local (private notes).
+# Committed: corpus manifest/audit, run summaries, code, tests, docs.
+evals/rag/corpus/*/notes/
+evals/rag/corpus/*/sources/
+evals/rag/queries*.json
+evals/rag/queries*.jsonl
+evals/agent/rag_cases*.json
+evals/agent/rag_cases*.jsonl
+
 # chromadb persist data
 chromadb_persist/
 
