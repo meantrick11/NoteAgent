@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from noteagent.bootstrap.app import AppContainer, create_app
 from noteagent.bootstrap.settings import Settings
+from noteagent.chat.drafts import DraftStore, NoteDraft, commit_review
 from noteagent.chat.history import ConversationStore, start_turn
 from noteagent.db import Base, create_engine_from_url, create_session_factory
 from noteagent.model_management.service import ModelRuntimeService
@@ -97,6 +98,41 @@ def _client(tmp_path: Path) -> tuple[TestClient, ConversationStore]:
     engine, history = _sqlite_history()
     container = _container(settings, FileNoteRepository(tmp_path), engine, history, FakeAgent())
     return TestClient(create_app(container)), history
+
+
+class RealDraftAgent(FakeAgent):
+    """Draft edits and reviews go through the real store, not a stub."""
+
+    def __init__(self, notes: FileNoteRepository, drafts: DraftStore) -> None:
+        self._notes = notes
+        self._drafts = drafts
+
+    def update_draft_content(self, thread_id: str, content: str) -> dict:
+        draft = self._drafts.update_content(thread_id, content)
+        if draft is None:
+            return {"error": "no pending draft"}
+        return {"status": "updated", "pending_draft": draft.as_dict()}
+
+    def review(self, thread_id: str, action: str, write_action=None, file_name=None):
+        return commit_review(
+            self._notes, self._drafts, thread_id, action, write_action, file_name,
+        )
+
+
+def _draft_client(
+    tmp_path: Path,
+) -> tuple[TestClient, ConversationStore, FileNoteRepository, DraftStore]:
+    """Client whose agent persists draft edits and approvals for real."""
+    settings = Settings(
+        notes_dir=tmp_path,
+        chroma_dir=tmp_path / "chroma",
+        model_settings_dir=tmp_path / "model_settings",
+    )
+    notes = FileNoteRepository(tmp_path)
+    engine, history = _sqlite_history()
+    drafts = DraftStore(history)
+    container = _container(settings, notes, engine, history, RealDraftAgent(notes, drafts))
+    return TestClient(create_app(container)), history, notes, drafts
 
 
 def _parse_sse(text: str) -> list[tuple[str, str]]:
@@ -435,4 +471,142 @@ def test_review_clears_pending_draft(tmp_path: Path):
     assert review.json() == {"status": "rejected"}
     assert client.get(f"/conversations/{record.id}").json()["pending_draft"] is None
     assert list(tmp_path.iterdir()) == []
+
+
+def test_put_draft_saves_body_and_keeps_metadata(tmp_path: Path):
+    """Editing a draft rewrites the body only; no note file changes."""
+    client, history, notes, drafts = _draft_client(tmp_path)
+    notes.create("Go.md", "Go")
+    before = notes.read("Go.md")
+    record = history.create("t")
+    drafts.put(record.id, NoteDraft(
+        action="append",
+        file_name="Go.md",
+        content="## 旧正文\n\n",
+        reason="补一节",
+        similar=["Go.md"],
+        existing_files=["Go.md"],
+    ))
+
+    resp = client.put(
+        "/chat/draft",
+        json={"thread_id": record.id, "content": "## 新正文\n\n改过了。\n"},
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "updated"
+    assert body["pending_draft"] == {
+        "action": "append",
+        "file_name": "Go.md",
+        "content": "## 新正文\n\n改过了。\n",
+        "reason": "补一节",
+        "similar": ["Go.md"],
+        "existing_files": ["Go.md"],
+    }
+    detail = client.get(f"/conversations/{record.id}").json()["pending_draft"]
+    assert detail == body["pending_draft"]
+    # 只改待审状态：正式笔记既没被写也没被新建。
+    assert notes.read("Go.md") == before
+    assert [path.name for path in tmp_path.glob("*.md")] == ["Go.md"]
+
+
+def test_put_draft_without_pending_draft_returns_409(tmp_path: Path):
+    client, history, _, _ = _draft_client(tmp_path)
+    record = history.create("t")
+
+    resp = client.put("/chat/draft", json={"thread_id": record.id, "content": "## x\n\n"})
+
+    assert resp.status_code == 409
+    assert history.get_pending_draft(record.id) is None
+
+
+def test_put_draft_unknown_conversation_returns_404(tmp_path: Path):
+    client, _, _, _ = _draft_client(tmp_path)
+
+    resp = client.put(
+        "/chat/draft",
+        json={
+            "thread_id": "00000000-0000-0000-0000-000000000001",
+            "content": "## x\n\n",
+        },
+    )
+
+    assert resp.status_code == 404
+
+
+def test_put_draft_rejects_blank_content(tmp_path: Path):
+    client, history, _, drafts = _draft_client(tmp_path)
+    record = history.create("t")
+    drafts.put(record.id, NoteDraft(action="create", file_name="Go.md", content="## x\n\n"))
+
+    resp = client.put("/chat/draft", json={"thread_id": record.id, "content": "  \n"})
+
+    assert resp.status_code == 422
+    assert history.get_pending_draft(record.id)["content"] == "## x\n\n"
+
+
+def test_put_draft_refuses_cross_origin(tmp_path: Path):
+    client, history, _, drafts = _draft_client(tmp_path)
+    record = history.create("t")
+    drafts.put(record.id, NoteDraft(action="create", file_name="Go.md", content="## x\n\n"))
+
+    resp = client.put(
+        "/chat/draft",
+        json={"thread_id": record.id, "content": "## 偷改\n\n"},
+        headers={"origin": "https://evil.example", "host": "testserver"},
+    )
+
+    assert resp.status_code == 403
+    assert history.get_pending_draft(record.id)["content"] == "## x\n\n"
+
+
+def test_approve_after_draft_edit_writes_the_edited_body(tmp_path: Path):
+    """The edited body is what approval commits; the draft then clears."""
+    client, history, notes, drafts = _draft_client(tmp_path)
+    record = history.create("t")
+    drafts.put(record.id, NoteDraft(
+        action="create", file_name="Go.md", content="## 原始提案\n\n",
+    ))
+
+    assert client.put(
+        "/chat/draft",
+        json={"thread_id": record.id, "content": "## 我改过的正文\n\n- 修正\n\n"},
+    ).status_code == 200
+
+    review = client.post("/chat/review", json={"thread_id": record.id, "action": "approve"})
+
+    assert review.status_code == 200
+    assert review.json()["status"] == "written"
+    text = notes.read("Go.md")
+    assert "## 我改过的正文" in text
+    assert "原始提案" not in text
+    assert history.get_pending_draft(record.id) is None
+
+
+def test_override_after_draft_edit_appends_to_chosen_file(tmp_path: Path):
+    """Override still works on an edited draft and keeps the original action."""
+    client, history, notes, drafts = _draft_client(tmp_path)
+    notes.create("A.md", "A")
+    record = history.create("t")
+    drafts.put(record.id, NoteDraft(
+        action="create", file_name="C.md", content="## 要点\n\n- x\n\n",
+    ))
+
+    assert client.put(
+        "/chat/draft",
+        json={"thread_id": record.id, "content": "## 要点\n\n- x（改过）\n\n"},
+    ).status_code == 200
+
+    review = client.post("/chat/review", json={
+        "thread_id": record.id,
+        "action": "override",
+        "write_action": "append",
+        "file_name": "A.md",
+    })
+
+    assert review.json()["file_name"] == "A.md"
+    assert "（改过）" in notes.read("A.md")
+    assert not notes.exists("C.md")
+    assert history.get_pending_draft(record.id) is None
 

@@ -339,3 +339,10 @@ class ChatAgent:
             file_name=file_name,
             retrieval=self._retrieval,
         )
+
+    def update_draft_content(self, thread_id: str, content: str) -> dict:
+        """Save edits to the pending draft. Only the conversation state changes."""
+        draft = self._drafts.update_content(thread_id, content)
+        if draft is None:
+            return {"error": "no pending draft"}
+        return {"status": "updated", "pending_draft": draft.as_dict()}

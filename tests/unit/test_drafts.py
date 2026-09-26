@@ -401,3 +401,54 @@ def test_create_partial_write_keeps_draft_but_leaves_title_file(tmp_path, monkey
     assert "error" in result
     assert (tmp_path / "Go.md").read_text(encoding="utf-8") == "# Go\n\n"
     assert DraftStore(store._history).get(tid).as_dict() == draft.as_dict()
+
+
+def test_update_content_rewrites_only_content(tmp_path):
+    """Editing the pending draft keeps every other field and never touches disk."""
+    notes = FileNoteRepository(tmp_path)
+    notes.create("Go.md", "Go")
+    before = notes.read("Go.md")
+    draft = NoteDraft(
+        action="append",
+        file_name="Go.md",
+        content="## 旧正文\n\n",
+        reason="补一节",
+        similar=["Go.md"],
+        existing_files=["Go.md"],
+    )
+    store, tid = _store_with(draft)
+
+    updated = store.update_content(tid, "## 新正文\n\n改过了。\n")
+
+    assert updated is not None
+    assert updated.content == "## 新正文\n\n改过了。\n"
+    # 重新包装同一个数据库读取：落库的必须是完整草稿，不只 content 变了。
+    assert DraftStore(store._history).get(tid).as_dict() == {
+        **draft.as_dict(),
+        "content": "## 新正文\n\n改过了。\n",
+    }
+    # DraftStore 不持有 notes / retrieval，这里直接确认正式笔记没有被写。
+    assert notes.read("Go.md") == before
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["Go.md"]
+
+
+def test_update_content_without_draft_returns_none(tmp_path):
+    engine = create_engine_from_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    history = ConversationStore(create_session_factory(engine))
+    conv = history.create("t")
+    store = DraftStore(history)
+
+    assert store.update_content(conv.id, "## 正文\n\n") is None
+    assert history.get_pending_draft(conv.id) is None
+
+
+def test_update_content_rejects_blank_content(tmp_path):
+    """空白正文会让非 delete 审批在写盘时才失败，必须在保存时就拒绝。"""
+    draft = NoteDraft(action="append", file_name="A.md", content="## 原文\n\n")
+    store, tid = _store_with(draft)
+
+    with pytest.raises(ValueError):
+        store.update_content(tid, "   \n\n")
+
+    assert DraftStore(store._history).get(tid).content == "## 原文\n\n"

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 #/chat 路由的请求体模型
 class RequestModel(BaseModel):
@@ -18,6 +18,21 @@ class ReviewRequest(BaseModel):
     action: str
     write_action: str | None = None
     file_name: str | None = None
+
+
+class DraftContentRequest(BaseModel):
+    """JSON body for PUT /chat/draft: the edited body of the pending draft only."""
+
+    thread_id: str
+    content: str
+
+    @field_validator("content")
+    @classmethod
+    def content_not_blank(cls, value: str) -> str:
+        """Reject an empty body before it reaches the store's write validation."""
+        if not value.strip():
+            raise ValueError("content is required")
+        return value
 
 
 class ConversationOut(BaseModel):

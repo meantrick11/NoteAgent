@@ -16,13 +16,18 @@ from noteagent.chat.schemas import (
     CitationOut,
     ConversationDetailOut,
     ConversationOut,
+    DraftContentRequest,
     MessageOut,
     RenameConversation,
     RequestModel,
     ReviewRequest,
     ToolStepOut,
 )       #获取对应的路由请求体或者响应体的pydantic模型
-from noteagent.model_management.router import chat_lease, write_lease
+from noteagent.model_management.router import (
+    chat_lease,
+    require_same_origin,
+    write_lease,
+)
 from noteagent.model_management.service import RuntimeSnapshot
 from noteagent.web import read_home_html    #返回前端初始网页
 
@@ -200,6 +205,30 @@ async def chat_with(
         )
 
 # 
+@router.put("/chat/draft", dependencies=[Depends(require_same_origin)])
+async def update_chat_draft(
+    request: Request,
+    require: Annotated[DraftContentRequest, Body()],
+    snapshot: Annotated[RuntimeSnapshot, Depends(write_lease)],
+) -> dict:
+    """Save edits to the pending draft's body.
+
+    Only conversations.pending_draft changes here: no note is written and no
+    vector is touched. Approval still goes through POST /chat/review.
+    """
+    history = request.app.state.container.history
+    if history.get(require.thread_id) is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    agent = snapshot.chat_agent
+    _logger.info(
+        "[thread=%s] draft update chars=%d", require.thread_id, len(require.content)
+    )
+    result = agent.update_draft_content(require.thread_id, require.content)
+    if "error" in result:
+        raise HTTPException(status_code=409, detail=result["error"])
+    return result
+
+
 @router.post("/chat/review")
 async def chat_review(
     request: Request,
