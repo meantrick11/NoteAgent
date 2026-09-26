@@ -1,0 +1,85 @@
+{
+  "cases_path": "evals/prompt/v1_acceptance.jsonl",
+  "case_filter": [
+    "g01",
+    "g16",
+    "g21"
+  ],
+  "label": "v1-acceptance-smoke",
+  "sort": "worst_first",
+  "review_questions": {
+    "answered": 0,
+    "total": 0
+  },
+  "cases": [
+    {
+      "file": "g01.md",
+      "id": "g01",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 77.77,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 81.82,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 100.0,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g16.md",
+      "id": "g16",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 98.86,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 96.88,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g21.md",
+      "id": "g21",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 99.13,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 100.0,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    }
+  ]
+}

@@ -158,9 +158,17 @@ def commit_review(
 
     try:
         _write_draft(notes, target_action, target_name, draft.content)
-    except (FileNotFoundError, FileExistsError, NotePathError, ValueError) as exc:
+    except (OSError, ValueError) as exc:
+        # 写盘失败（含 PermissionError 等 OSError）时必须把唯一待审草稿放回数据库，
+        # 否则用户既没写成文件，也失去了重新审批的机会。
         store.put(thread_id, draft)
-        _logger.warning("draft write failed thread=%s error=%s", thread_id, exc)
+        _logger.warning(
+            "draft write failed thread=%s action=%s file=%s error=%s",
+            thread_id,
+            target_action,
+            target_name,
+            exc,
+        )
         return {"error": str(exc)}
 
     _logger.info(

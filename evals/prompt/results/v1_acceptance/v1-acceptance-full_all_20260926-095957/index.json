@@ -1,0 +1,587 @@
+{
+  "cases_path": "evals/prompt/v1_acceptance.jsonl",
+  "case_filter": null,
+  "label": "v1-acceptance-full",
+  "sort": "worst_first",
+  "review_questions": {
+    "answered": 0,
+    "total": 0
+  },
+  "cases": [
+    {
+      "file": "g11.md",
+      "id": "g11",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 62.25,
+      "parents": {
+        "faithful": 50.0,
+        "complete": 78.57,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 100.0,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g14.md",
+      "id": "g14",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 73.15,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 78.57,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 59.09,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g05.md",
+      "id": "g05",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 73.34,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 81.82,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 59.09,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g15.md",
+      "id": "g15",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 73.86,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 78.57,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 77.27,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g12.md",
+      "id": "g12",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 75.17,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 82.35,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 78.12,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g03.md",
+      "id": "g03",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 75.48,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 85.71,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 59.09,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g02.md",
+      "id": "g02",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 75.79,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 81.82,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 77.27,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g04.md",
+      "id": "g04",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 79.35,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 50.0,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g19.md",
+      "id": "g19",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 79.84,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 65.62,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g01.md",
+      "id": "g01",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 80.53,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 63.64,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g17.md",
+      "id": "g17",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 81.47,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 84.38,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g16.md",
+      "id": "g16",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 82.28,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 93.75,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g18.md",
+      "id": "g18",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 82.28,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 93.75,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g20.md",
+      "id": "g20",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 82.28,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 93.75,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g13.md",
+      "id": "g13",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 83.7,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 40.0,
+        "fluent": null,
+        "form": 100.0,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g25.md",
+      "id": "g25",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 93.76,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 81.25,
+        "fluent": null,
+        "form": 96.88,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g22.md",
+      "id": "g22",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 94.04,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 81.25,
+        "fluent": null,
+        "form": 100.0,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g24.md",
+      "id": "g24",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 97.15,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 77.27,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g07.md",
+      "id": "g07",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 98.34,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 90.91,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g09.md",
+      "id": "g09",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 98.34,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 90.91,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g10.md",
+      "id": "g10",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 99.13,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 100.0,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g21.md",
+      "id": "g21",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 99.13,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 100.0,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g06.md",
+      "id": "g06",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 99.21,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 90.91,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g08.md",
+      "id": "g08",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 99.21,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 90.91,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    },
+    {
+      "file": "g23.md",
+      "id": "g23",
+      "kind": "quality",
+      "behavior_pass": true,
+      "total": 100.0,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 100.0,
+        "structure": 100.0,
+        "fluent": null,
+        "form": 100.0,
+        "retrievable": 100.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    }
+  ]
+}

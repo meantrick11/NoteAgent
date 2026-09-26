@@ -6,6 +6,7 @@
 
 | 文件 | 说明 |
 |------|------|
+| [2026-09-26-v1-acceptance.md](./2026-09-26-v1-acceptance.md) | 待执行：Claude 修复审批写盘异常草稿丢失、构建 25 条生成验收样例、运行测试及评测并归档；手动功能验收由用户负责 |
 | [2026-08-20-chat-history-persistence.md](./2026-08-20-chat-history-persistence.md) | 会话列表 + PostgreSQL 消息落库（已做） |
 | [2026-08-20-conversation-rename-delete.md](./2026-08-20-conversation-rename-delete.md) | 侧栏重命名、删除（已做） |
 | [2026-08-26-context-management.md](./2026-08-26-context-management.md) | 短期记忆实现规格（已做）。表结构对照 [../architecture/database.md](../architecture/database.md)。生产库须 `alembic upgrade head` 到 `3d1c2b8a9e4f`。 |
