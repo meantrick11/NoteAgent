@@ -19,6 +19,7 @@
 | [note-quality.md](./note-quality.md) | 笔记正文质量 v0.2：三道硬门、原六维、知识加工增益与证据契约 | 现行准则 |
 | [rag-quality.md](./rag-quality.md) | 检索（RAG）v1：语料、证据标注契约、九项指标、失败分类与报告契约 | 现行准则 |
 | [rag-v1-report.md](./rag-v1-report.md) | RAG v1 的实测报告：最终验收（dev + holdout）、各次对照、失败样例、重建/回退 | 已交付（2026-09-25） |
+| [v1-acceptance-report.md](./v1-acceptance-report.md) | V1 收尾：审批写盘异常修复、25 条生成验收样例实跑、自动测试与旧集回归 | 已交付（2026-09-26）；手动功能验收待用户执行 |
 | 工具 / Agent 轨迹 | 该不该 `propose_note`、工具顺序、create/append/replace/delete | 以后写本目录；数据仍用 [`evals/agent/`](../../evals/agent/README.md) 与 prompt 集里的 behavior 条 |
 | RAG | Recall、命中文件/章节、引用 | 见 [rag-quality.md](./rag-quality.md)；数据在 [`evals/rag/`](../../evals/rag/README.md)；这一轮的问题与经验见 [architecture/rag-v1-retrospective.md](../architecture/rag-v1-retrospective.md) |
 

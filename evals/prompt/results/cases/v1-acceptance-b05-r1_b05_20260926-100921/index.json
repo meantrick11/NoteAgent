@@ -1,0 +1,37 @@
+{
+  "cases_path": "evals/prompt/cases.jsonl",
+  "case_filter": [
+    "b05"
+  ],
+  "label": "v1-acceptance-b05-r1",
+  "sort": "worst_first",
+  "review_questions": {
+    "answered": 0,
+    "total": 0
+  },
+  "cases": [
+    {
+      "file": "b05.md",
+      "id": "b05",
+      "kind": "behavior",
+      "behavior_pass": true,
+      "total": 86.09,
+      "parents": {
+        "faithful": 100.0,
+        "complete": 85.0,
+        "structure": 70.0,
+        "fluent": null,
+        "form": 100.0,
+        "retrievable": 80.0
+      },
+      "qualified": null,
+      "semantic_completed": false,
+      "hard_gates": {},
+      "dimensions": {},
+      "review_questions": {
+        "answered": 0,
+        "total": 0
+      }
+    }
+  ]
+}

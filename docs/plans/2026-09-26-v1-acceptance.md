@@ -10,6 +10,26 @@
 
 **需求依据：**用户已指定三项工作：写入异常 bug 修复、完整生成验收样例集构建、执行测试并记录结果；用户自行执行手动功能测试。另参考 [版本路线图 V1](../roadmap/versions.md)、[评测说明](../evaluations/README.md)、[prompt 样例说明](../../evals/prompt/README.md)。本计划不代表 V1 已验收。
 
+## 执行结果摘要（2026-09-26 回填）
+
+执行分支 `feat/v1-acceptance`。完整结果、逐条明细与偏差说明见 [v1-acceptance-report.md](../evaluations/v1-acceptance-report.md)。
+
+| 任务 | 状态 | 实际结果 |
+|------|------|----------|
+| 1 写盘异常修复 | 完成 | 捕获范围扩为 `(OSError, ValueError)`，草稿写回数据库；6 类操作边界有确定性测试；部分写入限制已记录 |
+| 2 验收样例集 | 完成 | `evals/prompt/v1_acceptance.jsonl` 25 条（五类各 5）+ `v1_acceptance.md` 断言清单 + 完整性测试，加载器与 CLI 无需改动 |
+| 3.1 自动测试 | 完成 | 三组命令退出码均 0；全量 `pytest tests` 478 passed，无失败与跳过 |
+| 3.2 真实生成评测 | 完成 | 冒烟 3 条通过；全量 25 条行为门 25/25、内容审查 25/25、运行错误 0；旧集回归行为门 19/20 |
+| 3.3 报告与归档 | 完成 | 报告、评测 README、路线图状态、本计划勾选均已更新 |
+
+执行中需知悉的偏离与记录：
+
+1. **提交策略**：本计划默认"不自动提交"；执行时用户明确要求"每个任务完成即提交"，故按任务分为 4 个 Conventional Commit 提交在本分支，**未推送、未合并 main**。
+2. **手动功能测试**：仍由用户执行，报告 §9 给出清单，状态一律"待用户测试"。
+3. **b05 不稳定**：旧集 b05 本轮行为门失败（模型宣称已提案但未调用 `propose_note`），两次定向复跑均恢复通过，判定为不稳定样例而非本次改动引入。
+4. **三条锚点未命中**：g02/g03/g05 的发言人姓名未保留，关键事实齐全，按内容判通过并记录，未回头修改锚点。
+5. **`faithful.hedge` 假信号**：材料同时含情态词与强化词时，草稿忠实照抄也会被判"情态加强"，故 g06–g10、g19 的材料已避免强化词（`必须/只能/一定/总是/绝对`），g11 保留 may/must 的设计张力并在报告中记录该偏差。
+
 ## 约束与执行前检查
 
 - 阅读根目录 `CLAUDE.md`、当前目录适用的 `AGENTS.md`（若存在）及下表相关文件。
@@ -50,7 +70,7 @@
 
 ### 执行步骤
 
-- [ ] 在 `tests/unit/test_drafts.py` 引入 `pytest`，增加下面的异常与重试测试。使用既有 `_store_with` 和 `FakeRetrieval`，它们分别操作测试数据库和记录索引调用。
+- [x] 在 `tests/unit/test_drafts.py` 引入 `pytest`，增加下面的异常与重试测试。使用既有 `_store_with` 和 `FakeRetrieval`，它们分别操作测试数据库和记录索引调用。
 
 ```python
 @pytest.mark.parametrize("error", [PermissionError("denied"), OSError("disk failure")])
@@ -83,13 +103,13 @@ def test_write_error_preserves_draft_and_allows_retry(tmp_path, monkeypatch, err
     assert retrieval.indexed == ["A.md"]
 ```
 
-- [ ] 运行该测试，确认修复前由注入的文件操作异常导致失败，而非测试环境错误。
+- [x] 运行该测试，确认修复前由注入的文件操作异常导致失败，而非测试环境错误。
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/unit/test_drafts.py -q -k write_error
 ```
 
-- [ ] 将 `commit_review` 的写盘捕获分支改为以下逻辑；沿用现有错误响应，日志保留 thread、action、目标文件及异常，不打印草稿全文。
+- [x] 将 `commit_review` 的写盘捕获分支改为以下逻辑；沿用现有错误响应，日志保留 thread、action、目标文件及异常，不打印草稿全文。
 
 ```python
     except (OSError, ValueError) as exc:
@@ -101,7 +121,7 @@ def test_write_error_preserves_draft_and_allows_retry(tmp_path, monkeypatch, err
         return {"error": str(exc)}
 ```
 
-- [ ] 按同一断言契约补齐以下有意义的操作边界，用 `monkeypatch` 注入异常，不修改真实目录权限：
+- [x] 按同一断言契约补齐以下有意义的操作边界，用 `monkeypatch` 注入异常，不修改真实目录权限：
 
 | 场景 | 注入位置 | 必须断言 |
 |---|---|---|
@@ -111,8 +131,8 @@ def test_write_error_preserves_draft_and_allows_retry(tmp_path, monkeypatch, err
 | override 写盘失败 | 覆写目标的 `notes.write` | 保留原始提案全部字段，目标文件未变，可再次指定 override |
 | create 已建标题、追加正文失败 | `notes.write` | 草稿保留、不索引；明确记录残留标题文件及同名 create 重试冲突，不宣称无损重试 |
 
-- [ ] 保留并运行拒绝、不存在文件、非法路径、成功后清空草稿的原有测试。特别确认 `test_index_failure_keeps_written_file` 仍通过：索引失败不是文件写盘失败，已成功写入的草稿不应恢复成待审而导致重复写入。
-- [ ] 运行 `tests/unit/test_drafts.py`、`tests/unit/test_chat_history.py`、`tests/integration/test_retrieval_service.py`。在报告中区分“写入前失败可直接重试”与“部分写入后保留草稿但可能需核对文件”。
+- [x] 保留并运行拒绝、不存在文件、非法路径、成功后清空草稿的原有测试。特别确认 `test_index_failure_keeps_written_file` 仍通过：索引失败不是文件写盘失败，已成功写入的草稿不应恢复成待审而导致重复写入。
+- [x] 运行 `tests/unit/test_drafts.py`、`tests/unit/test_chat_history.py`、`tests/integration/test_retrieval_service.py`。在报告中区分“写入前失败可直接重试”与“部分写入后保留草稿但可能需核对文件”。
 
 ## 任务 2：构建完整生成验收样例集
 
@@ -154,7 +174,7 @@ def test_write_error_preserves_draft_and_allows_retry(tmp_path, monkeypatch, err
 
 ### 执行步骤
 
-- [ ] 先创建覆盖完整性检查的 `tests/unit/test_v1_acceptance_cases.py`。核心测试如下；加载路径沿用现有项目测试习惯。
+- [x] 先创建覆盖完整性检查的 `tests/unit/test_v1_acceptance_cases.py`。核心测试如下；加载路径沿用现有项目测试习惯。
 
 ```python
 import json
@@ -186,17 +206,17 @@ def test_v1_acceptance_set_is_complete_and_loadable():
     assert len(load_cases(path)) == 25
 ```
 
-- [ ] 确认新测试因数据文件尚不存在而失败，随后撰写上述 25 条完整输入，不留占位材料。每条明确要求整理并保存笔记；modify 类提供完整 `seed_files` 原文及操作要求。
-- [ ] 配置现有可用的 `expect_action`、`expect_tools_prefix`、`must_headings`、`must_substrings` 等。仅对用户明确要求的内容设置精确字串，不将合理转述误判为失败。不要给每条任意设同一工具顺序，先核对当前系统提示词契约。
-- [ ] 编写 `v1_acceptance.md`，逐条记录输入类型、预期动作、目标文件（或合理文件名范围）、必须保留事实、禁止添加事实、代码/路径约束、是否允许合理改写及失败判定。modify 类必须列出不能被删除的原有内容。
-- [ ] 运行新数据检查及现有 prompt_eval 测试，确认无需修改加载器或 CLI 即可运行；若确实需要工具改动，先用失败测试证明缺口，只做必要兼容扩展。
-- [ ] 更新 `evals/prompt/README.md`，说明新集是 V1 生成覆盖验收，旧行为集和 v0.2 学习型质量集仍独立，不混算分数。
+- [x] 确认新测试因数据文件尚不存在而失败，随后撰写上述 25 条完整输入，不留占位材料。每条明确要求整理并保存笔记；modify 类提供完整 `seed_files` 原文及操作要求。
+- [x] 配置现有可用的 `expect_action`、`expect_tools_prefix`、`must_headings`、`must_substrings` 等。仅对用户明确要求的内容设置精确字串，不将合理转述误判为失败。不要给每条任意设同一工具顺序，先核对当前系统提示词契约。
+- [x] 编写 `v1_acceptance.md`，逐条记录输入类型、预期动作、目标文件（或合理文件名范围）、必须保留事实、禁止添加事实、代码/路径约束、是否允许合理改写及失败判定。modify 类必须列出不能被删除的原有内容。
+- [x] 运行新数据检查及现有 prompt_eval 测试，确认无需修改加载器或 CLI 即可运行；若确实需要工具改动，先用失败测试证明缺口，只做必要兼容扩展。
+- [x] 更新 `evals/prompt/README.md`，说明新集是 V1 生成覆盖验收，旧行为集和 v0.2 学习型质量集仍独立，不混算分数。
 
 ## 任务 3：执行测试、真实生成评测与结果归档
 
 ### 3.1 自动测试
 
-- [ ] 执行下面的测试，分别记录命令、时间、退出码、通过/失败/跳过数；可用 `uv run pytest` 替代本机解释器路径。
+- [x] 执行下面的测试，分别记录命令、时间、退出码、通过/失败/跳过数；可用 `uv run pytest` 替代本机解释器路径。
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/unit/test_drafts.py tests/unit/test_chat_history.py tests/integration/test_retrieval_service.py -q
@@ -204,33 +224,33 @@ def test_v1_acceptance_set_is_complete_and_loadable():
 .\.venv\Scripts\python.exe -m pytest tests -q
 ```
 
-- [ ] 若临时目录权限导致 fixture 初始化失败，区分环境错误与产品断言失败。选取可写的全新绝对目录作为 `--basetemp`，先创建其父目录；pytest 可能清理该目录，绝不能指向用户目录或已有数据。仍失败则记录实际边界，不反复把相同环境错误报告为代码失败。
-- [ ] 修复本次引入的测试回归。已有不相关失败记录来源和影响；不为全绿修改无关功能或旧期望。
+- [x] 若临时目录权限导致 fixture 初始化失败，区分环境错误与产品断言失败。选取可写的全新绝对目录作为 `--basetemp`，先创建其父目录；pytest 可能清理该目录，绝不能指向用户目录或已有数据。仍失败则记录实际边界，不反复把相同环境错误报告为代码失败。
+- [x] 修复本次引入的测试回归。已有不相关失败记录来源和影响；不为全绿修改无关功能或旧期望。
 
 ### 3.2 真实模型生成与内容审查
 
-- [ ] 固定当前代码版本、未提交差异、系统提示词、样例集、生成模型和可见模型参数，记录样例与 prompt 的 SHA-256。CLI 使用 `Settings` 的模型配置，不保证等于界面已激活 profile；必须记录实际运行模型，不能只抄 UI 名称。
-- [ ] 先跑 g01、g16、g21 三条冒烟，确认普通生成、代码材料和已有笔记修改能执行。冒烟仅检查运行入口，不计作全量验收的额外样例。
+- [x] 固定当前代码版本、未提交差异、系统提示词、样例集、生成模型和可见模型参数，记录样例与 prompt 的 SHA-256。CLI 使用 `Settings` 的模型配置，不保证等于界面已激活 profile；必须记录实际运行模型，不能只抄 UI 名称。
+- [x] 先跑 g01、g16、g21 三条冒烟，确认普通生成、代码材料和已有笔记修改能执行。冒烟仅检查运行入口，不计作全量验收的额外样例。
 
 ```powershell
 uv run python scripts/eval_notes.py --cases evals/prompt/v1_acceptance.jsonl --ids g01,g16,g21 --name v1-acceptance-smoke
 ```
 
-- [ ] 使用同一配置完整运行 25 条一次，同时运行已有 20 条旧集作为行为/正文回归；保存 CLI 实际输出目录，不使用 `--force` 覆盖旧结果。
+- [x] 使用同一配置完整运行 25 条一次，同时运行已有 20 条旧集作为行为/正文回归；保存 CLI 实际输出目录，不使用 `--force` 覆盖旧结果。
 
 ```powershell
 uv run python scripts/eval_notes.py --cases evals/prompt/v1_acceptance.jsonl --name v1-acceptance-full
 uv run python scripts/eval_notes.py --cases evals/prompt/cases.jsonl --name v1-acceptance-regression
 ```
 
-- [ ] 逐条对照完整输入、seed、工具轨迹和生成草稿进行内容审查，填写配套清单中所有断言的实际结果。由 Claude 执行的检查标为“执行代理内容审查”，不是独立人工验收；引用输出片段或产物路径支撑结论。实际草稿非空、动作与目标正确、关键事实无明显遗漏、没有来源外关键结论、代码和标识符符合输入要求，才判该条通过。
-- [ ] 自动评分仅作为辅助。没有执行语义 Judge 时，不得把 `semantic_completed=false` 写为语义通过，也不得用旧 v0.1 `total` 代替内容审查。无需为了 V1 引入新的 Judge 服务或追求 v0.2 加工高分。
-- [ ] 首次全量结果必须保留。失败时记录运行错误、动作错误、目标错误、内容遗漏、事实增添、代码损坏等具体分类；区分旧失败和新回归。必要的定向复跑保存独立 run ID，不覆盖首次结果、不按最好结果取代分母。
-- [ ] 本任务不扩大为 prompt 调优项目。若失败需要改提示词或生成策略，记录对应输入与输出，作为后续明确任务；不得暗改提示词后继续引用旧全量结果。
+- [x] 逐条对照完整输入、seed、工具轨迹和生成草稿进行内容审查，填写配套清单中所有断言的实际结果。由 Claude 执行的检查标为“执行代理内容审查”，不是独立人工验收；引用输出片段或产物路径支撑结论。实际草稿非空、动作与目标正确、关键事实无明显遗漏、没有来源外关键结论、代码和标识符符合输入要求，才判该条通过。
+- [x] 自动评分仅作为辅助。没有执行语义 Judge 时，不得把 `semantic_completed=false` 写为语义通过，也不得用旧 v0.1 `total` 代替内容审查。无需为了 V1 引入新的 Judge 服务或追求 v0.2 加工高分。
+- [x] 首次全量结果必须保留。失败时记录运行错误、动作错误、目标错误、内容遗漏、事实增添、代码损坏等具体分类；区分旧失败和新回归。必要的定向复跑保存独立 run ID，不覆盖首次结果、不按最好结果取代分母。
+- [x] 本任务不扩大为 prompt 调优项目。若失败需要改提示词或生成策略，记录对应输入与输出，作为后续明确任务；不得暗改提示词后继续引用旧全量结果。
 
 ### 3.3 验收报告
 
-- [ ] 创建 `docs/evaluations/v1-acceptance-report.md`，必须包括以下内容，并填写实际结果；未执行的写明“未执行”及原因，不填估计值。
+- [x] 创建 `docs/evaluations/v1-acceptance-report.md`，必须包括以下内容，并填写实际结果；未执行的写明“未执行”及原因，不填估计值。
 
 | 报告部分 | 必需内容 |
 |---|---|
@@ -245,9 +265,9 @@ uv run python scripts/eval_notes.py --cases evals/prompt/cases.jsonl --name v1-a
 | 手动功能验收 | 用户负责，状态“待用户执行/反馈”；没有反馈不得标为通过 |
 | 结论 | 自动化结果、生成覆盖结果、手动功能结果分别陈述，明确是否还有未完成项 |
 
-- [ ] 为用户附一份简短手动测试清单即可，不代执行：创建后跨会话检索、追加、覆盖清旧、删除、拒绝不变、重启后历史与待审草稿恢复。每项初始状态均为“待用户测试”。
-- [ ] 更新评测 README 的报告链接，并在路线图链接本报告。删除或更正“仍缺有效 RAG 查询集”的过时说法，引用既有 RAG 报告并标注其历史日期；本轮不重跑 RAG，也不把历史检索结果写成本轮实测。
-- [ ] 将本计划每项勾选状态与报告保持一致，最终回复列出交付路径、真实执行结果、未完成项及需用户手动测试的内容。
+- [x] 为用户附一份简短手动测试清单即可，不代执行：创建后跨会话检索、追加、覆盖清旧、删除、拒绝不变、重启后历史与待审草稿恢复。每项初始状态均为“待用户测试”。
+- [x] 更新评测 README 的报告链接，并在路线图链接本报告。删除或更正“仍缺有效 RAG 查询集”的过时说法，引用既有 RAG 报告并标注其历史日期；本轮不重跑 RAG，也不把历史检索结果写成本轮实测。
+- [x] 将本计划每项勾选状态与报告保持一致，最终回复列出交付路径、真实执行结果、未完成项及需用户手动测试的内容。
 
 ## 完成条件与结论规则
 
