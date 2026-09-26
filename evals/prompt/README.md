@@ -7,6 +7,8 @@
 | 文件 | 作用 |
 |------|------|
 | [`cases.jsonl`](cases.jsonl) | 一行一条；20 条（n01–n13 正文，b01–b07 行为） |
+| [`v1_acceptance.jsonl`](v1_acceptance.jsonl) | V1 生成覆盖验收；25 条（g01–g25），五类各 5 条，全部要求产生非空正文 |
+| [`v1_acceptance.md`](v1_acceptance.md) | g01–g25 的逐条断言、运行方式、判据与已知 L1 偏差 |
 | [`learning_notes.jsonl`](learning_notes.jsonl) | v0.2 学习型笔记校准集；首条为 Python 教程第 1 章 |
 | [`fixtures/learning_notes/`](fixtures/learning_notes/) | 四个固定候选，只作评测输入，不写入用户 notes |
 | [`results/`](results/README.md) | `python scripts/eval_notes.py` 写出的报告（按 jsonl 主文件名分子目录） |
@@ -33,6 +35,21 @@
 | b05 | behavior | 明确更正过时表述 → list_files，提案 replace（`seed_files`） |
 | b06 | behavior | 明确删文件 → list_files，提案 delete（`seed_files`） |
 | b07 | behavior | 往已有主题再补一节 → list_files，提案 append 或 create，不得 replace |
+
+## V1 生成验收集
+
+`v1_acceptance.jsonl` 是 V1 的生成覆盖验收集：25 条输入、五类各 5 条（对话、长文、英文、代码、已有笔记修改），每条都必须产生非空笔记正文，预期动作只允许 create / append / replace。长文类每条输入不少于 2,000 个字符，只是覆盖检查，不是质量分数。
+
+```bash
+uv run python scripts/eval_notes.py --cases evals/prompt/v1_acceptance.jsonl --name v1-acceptance-full
+```
+
+边界：
+
+- 寒暄、拒答、只检索、删除和固定候选评分**不在**这 25 条里；删除仍由 `cases.jsonl` 的 `b06` 单独回归。
+- 本集与 `cases.jsonl`（20 条行为/正文回归）、`learning_notes.jsonl`（v0.2 加工质量）**分开记账**，不合并分母，也不用 v0.2 加工分充当 V1 门槛。
+- 数据行额外带 `category` 字段，仅用于完整性检查与报告分组；现有加载器忽略未知字段，运行时模型不需要改动。
+- 逐条断言写在 [`v1_acceptance.md`](v1_acceptance.md)，由审查对照执行，不由脚本自动校验语义；JSONL 里的 `must_anchors` 与 `must_headings` 才会被 L1 自动检查。
 
 ## 基础使用
 
