@@ -6,6 +6,7 @@
 
 | 文件 | 说明 |
 |------|------|
+| [2026-09-26-chat-draft-in-citation-pane.md](./2026-09-26-chat-draft-in-citation-pane.md) | 已做：把 AI 待审笔记草稿移入右侧引用面板编辑与审批，保留草稿动作和引用笔记编辑行为 |
 | [2026-09-26-v1-acceptance.md](./2026-09-26-v1-acceptance.md) | 待执行：Claude 修复审批写盘异常草稿丢失、构建 25 条生成验收样例、运行测试及评测并归档；手动功能验收由用户负责 |
 | [2026-08-20-chat-history-persistence.md](./2026-08-20-chat-history-persistence.md) | 会话列表 + PostgreSQL 消息落库（已做） |
 | [2026-08-20-conversation-rename-delete.md](./2026-08-20-conversation-rename-delete.md) | 侧栏重命名、删除（已做） |

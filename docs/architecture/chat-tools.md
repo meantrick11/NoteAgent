@@ -38,7 +38,7 @@ flowchart TD
   draft[DraftStore.put]
   reply[token 与 assistant_final]
   sse[SSE draft]
-  card[home.html 卡片]
+  pane[home.html 引用面板草稿模式]
   review[POST /chat/review]
   disk[_write_draft 写 notes/]
   user --> hop --> noTool
@@ -77,7 +77,7 @@ flowchart TD
 | 明确更正、覆盖、改掉已有过时/错误表述 | 先 `list_files`，再 `read_file` 全文，然后 `propose_note(replace)`；content 为完整文件（含原有一级标题） | 不读就覆盖；只交改动的几行 |
 | 明确删除某篇笔记文件 | 先 `list_files` 确认文件名，必要时 `read_file`，然后 `propose_note(delete)`；content 可空 | 未确认文件名就删 |
 
-提案成功后助手回复一两句「已提交审批」，不粘贴完整草稿（卡片单独显示）。
+提案成功后助手回复一两句「草稿已生成并待你审批」，不粘贴完整草稿（正文在右侧引用面板的草稿模式里显示和编辑）。
 
 ---
 
@@ -172,20 +172,22 @@ HTTP：`POST /chat/review`，body [`ReviewRequest`](../../src/noteagent/chat/sch
 | `override` | `write_action` 必须 ∈ `WRITE_ACTIONS` 且带 `file_name`；否则把 draft 放回，`{error: "override requires write_action and file_name"}` |
 | 其它 | 放回 draft，`{error: "unknown action ..."}` |
 
-写盘失败（`FileNotFoundError` / `FileExistsError` / `NotePathError` / `ValueError`）同样放回 draft，返回 `{error}`。
+写盘失败（`OSError`，含 `PermissionError` / `FileNotFoundError` / `FileExistsError`；以及 `ValueError`，含 `NotePathError`）同样放回 draft，返回 `{error}`。草稿一定保留在 `pending_draft`，但不保证文件原子性：`create` 先建标题再追加正文，中途失败会残留标题文件。
 
 成功：`{status: "written", action: target_action, file_name}`（delete 也用 `written`，不是另起 status）。
 
-前端 [`renderDraftCard`](../../src/noteagent/web/templates/home.html)：
+前端 [`home.html`](../../src/noteagent/web/templates/home.html) 右侧面板的草稿模式（`renderDraftActions`）：
 
-- `append` / `create`：同意、改追加到所选、改为新建、拒绝。
+- `append` / `create`：同意追加/新建、改为追加到所选文件、改为新建文件、拒绝。
 - `replace`：同意覆盖、拒绝；无 override 按钮。
-- `delete`：同意删除、拒绝；不渲染 content。
-- `sendReview`：`status === "written"` 且 `action === "delete"` 显示「已删除」，否则「已写入」；成功后移除卡片。打开会话时 `GET /conversations/{id}` 若有 `pending_draft` 再画卡。
+- `delete`：同意删除、拒绝；无正文，正文为空时「保存草稿」禁用。
+- 保存草稿：`PUT /chat/draft` 只改 `conversations.pending_draft` 的正文，成功后用响应里的 canonical 草稿刷新面板；失败保留编辑内容与未保存状态。
+- `sendReview`：`status === "written"` 且 `action === "delete"` 显示「已删除」，否则「已写入」；成功后清掉该会话的草稿模式。正文有未保存修改时先保存成功再审批，保存失败不审批旧版本。
+- 打开会话时 `GET /conversations/{id}` 若有 `pending_draft` 就打开草稿模式；同会话已有的未保存缓冲优先，不被服务端旧快照覆盖。
 
-后端 override 虽允许 `write_action` 为 replace/delete，当前卡片不会发出这两种 override。
+后端 override 虽允许 `write_action` 为 replace/delete，当前面板不会发出这两种 override。
 
-`DraftStore` 写 `conversations.pending_draft`。重启或切会话后未审稿仍在；已审批列为空，不再出卡。
+`DraftStore` 写 `conversations.pending_draft`。重启或切会话后未审稿仍在；已审批列为空，不再进草稿模式。
 
 ---
 
@@ -204,10 +206,10 @@ HTTP：`POST /chat/review`，body [`ReviewRequest`](../../src/noteagent/chat/sch
 | [`chat/tools.py`](../../src/noteagent/chat/tools.py) | 四个工具 |
 | [`chat/drafts.py`](../../src/noteagent/chat/drafts.py) | schema、DraftStore、`commit_review` |
 | [`chat/agent.py`](../../src/noteagent/chat/agent.py) | hop 循环、SSE draft、`review` |
-| [`chat/router.py`](../../src/noteagent/chat/router.py) | `GET /conversations/{id}`、`POST /chat`、`POST /chat/review` |
-| [`chat/schemas.py`](../../src/noteagent/chat/schemas.py) | `ReviewRequest`、`ConversationDetailOut` |
+| [`chat/router.py`](../../src/noteagent/chat/router.py) | `GET /conversations/{id}`、`POST /chat`、`PUT /chat/draft`、`POST /chat/review` |
+| [`chat/schemas.py`](../../src/noteagent/chat/schemas.py) | `ReviewRequest`、`DraftContentRequest`、`ConversationDetailOut` |
 | [`prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt) | 意图门与七条质量约束（现行 v9） |
-| [`web/templates/home.html`](../../src/noteagent/web/templates/home.html) | 审批卡片 |
+| [`web/templates/home.html`](../../src/noteagent/web/templates/home.html) | 引用面板（citation / draft 两种模式） |
 | [`notes/repository.py`](../../src/noteagent/notes/repository.py) | 真正 IO |
 | [retrieval.md](./retrieval.md) | 切块、Chroma、审批后同步（不在本文展开） |
 | [`evals/prompt/`](../../evals/prompt/README.md) | 人工意图门（含 replace/delete） |

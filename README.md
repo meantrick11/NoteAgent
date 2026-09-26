@@ -45,9 +45,9 @@
 
 跨回合给模型的上下文 = 摘要水位线之后的 Persistent（含 tool stub）+ `running_summary` + 当前这一轮内存里的 Runtime。公式与截断：[上下文管理](docs/architecture/context-management.md)。会话表：[数据库](docs/architecture/database.md)。
 
-### 人审卡片
+### 待审草稿
 
-模型认为该记笔记时，会调用 `propose_note`，前端弹出卡片：同意或拒绝。`create`、`append` 可以改目标文件名。只有 `POST /chat/review` 成功后才写 `notes/`。拒绝则丢弃该草稿，不改磁盘、不改向量。
+模型认为该记笔记时，会调用 `propose_note`，右侧面板切到「待审批草稿」：正文可编辑并「保存草稿」（只改待审状态），确认后「同意追加/覆盖/删除/新建」或「拒绝」。`create`、`append` 可以改目标文件或改成新建。只有 `POST /chat/review` 成功后才写 `notes/`。拒绝则丢弃该草稿，不改磁盘、不改向量。
 
 ### Documents
 
@@ -138,7 +138,7 @@ uv run pytest -q
 | 会话三点 | 重命名（行内）、删除（确认框） |
 | Enter | 发送；流式进行中不能连发 |
 | Shift+Enter | 换行 |
-| 审批卡片 | 同意写入 / 拒绝丢弃；部分动作可改文件名 |
+| 右侧草稿面板 | 编辑正文并保存草稿；同意写入 / 拒绝丢弃；create、append 可改目标文件 |
 | 新建笔记 / 新建文件夹 | Documents 左栏底；选中文件夹则笔记建在其下 |
 | 点树中一篇 | 打开编辑 + 预览 |
 | 保存 | 工具条，或 Ctrl+S / Cmd+S |

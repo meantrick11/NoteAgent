@@ -24,7 +24,7 @@
 
 ### 1.1 一句话
 
-NoteAgent 是个人学习笔记助手：在浏览器里对话，把值得保留的内容整理成 Markdown 草稿，经用户在卡片上同意后写入本地 `notes/`；也可以在 Documents 里直接管这些文件。已索引的笔记可供语义问答。
+NoteAgent 是个人学习笔记助手：在浏览器里对话，把值得保留的内容整理成 Markdown 草稿，经用户确认后写入本地 `notes/`；也可以在 Documents 里直接管这些文件。已索引的笔记可供语义问答。
 
 ### 1.2 产品形态
 
@@ -66,7 +66,7 @@ NoteAgent 是个人学习笔记助手：在浏览器里对话，把值得保留�
 |------|----------------|
 | 个人本机、单用户 | 无账号体系、无网关集群；一个 FastAPI 进程即可 |
 | 笔记必须人类可读、可搬家 | 事实源用 Markdown 目录，而不是只进数据库 |
-| 写错不能自动永久生效 | 人审卡片；工具无写盘权限 |
+| 写错不能自动永久生效 | 人审确认；工具无写盘权限 |
 | 模型上下文有限 | Persistent / Runtime / 摘要分层；按完整 Turn 压缩 |
 | 检索可以重建 | Chroma 与人审解耦；失败不回滚 Markdown；可按文件删点重建 |
 
@@ -91,10 +91,10 @@ NoteAgent 是个人学习笔记助手：在浏览器里对话，把值得保留�
 ```text
 浏览器  home.html
     │  顶栏 Chat | Documents
-    │  Chat：侧栏会话、气泡、输入、草稿卡片、SSE
+    │  Chat：侧栏会话、气泡、输入、右侧引用/草稿面板、SSE
     │  Documents：一层目录树、编辑/预览、拖拽、芯片入库
     ▼
-HTTP  chat/router.py     会话；POST /chat；POST /chat/review；下发 HTML
+HTTP  chat/router.py     会话；POST /chat；PUT /chat/draft；POST /chat/review；下发 HTML
       notes/router.py    Documents 对 notes/ 的读写与入库
       model_management/router.py   /model-settings*：聊天配置与向量模型切换
     ▼
@@ -171,7 +171,7 @@ flowchart TD
   sseTok["SSE token"]
   sseDraft["SSE draft"]
   asstRow["append_message assistant"]
-  card["前端审批卡片"]
+  pane["右侧面板草稿模式"]
   review["POST /chat/review"]
   commit["commit_review"]
   disk["notes/*.md"]
@@ -184,12 +184,12 @@ flowchart TD
   stream --> pack --> llm
   llm -->|tool_calls| tools --> stub --> pack
   llm -->|最终正文| sseTok --> asstRow
-  stream -->|有 pending| sseDraft --> card --> review --> commit --> disk
+  stream -->|有 pending| sseDraft --> pane --> review --> commit --> disk
   disk --> chroma
   chroma -->|search 工具| tools
 ```
 
-**进页。** 下发页面；Chat 侧栏 `GET /conversations`；点会话 `GET /conversations/{id}/messages` 画气泡（助手可带气泡外过程排 `tool_steps`），再 `GET /conversations/{id}` 回湿待审卡片。列表里仍只有 user / assistant 行。
+**进页。** 下发页面；Chat 侧栏 `GET /conversations`；点会话 `GET /conversations/{id}/messages` 画气泡（助手可带气泡外过程排 `tool_steps`），再 `GET /conversations/{id}` 回湿右侧面板的待审批草稿。列表里仍只有 user / assistant 行。
 
 **发一句。** `POST /chat`：先把本句 user 写入 PostgreSQL（新 `turn_id`），SSE 推 `conversation`（侧栏拿到 id），再 `ChatAgent.stream`。本回合尚未用工具时 hop 开头推 `thinking`；用过工具后改推 `generating`（避免盖掉过程排）。超预算则压缩；再 `astream`。出现带 name 的 `tool_calls` 即推 `tool`，本地执行后 `tool_done`、写 stub、全文进 Runtime 再跳（该跳正文不进气泡）。无工具则边收边推 `token`，路由把 `assistant_final` 入库。若本轮 `propose_note` 成功，再推 `draft`。
 
@@ -243,7 +243,7 @@ flowchart TD
 
 ### 5.1 前端
 
-**职责。** 单页：顶栏切 Chat / Documents。Chat 侧栏管会话，主栏画气泡，底栏发消息，草稿以卡片出现。Documents 用一层目录树管已落地的 Markdown：打开即编辑+预览，保存/移动/删除/点芯片同步向量。不实现独立前端工程。工具过程在助手气泡外一排，不进主气泡正文。
+**职责。** 单页：顶栏切 Chat / Documents。Chat 侧栏管会话，主栏画气泡，底栏发消息，待审草稿在右侧面板的草稿模式出现。Documents 用一层目录树管已落地的 Markdown：打开即编辑+预览，保存/移动/删除/点芯片同步向量。不实现独立前端工程。工具过程在助手气泡外一排，不进主气泡正文。
 
 **结构与协作。** `GET /` 与 `GET /documents` 下发同一 [`web/templates/home.html`](../../src/noteagent/web/templates/home.html)，默认 Chat。Chat：`GET /conversations`、点会话再取消息、`POST /chat` 读 SSE、`POST /chat/review` 审草稿；点 ① 打开出处侧栏，保存走 `PUT /notes/{path}`；会话三点走 `PATCH`/`DELETE /conversations/{id}`。输入框下侧靠右有两个模型入口（聊天 / 向量），走 `/model-settings*`，代码外置在 `web/static/`（`create_app` 挂 `/static`）。Documents：文件夹与根 `.md` 同级；拖到文件夹组确认后 `POST /notes/move`；芯片 `POST /notes/{path}/index`。树、弹窗、同步滚动、两条写盘路径的界面约定见 [frontend.md](./frontend.md)。`isStreaming` 为真时不能连发；向量维护窗口内发送与写盘按钮禁用、输入保留。
 
@@ -275,6 +275,7 @@ flowchart TD
 | PATCH | `/conversations/{id}` | `history.rename`；空标题或过长 400；不改 `updated_at` |
 | DELETE | `/conversations/{id}` | `history.delete`，消息 CASCADE；204 |
 | POST | `/chat` | 落库 user → `chat_agent.stream` → 落库最终 assistant |
+| PUT | `/chat/draft` | `chat_agent.update_draft_content` → 只改 `conversations.pending_draft` 的正文；无草稿 409、缺会话 404、空正文 422、跨源 403 |
 | POST | `/chat/review` | `chat_agent.review` → `commit_review` |
 
 #### 5.2.2 Documents 路由
@@ -327,7 +328,7 @@ flowchart TD
 
 提案动作：`append` / `create` / `replace` / `delete`。意图门在 [`prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt)（现行 v9）：闲聊不提案；材料用意不明先问；记笔记必须先 `list_files`；覆盖必须先读全文。默认“记下来/整理成笔记”按学习型笔记（七条质量，含知识加工增益）；只有用户显式要求完全忠实翻译、逐段翻译或保持原结构时才以原结构为骨架。质量细则见 [note-quality.md](../evaluations/note-quality.md)，不在请求路径上打分。参数细则见 [chat-tools.md](./chat-tools.md)。
 
-**为什么。** 模型一旦能直接写文件，人审卡片失去意义，错误草稿会立刻污染 `notes/`。四工具 schema 很小，每轮都带上，避免切错「聊天/Agent」模式后无法记笔记。意图放在提示词，与 `stream` 同一次请求完成。
+**为什么。** 模型一旦能直接写文件，人审确认失去意义，错误草稿会立刻污染 `notes/`。四工具 schema 很小，每轮都带上，避免切错「聊天/Agent」模式后无法记笔记。意图放在提示词，与 `stream` 同一次请求完成。
 
 **代码落点。** [`chat/tools.py`](../../src/noteagent/chat/tools.py)、[`ProposeNoteInput`](../../src/noteagent/chat/drafts.py)、[`chat/prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt)。`prompts/iterations/` 是调参归档，不是本模块结构的一部分。
 
@@ -342,7 +343,7 @@ flowchart TD
 | Persistent | watermark 之后的 user、最终 assistant、tool stub | 是 | 仅 user / 最终 assistant |
 | `running_summary` | 会话一行累积摘要 | 有则带上 | 否 |
 | Runtime | 当前 Turn 的 tool_call 与工具**全文** | 仅本轮后续 hop | 否 |
-| DraftStore | 待审笔记全文（PG） | 一行工作区 | SSE 卡片；打开会话回湿 |
+| DraftStore | 待审笔记全文（PG） | 一行工作区 | SSE draft 事件；打开会话回湿 |
 
 [`build_pack`](../../src/noteagent/chat/context_pack.py) 拼：system、工具定义、summary、Persistent、当前 user、draft 一行、Runtime。用户句若抽出编号/`##` 标题，会注入「材料标题树」作为当前任务范围内的覆盖与章节边界参考，不要求输出标题与原文逐字相同。当前 Turn 已写入的 stub **不**再装进 pack。包体积达到窗口触发比例时，[`context_compact.py`](../../src/noteagent/chat/context_compact.py) 只从**已完成** Turn 切一段做成摘要，拼到旧 `running_summary`，watermark 推到被切的最后一个已完成 `turn_id`。旧 `messages` 行不删。
 
@@ -366,7 +367,7 @@ flowchart TD
 
 **职责。** 暂存待审草稿；用户表态后由确定性代码改磁盘。不调用 LLM。
 
-**结构与协作。** [`DraftStore`](../../src/noteagent/chat/drafts.py) 把每会话一份 pending 写在 `conversations.pending_draft`（JSON，形状 = `NoteDraft.as_dict()`）。有 JSON = 待审；`NULL` = 无待审。`GET /conversations/{id}` 把该字段交给前端回湿卡片。`NoteDraft.as_dict()` 同时用于 SSE `draft` 事件。
+**结构与协作。** [`DraftStore`](../../src/noteagent/chat/drafts.py) 把每会话一份 pending 写在 `conversations.pending_draft`（JSON，形状 = `NoteDraft.as_dict()`）。有 JSON = 待审；`NULL` = 无待审。`GET /conversations/{id}` 把该字段交给前端回湿面板的草稿模式。`NoteDraft.as_dict()` 同时用于 SSE `draft` 事件。
 
 [`commit_review`](../../src/noteagent/chat/drafts.py)：`pop` 后，`reject` 丢弃并把列置空；`approve` 用草稿上的动作和文件名；`override` 必须带 `write_action` 与 `file_name`。`_write_draft`：`create` 先写 `# 标题` 再追加；`append` 追加；`replace` 覆盖；`delete` 删文件。路径非法或冲突则把 draft 放回 store。写盘成功后同步 Chroma（见 5.6）。
 
