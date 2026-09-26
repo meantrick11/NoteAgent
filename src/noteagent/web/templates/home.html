@@ -18,6 +18,7 @@
     --user-bubble: #eef2ff;
     --radius: 12px;
     --sidebar-width: 260px;
+    --note-pane-width: 400px;
     --header-height: 48px;
   }
 
@@ -459,6 +460,7 @@
   /* ====== Chat area ====== */
   .chat-container {
     flex: 1;
+    min-width: 0;
     overflow-y: auto;
     padding: 24px 0;
   }
@@ -473,15 +475,42 @@
     min-height: 0;
   }
   .cite-pane {
-    width: 42%;
-    min-width: 260px;
-    max-width: 520px;
+    width: var(--note-pane-width);
+    flex-shrink: 0;
     border-left: 1px solid var(--border);
     background: var(--surface);
     display: flex;
     flex-direction: column;
   }
   .cite-pane[hidden] { display: none; }
+  /* 三栏调宽：8px 命中区，视觉仍是 1px 分隔线。 */
+  .pane-resize-handle {
+    flex: 0 0 8px;
+    align-self: stretch;
+    cursor: col-resize;
+    position: relative;
+    margin: 0 -4px;
+    z-index: 5;
+    touch-action: none;
+    background: transparent;
+  }
+  .pane-resize-handle[hidden] { display: none; }
+  .pane-resize-handle::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: transparent;
+  }
+  .pane-resize-handle:hover::after,
+  .pane-resize-handle:focus-visible::after,
+  .pane-resize-handle.dragging::after { background: var(--accent); }
+  .pane-resize-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .pane-resize-handle.dragging,
+  body.pane-resizing { cursor: col-resize; }
+  body.pane-resizing { user-select: none; }
   .cite-pane-head {
     display: flex;
     align-items: center;
@@ -950,6 +979,10 @@
   </div>
 </aside>
 
+<div class="pane-resize-handle" id="conversationResizeHandle" role="separator"
+  aria-orientation="vertical" aria-label="调整会话列表宽度" tabindex="0"
+  aria-valuemin="200" aria-valuemax="400" aria-valuenow="260"></div>
+
 <!-- Main -->
 <div class="main">
   <div class="main-header">学习笔记助手</div>
@@ -963,6 +996,9 @@
       </div>
     </div>
   </div>
+  <div class="pane-resize-handle" id="notePaneResizeHandle" role="separator"
+    aria-orientation="vertical" aria-label="调整笔记面板宽度" tabindex="0"
+    aria-valuemin="300" aria-valuemax="600" aria-valuenow="400" hidden></div>
   <aside class="cite-pane" id="citePane" data-mode="citation" hidden>
     <div class="cite-pane-head">
       <span class="cite-pane-badge" id="citePaneBadge">引用</span>
@@ -1540,6 +1576,214 @@ document.addEventListener("click", (event) => {
   const trigger = citePaneButtons.querySelector('[data-act="more"]');
   if (trigger && trigger.contains(event.target)) return;
   closeDraftOverrideMenu();
+});
+
+// ========== 三栏调宽（左侧会话列表 / 中间聊天 / 右侧笔记面板）==========
+// 只持久化左右两栏宽度，中间区用剩余空间，因此不存它的固定宽度。
+const CHAT_LAYOUT_KEY = "noteagent.chat-layout.v1";
+const LAYOUT_DEFAULTS = { sidebarWidth: 260, notePaneWidth: 400 };
+const LAYOUT_LIMITS = { sidebarMin: 200, sidebarMax: 400, paneMin: 300, paneMax: 600, chatMin: 440 };
+const KEYBOARD_STEP = 10;
+const KEYBOARD_STEP_LARGE = 40;
+
+const chatShell = document.getElementById("viewChat");
+const conversationResizeHandle = document.getElementById("conversationResizeHandle");
+const notePaneResizeHandle = document.getElementById("notePaneResizeHandle");
+let chatLayout = { ...LAYOUT_DEFAULTS };
+let paneDrag = null;
+
+/** 当前视口下的有效上下界：先压右栏，再压左栏，最后允许中间区被压到 0。 */
+function chatLayoutBounds(viewport) {
+  const L = LAYOUT_LIMITS;
+  const paneMax = Math.min(L.paneMax, Math.max(L.paneMin, viewport - L.sidebarMin - L.chatMin));
+  const sidebarMax = Math.min(L.sidebarMax, Math.max(L.sidebarMin, viewport - L.paneMin - L.chatMin));
+  let paneMin = L.paneMin;
+  let sidebarMin = L.sidebarMin;
+  if (sidebarMin + paneMin > viewport) {
+    paneMin = Math.max(0, Math.min(paneMin, viewport - sidebarMin));
+    sidebarMin = Math.max(0, Math.min(sidebarMin, viewport - paneMin));
+  }
+  return { sidebarMin, sidebarMax, paneMin, paneMax };
+}
+
+function clampValue(value, low, high) {
+  return Math.round(Math.min(high, Math.max(low, value)));
+}
+
+/** 把用户意图按当前视口收进边界；返回实际生效的宽度。 */
+function effectiveChatLayout() {
+  const bounds = chatLayoutBounds(window.innerWidth);
+  return {
+    sidebarWidth: clampValue(chatLayout.sidebarWidth, bounds.sidebarMin, bounds.sidebarMax),
+    notePaneWidth: clampValue(chatLayout.notePaneWidth, bounds.paneMin, bounds.paneMax),
+    bounds,
+  };
+}
+
+function setHandleAria(handle, value, bounds) {
+  handle.setAttribute("aria-valuemin", String(bounds[0]));
+  handle.setAttribute("aria-valuemax", String(bounds[1]));
+  handle.setAttribute("aria-valuenow", String(value));
+}
+
+function applyChatLayout() {
+  const effective = effectiveChatLayout();
+  chatShell.style.setProperty("--sidebar-width", `${effective.sidebarWidth}px`);
+  chatShell.style.setProperty("--note-pane-width", `${effective.notePaneWidth}px`);
+  setHandleAria(
+    conversationResizeHandle,
+    effective.sidebarWidth,
+    [effective.bounds.sidebarMin, effective.bounds.sidebarMax],
+  );
+  setHandleAria(
+    notePaneResizeHandle,
+    effective.notePaneWidth,
+    [effective.bounds.paneMin, effective.bounds.paneMax],
+  );
+}
+
+/** 右侧面板隐藏时收起它的分隔线。 */
+function syncNotePaneHandle() {
+  notePaneResizeHandle.hidden = citePane.hidden;
+}
+
+function readStoredChatLayout() {
+  try {
+    const raw = window.localStorage.getItem(CHAT_LAYOUT_KEY);
+    if (!raw) return { ...LAYOUT_DEFAULTS };
+    const parsed = JSON.parse(raw);
+    return {
+      sidebarWidth: storedWidth(
+        parsed && parsed.sidebarWidth,
+        LAYOUT_DEFAULTS.sidebarWidth,
+        LAYOUT_LIMITS.sidebarMin,
+        LAYOUT_LIMITS.sidebarMax,
+      ),
+      notePaneWidth: storedWidth(
+        parsed && parsed.notePaneWidth,
+        LAYOUT_DEFAULTS.notePaneWidth,
+        LAYOUT_LIMITS.paneMin,
+        LAYOUT_LIMITS.paneMax,
+      ),
+    };
+  } catch {
+    // 存储损坏或不可用：退回默认宽度，页面照常可用。
+    return { ...LAYOUT_DEFAULTS };
+  }
+}
+
+/** 只接受范围内的有限数值，越界或类型不对都回退默认，再由当前视口收边。 */
+function storedWidth(value, fallback, low, high) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  if (value < low || value > high) return fallback;
+  return value;
+}
+
+function saveChatLayout() {
+  try {
+    window.localStorage.setItem(CHAT_LAYOUT_KEY, JSON.stringify(chatLayout));
+  } catch {
+    // 忽略写入失败：布局仍在本次会话内生效。
+  }
+}
+
+/** 拖动与键盘都走这里：先按边界收进意图，再重排并更新 ARIA。 */
+function setPaneWidth(kind, value) {
+  const bounds = chatLayoutBounds(window.innerWidth);
+  if (kind === "sidebar") {
+    chatLayout.sidebarWidth = clampValue(value, bounds.sidebarMin, bounds.sidebarMax);
+  } else {
+    chatLayout.notePaneWidth = clampValue(value, bounds.paneMin, bounds.paneMax);
+  }
+  applyChatLayout();
+}
+
+function paneWidthOf(kind, effective) {
+  return kind === "sidebar" ? effective.sidebarWidth : effective.notePaneWidth;
+}
+
+function beginPaneDrag(kind, handle, event) {
+  if (event.button != null && event.button !== 0) return;
+  const effective = effectiveChatLayout();
+  paneDrag = {
+    kind,
+    handle,
+    startX: event.clientX,
+    startWidth: paneWidthOf(kind, effective),
+  };
+  handle.classList.add("dragging");
+  document.body.classList.add("pane-resizing");
+  if (handle.setPointerCapture && event.pointerId != null) {
+    handle.setPointerCapture(event.pointerId);
+  }
+  event.preventDefault();
+}
+
+function movePaneDrag(event) {
+  if (!paneDrag) return;
+  // 右栏往左拖是变宽，所以取负号。
+  const delta = event.clientX - paneDrag.startX;
+  const next = paneDrag.kind === "sidebar"
+    ? paneDrag.startWidth + delta
+    : paneDrag.startWidth - delta;
+  setPaneWidth(paneDrag.kind, next);
+}
+
+function endPaneDrag() {
+  if (!paneDrag) return;
+  const { handle } = paneDrag;
+  paneDrag = null;
+  handle.classList.remove("dragging");
+  document.body.classList.remove("pane-resizing");
+  saveChatLayout();
+}
+
+function keyPaneWidth(kind, event) {
+  const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+  if (!keys.includes(event.key)) return;
+  const bounds = chatLayoutBounds(window.innerWidth);
+  const inSidebar = kind === "sidebar";
+  const lo = inSidebar ? bounds.sidebarMin : bounds.paneMin;
+  const hi = inSidebar ? bounds.sidebarMax : bounds.paneMax;
+  const current = paneWidthOf(kind, effectiveChatLayout());
+  let next = current;
+  if (event.key === "Home") {
+    next = lo;
+  } else if (event.key === "End") {
+    next = hi;
+  } else {
+    const step = event.shiftKey ? KEYBOARD_STEP_LARGE : KEYBOARD_STEP;
+    // 右栏向左是变宽，方向与左栏相反。
+    const grow = inSidebar
+      ? (event.key === "ArrowRight" ? step : -step)
+      : (event.key === "ArrowLeft" ? step : -step);
+    next = current + grow;
+  }
+  setPaneWidth(kind, next);
+  saveChatLayout();
+  event.preventDefault();
+}
+
+function wirePaneResizeHandle(kind, handle) {
+  handle.addEventListener("pointerdown", (event) => beginPaneDrag(kind, handle, event));
+  handle.addEventListener("pointermove", (event) => movePaneDrag(event));
+  handle.addEventListener("pointerup", () => endPaneDrag());
+  handle.addEventListener("pointercancel", () => endPaneDrag());
+  handle.addEventListener("keydown", (event) => keyPaneWidth(kind, event));
+}
+
+chatLayout = readStoredChatLayout();
+wirePaneResizeHandle("sidebar", conversationResizeHandle);
+wirePaneResizeHandle("pane", notePaneResizeHandle);
+applyChatLayout();
+syncNotePaneHandle();
+new MutationObserver(syncNotePaneHandle).observe(citePane, {
+  attributes: true,
+  attributeFilter: ["hidden"],
+});
+window.addEventListener("resize", () => {
+  // 视口变化只重新收边，不改用户意图，也不写存储。
+  applyChatLayout();
 });
 
 /** 把草稿切进面板。已有未保存的引用编辑时先按既有确认约定问一次。 */

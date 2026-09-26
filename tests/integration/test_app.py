@@ -633,3 +633,32 @@ def test_template_ships_resident_draft_actions_and_more_menu(tmp_path: Path):
     assert "改为追加到所选文件" not in html
     assert "改为新建文件" not in html
 
+
+def test_template_ships_two_resize_handles_with_separator_aria(tmp_path: Path):
+    """Chat 有左右两条分隔线，标记为可聚焦 separator，且不进入 Documents 视图。"""
+    client, _ = _client(tmp_path)
+    html = client.get("/").text
+
+    assert 'id="conversationResizeHandle"' in html
+    assert 'id="notePaneResizeHandle"' in html
+    assert 'role="separator"' in html
+    assert 'aria-orientation="vertical"' in html
+    assert 'aria-valuemin="200"' in html
+    assert 'aria-valuemax="400"' in html
+    assert 'aria-valuemin="300"' in html
+    assert 'aria-valuemax="600"' in html
+    assert 'aria-valuenow' in html
+    assert 'tabindex="0"' in html
+    assert "noteagent.chat-layout.v1" in html
+    # 初始 DOM：右栏分隔线随面板隐藏，宽度走 CSS 变量而不是硬编码百分比。
+    assert 'id="notePaneResizeHandle"' in html and 'hidden></div>' in html
+    assert "--sidebar-width" in html
+    assert "--note-pane-width" in html
+    # 分隔线只在 Chat 视图内，Documents 视图不包含。
+    chat_view = html.split('id="viewChat"', 1)[1].split('id="viewDocs"', 1)[0]
+    docs_view = html.split('id="viewDocs"', 1)[1]
+    assert 'id="conversationResizeHandle"' in chat_view
+    assert 'id="notePaneResizeHandle"' in chat_view
+    assert 'id="conversationResizeHandle"' not in docs_view
+    assert 'id="notePaneResizeHandle"' not in docs_view
+
