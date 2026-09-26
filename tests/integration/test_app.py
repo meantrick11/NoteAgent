@@ -610,3 +610,26 @@ def test_override_after_draft_edit_appends_to_chosen_file(tmp_path: Path):
     assert not notes.exists("C.md")
     assert history.get_pending_draft(record.id) is None
 
+
+def test_template_ships_resident_draft_actions_and_more_menu(tmp_path: Path):
+    """草稿面板：常驻批准/拒绝，覆盖方式收进「更多操作」，覆盖表单默认不占位。"""
+    client, _ = _client(tmp_path)
+    html = client.get("/").text
+
+    # 常驻操作与菜单触发器（运行时由 renderDraftActions 渲染，这里只钉住 hook 与文案）。
+    assert 'data-act="approve"' in html
+    assert 'data-act="reject"' in html
+    assert 'data-act="more"' in html
+    assert 'aria-haspopup="menu"' in html
+    assert 'aria-expanded' in html
+    assert "更多操作" in html
+    assert "同意追加" in html and "同意覆盖" in html and "同意删除" in html and "同意新建" in html
+    # 菜单项文案 + 菜单/表单容器默认隐藏，选择后才呈现。
+    assert "追加到笔记" in html
+    assert "新建笔记" in html
+    assert 'id="citePaneMenu" role="menu" aria-label="更多草稿操作" hidden' in html
+    assert 'id="citePaneForm" hidden' in html
+    # 旧的常驻覆盖控件已移除：不再有同时占位的两个表单与「改为…」按钮。
+    assert "改为追加到所选文件" not in html
+    assert "改为新建文件" not in html
+

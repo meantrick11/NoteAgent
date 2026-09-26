@@ -858,6 +858,52 @@
     cursor: pointer;
   }
   .draft-pane-buttons button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .draft-pane-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+  }
+  .draft-pane-menu[hidden] { display: none; }
+  .draft-pane-menu button {
+    text-align: left;
+    font-size: 13px;
+    font-family: inherit;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+  }
+  .draft-pane-menu button:hover,
+  .draft-pane-menu button:focus-visible { background: var(--surface); }
+  .draft-pane-menu button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .draft-pane-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding-top: 2px;
+  }
+  .draft-pane-form[hidden] { display: none; }
+  .draft-pane-form label {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .draft-pane-form button,
+  .draft-pane-form select,
+  .draft-pane-form input {
+    font-size: 13px;
+    font-family: inherit;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .draft-pane-form button:disabled { opacity: 0.4; cursor: not-allowed; }
   .save-toast {
     position: fixed;
     top: 12px;
@@ -929,6 +975,11 @@
     <div class="draft-pane-actions" id="citePaneActions" hidden>
       <p class="draft-pane-ask" id="citePaneAsk"></p>
       <div class="draft-pane-buttons" id="citePaneButtons"></div>
+      <div class="draft-pane-menu" id="citePaneMenu" role="menu" aria-label="更多草稿操作" hidden>
+        <button type="button" role="menuitem" data-pick="append">追加到笔记</button>
+        <button type="button" role="menuitem" data-pick="create">新建笔记</button>
+      </div>
+      <div class="draft-pane-form" id="citePaneForm" hidden></div>
     </div>
   </aside>
   </div>
@@ -1039,6 +1090,8 @@ const citePaneSave = document.getElementById("citePaneSave");
 const citePaneActions = document.getElementById("citePaneActions");
 const citePaneAsk = document.getElementById("citePaneAsk");
 const citePaneButtons = document.getElementById("citePaneButtons");
+const citePaneMenu = document.getElementById("citePaneMenu");
+const citePaneForm = document.getElementById("citePaneForm");
 let citeFileName = null;
 let citeDirty = false;
 let citeHintLocate = "";
@@ -1048,6 +1101,8 @@ const CITE_MODE_CITATION = "citation";
 const CITE_MODE_DRAFT = "draft";
 let citeMode = CITE_MODE_CITATION;
 let citeDraft = null;
+// 草稿覆盖方式：null 表示未选择；"append" / "create" 时只显示对应表单。
+let draftOverrideMode = null;
 const CITE_PENDING = "__pending__";
 const citePaneByConv = {};
 let citeRestoreGen = 0;
@@ -1156,6 +1211,7 @@ function resetCitePane() {
   citeMode = CITE_MODE_CITATION;
   citeDraft = null;
   citeBusy = false;
+  draftOverrideMode = null;
   citePane.dataset.mode = CITE_MODE_CITATION;
   citePaneBadge.textContent = "引用";
   citePaneText.value = "";
@@ -1166,6 +1222,8 @@ function resetCitePane() {
   citePaneActions.hidden = true;
   citePaneAsk.textContent = "";
   citePaneButtons.innerHTML = "";
+  closeDraftOverrideMenu();
+  renderDraftOverrideForm();
   setCiteHint();
 }
 
@@ -1327,6 +1385,8 @@ function applyServerDraft(id, draft) {
 function setCiteBusy(busy) {
   citeBusy = busy;
   citePaneButtons.querySelectorAll("button").forEach((btn) => { btn.disabled = busy; });
+  citePaneMenu.querySelectorAll("button").forEach((btn) => { btn.disabled = busy; });
+  citePaneForm.querySelectorAll("button").forEach((btn) => { btn.disabled = busy; });
   syncCiteSave();
 }
 
@@ -1341,59 +1401,146 @@ function syncCiteSave() {
     : citePaneText.disabled;
 }
 
-/** 草稿模式下重建审批区：动作说明 + 批准/拒绝 + create/append 的覆写控件。 */
+function draftOverrideAvailable(draft) {
+  return !!draft && (draft.action === "append" || draft.action === "create");
+}
+
+function closeDraftOverrideMenu() {
+  citePaneMenu.hidden = true;
+  const trigger = citePaneButtons.querySelector('[data-act="more"]');
+  if (trigger) trigger.setAttribute("aria-expanded", "false");
+}
+
+function draftOverrideMenuOpen() {
+  return !citePaneMenu.hidden;
+}
+
+function openDraftOverrideMenu() {
+  citePaneMenu.hidden = false;
+  const trigger = citePaneButtons.querySelector('[data-act="more"]');
+  if (trigger) trigger.setAttribute("aria-expanded", "true");
+  const first = citePaneMenu.querySelector('[role="menuitem"]');
+  if (first) first.focus();
+}
+
+/** 选择一种覆盖方式：关掉菜单，只渲染该方式需要的表单。 */
+function pickDraftOverride(mode) {
+  draftOverrideMode = mode;
+  closeDraftOverrideMenu();
+  renderDraftOverrideForm();
+}
+
+/** 覆盖表单：一次只渲染所选方式，避免两个表单同时占满面板底部。 */
+function renderDraftOverrideForm() {
+  const draft = citeDraft;
+  if (!draftOverrideMode || !draftOverrideAvailable(draft)) {
+    citePaneForm.hidden = true;
+    citePaneForm.innerHTML = "";
+    return;
+  }
+  citePaneForm.hidden = false;
+  if (draftOverrideMode === "append") {
+    const options = (draft.existing_files || [])
+      .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
+      .join("");
+    citePaneForm.innerHTML = `
+      <label for="citePaneAppendTarget">追加到笔记</label>
+      <select id="citePaneAppendTarget" data-role="append-target">${options}</select>
+      <button type="button" data-act="submit-append">追加到所选笔记</button>
+    `;
+    const select = citePaneForm.querySelector('[data-role="append-target"]');
+    const submit = citePaneForm.querySelector('[data-act="submit-append"]');
+    submit.onclick = () => {
+      if (!select || !select.value) return;
+      submitDraftOverride("append", select.value);
+    };
+    if (select) select.focus();
+    return;
+  }
+  const proposed = draft.action === "create" ? draft.file_name : "";
+  citePaneForm.innerHTML = `
+    <label for="citePaneNewName">新建笔记</label>
+    <input id="citePaneNewName" data-role="new-name" placeholder="新文件名.md" value="${escapeHtml(proposed)}">
+    <button type="button" data-act="submit-create">新建这篇笔记</button>
+  `;
+  const input = citePaneForm.querySelector('[data-role="new-name"]');
+  const submit = citePaneForm.querySelector('[data-act="submit-create"]');
+  submit.onclick = () => {
+    const name = (input && input.value.trim()) || draft.file_name;
+    submitDraftOverride("create", name);
+  };
+  if (input) input.focus();
+}
+
+function submitDraftOverride(writeAction, fileName) {
+  if (citeBusy || !fileName) return;
+  setCiteBusy(true);
+  sendReview({ action: "override", write_action: writeAction, file_name: fileName })
+    .finally(() => setCiteBusy(false));
+}
+
+/** 草稿模式常驻操作：批准、更多操作、拒绝。覆盖方式收进菜单。 */
 function renderDraftActions() {
   const draft = citeDraft;
   if (!draft) {
     citePaneActions.hidden = true;
     citePaneAsk.textContent = "";
     citePaneButtons.innerHTML = "";
+    citePaneForm.hidden = true;
+    citePaneForm.innerHTML = "";
+    closeDraftOverrideMenu();
     return;
   }
+  // replace / delete 没有覆盖入口：清掉可能残留的选择与菜单。
+  if (!draftOverrideAvailable(draft)) draftOverrideMode = null;
   citePaneActions.hidden = false;
   citePaneAsk.textContent = draftAsk(draft);
-  const showOverride = draft.action === "append" || draft.action === "create";
-  const options = (draft.existing_files || [])
-    .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
-    .join("");
+  const showOverride = draftOverrideAvailable(draft);
   citePaneButtons.innerHTML = `
     <button type="button" class="primary" data-act="approve">${draftApproveLabel(draft.action)}</button>
-    ${showOverride ? `
-      <select data-role="append-target" aria-label="追加目标文件">${options}</select>
-      <button type="button" data-act="override-append">改为追加到所选文件</button>
-      <input data-role="new-name" aria-label="新文件名" placeholder="新文件名.md" value="${draft.action === "create" ? escapeHtml(draft.file_name) : ""}">
-      <button type="button" data-act="override-create">改为新建文件</button>` : ""}
+    ${showOverride ? `<button type="button" data-act="more" aria-haspopup="menu" aria-expanded="false" aria-controls="citePaneMenu">更多操作 ▾</button>` : ""}
     <button type="button" data-act="reject">拒绝</button>
   `;
   citePaneButtons.querySelector('[data-act="approve"]').onclick = () => {
+    if (citeBusy) return;
     setCiteBusy(true);
     sendReview({ action: "approve" }).finally(() => setCiteBusy(false));
   };
-  const overrideAppend = citePaneButtons.querySelector('[data-act="override-append"]');
-  if (overrideAppend) {
-    overrideAppend.onclick = () => {
-      const select = citePaneButtons.querySelector('[data-role="append-target"]');
-      if (!select || !select.value) return;
-      setCiteBusy(true);
-      sendReview({ action: "override", write_action: "append", file_name: select.value })
-        .finally(() => setCiteBusy(false));
-    };
-  }
-  const overrideCreate = citePaneButtons.querySelector('[data-act="override-create"]');
-  if (overrideCreate) {
-    overrideCreate.onclick = () => {
-      const input = citePaneButtons.querySelector('[data-role="new-name"]');
-      const name = (input && input.value.trim()) || draft.file_name;
-      setCiteBusy(true);
-      sendReview({ action: "override", write_action: "create", file_name: name })
-        .finally(() => setCiteBusy(false));
+  const more = citePaneButtons.querySelector('[data-act="more"]');
+  if (more) {
+    more.onclick = () => {
+      if (draftOverrideMenuOpen()) closeDraftOverrideMenu();
+      else openDraftOverrideMenu();
     };
   }
   citePaneButtons.querySelector('[data-act="reject"]').onclick = () => {
+    if (citeBusy) return;
     setCiteBusy(true);
     sendReview({ action: "reject" }).finally(() => setCiteBusy(false));
   };
+  citePaneMenu.querySelectorAll('[role="menuitem"]').forEach((item) => {
+    item.onclick = () => pickDraftOverride(item.dataset.pick);
+  });
+  closeDraftOverrideMenu();
+  renderDraftOverrideForm();
 }
+
+/** 菜单打开时 Escape 只收菜单，返回 true 让面板的 Escape 处理提前退出。 */
+function handleDraftMenuEscape(event) {
+  if (event.key !== "Escape" || !draftOverrideMenuOpen()) return false;
+  closeDraftOverrideMenu();
+  const trigger = citePaneButtons.querySelector('[data-act="more"]');
+  if (trigger) trigger.focus();
+  return true;
+}
+
+document.addEventListener("click", (event) => {
+  if (citePaneMenu.hidden) return;
+  if (citePaneMenu.contains(event.target)) return;
+  const trigger = citePaneButtons.querySelector('[data-act="more"]');
+  if (trigger && trigger.contains(event.target)) return;
+  closeDraftOverrideMenu();
+});
 
 /** 把草稿切进面板。已有未保存的引用编辑时先按既有确认约定问一次。 */
 async function openDraftPane(draft) {
@@ -1409,6 +1556,7 @@ async function openDraftPane(draft) {
   }
   citePane.hidden = false;
   citeMode = CITE_MODE_DRAFT;
+  draftOverrideMode = null;
   citeDraft = {
     ...draft,
     similar: [...(draft.similar || [])],
@@ -2665,6 +2813,7 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
+    if (handleDraftMenuEscape(e)) return;
     closeConversationMenu();
     closeDeleteDialog();
     if (!docsModalResolve && !citePane.hidden && !isDocumentsPath()) closeCitePane();
