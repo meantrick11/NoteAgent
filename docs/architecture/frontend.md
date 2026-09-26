@@ -60,13 +60,24 @@ Chat 的会话删除 overlay（`.modal-overlay` + `deleteOverlay`）与 Document
 
 进页 `GET /conversations`；点会话 `GET /conversations/{id}/messages` 画气泡，再 `GET /conversations/{id}` 把 `pending_draft` 送进右侧面板的草稿模式。发一句立刻画 user 气泡和空 assistant。读 SSE：`conversation` → `thinking` / `think` / `tool` / `tool_done` / `generating`（过程排 live 也可展开；当前步英文闪烁）→ `token`（marked，并把该条消息内的 `[[cite:N]]` 绘成蓝色上标 ①，编号按该条首次出现为 1..n）→ 可选 `sources` / `draft`。结束后有工具则为 `Explored 2 files, 1 search` 这类英文汇总 + ▼；无工具不留过程排。点 ① 时聊天区收窄，右侧 textarea 打开该笔记（无预览）；检索片段用选区定位。切到另一个会话时侧栏按 `conversation_id` 快照（含未保存缓冲），互不顶替；关页或进 Documents 时若有未保存出处再确认。保存/Ctrl+S 走 `PUT /notes/{path}`，与 Documents 一样先删旧向量再整篇索引。关闭、Escape、切到 Documents 时若未保存先确认。无删除。`isStreaming` 时不能连发。
 
-审批区在同一个右侧面板里，不占用聊天气泡。`draft` SSE 与恢复会话都打开面板的草稿模式：徽标「待审批草稿」，标题为「动作 · 目标文件」，同一个 textarea 显示并编辑草稿正文，textarea 下方是确认语与 保存草稿 / 同意追加·覆盖·删除·新建 / 改为追加到所选文件 / 改为新建文件 / 拒绝。create 与 append 才有覆写控件，replace 与 delete 没有；delete 无正文，正文为空时保存按钮禁用。草稿编辑只改 `conversations.pending_draft`（`PUT /chat/draft`），**不写 Markdown**；批准/拒绝时若正文未保存，先保存成功再 `POST /chat/review`，保存失败不审批旧版本。审批或拒绝成功后清掉该会话的草稿模式：本会话没有引用内容就关闭面板，有引用则回到引用模式。两种模式共用 textarea，同一时刻只显示一种，模式与缓冲随 `conversation_id` 快照；被引用面板以外的会话收到的草稿不写可见面板，切回该会话时由 `GET /conversations/{id}` 恢复。
+审批区在同一个右侧面板里，不占用聊天气泡。`draft` SSE 与恢复会话都打开面板的草稿模式：徽标「待审批草稿」，标题为「动作 · 目标文件」，同一个 textarea 显示并编辑草稿正文，textarea 下方是确认语与常驻的 保存草稿 / 同意追加·覆盖·删除·新建 / 更多操作 / 拒绝。覆盖方式收进「更多操作」菜单（追加到笔记、新建笔记），选中后只渲染那一种表单（追加的目标选择或新建的文件名输入），两个表单不会同时占位；菜单用 `aria-haspopup` / `aria-expanded`，打开时焦点进菜单，Escape 只收菜单并把焦点还给触发器，不会顺手关掉面板。create 与 append 才有「更多操作」，replace 与 delete 没有（与改动前的卡片一致，没有静默移除入口）；delete 无正文，正文为空时保存按钮禁用。草稿编辑只改 `conversations.pending_draft`（`PUT /chat/draft`），**不写 Markdown**；批准/拒绝时若正文未保存，先保存成功再 `POST /chat/review`，保存失败不审批旧版本。审批或拒绝成功后清掉该会话的草稿模式：本会话没有引用内容就关闭面板，有引用则回到引用模式。两种模式共用 textarea，同一时刻只显示一种，模式与缓冲随 `conversation_id` 快照；被引用面板以外的会话收到的草稿不写可见面板，切回该会话时由 `GET /conversations/{id}` 恢复。请求进行中常驻按钮、菜单项与表单提交一起禁用，避免重复提交。
 
 草稿字段与动作语义见 [chat-tools.md](./chat-tools.md)。
 
+### 3.1 三栏调宽
+
+Chat 分三栏：左会话列表、中聊天区、右笔记/草稿面板，两栏之间各有一条可拖分隔线（`#conversationResizeHandle`、`#notePaneResizeHandle`，共 8px 命中区，视觉仍是 1px 边界，hover/focus 时变强调色）。中间区始终吃剩余空间，**只持久化左右两栏宽度**，不存一个会互相矛盾的中间宽度。
+
+- 持久化键 `noteagent.chat-layout.v1`，存 `{sidebarWidth, notePaneWidth}`；只在拖动结束与键盘调整后写入，不在每次 `pointermove` 里写。默认 260 / 400。
+- 范围：左栏 200–400、右栏 300–600，中间区尽量不少于 440。边界随视口收紧：先压右栏，再压左栏（950px 以下中间区可小于 440），窗口连两栏最小值都放不下时两栏按最小值保留、中间区可被压到 0，页面不产生横向滚动。
+- 读取时只接受范围内的有限数值；缺失、非数字、越界或 `localStorage` 不可用都回退默认，恢复后仍按当前视口重新 clamp。窗口 resize 只重新收边，不改已保存的意图，也不写存储。
+- 拖动用 Pointer Events + `setPointerCapture`（鼠标 / 触控笔 / 触摸同一套），`pointerup` 与 `pointercancel` 都收尾并清理临时 class 与 `user-select`。分隔线是 `role="separator"` + `aria-orientation="vertical"` + 动态 `aria-valuemin/max/now`，可聚焦：方向键 ±10px、Shift ±40px、Home/End 到该栏边界。
+- 右侧面板隐藏时它的分隔线一起隐藏（`MutationObserver` 跟随面板 `hidden`）。
+- 分隔线只存在于 Chat 视图内，宽度通过 `#viewChat` 上的 `--sidebar-width` / `--note-pane-width` 生效；Documents 侧栏仍走自己的 300px 规则，不读也不被 Chat 布局影响。
+
 用户气泡 `.msg-row.user .msg-body` 为 `pre-wrap`；助手走 marked。
 
-### 3.1 模型入口（输入框下方右侧）
+### 3.2 模型入口（输入框下方右侧）
 
 聊天模型与本地向量模型两个入口固定在输入框下侧靠右（`.model-toolbar`，`justify-content: flex-end`，窄屏换行）。功能区只在 Chat 输入栏，不挤占 Documents 编辑器。
 
