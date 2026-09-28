@@ -29,7 +29,7 @@
 | 点 | 含义 |
 |----|------|
 | 人审写盘 | 模型不能直接改文件。`propose_note` 将待审草稿保存到会话；同意后才 `create` / `append` / `replace` / `delete`。细节：[聊天工具](docs/architecture/chat-tools.md) |
-| 五个页面 | 顶部固定 **Home → Assistant → Records → Library → Settings**。Assistant 管会话与问答，Library 管磁盘上的笔记，Settings 管模型与索引。布局：[前端](docs/architecture/frontend.md) |
+| 五个页面 | 顶部固定 **Home → Assistant → Records → Library** 四个工作入口，右上角齿轮进入 **Settings**。Assistant 管会话与问答，Library 管磁盘上的笔记，Settings 分「模型与连接」「检索与索引」两类。布局：[前端](docs/architecture/frontend.md) |
 | 一层目录 | 允许 `notes/Folder/Note.md`，禁止两层和 `..`。根下 `notes/*.md` 为未进文件夹的篇 |
 | 派生检索 | Chroma 由 Markdown 重建。索引失败不回滚已写入的笔记。现行配置是 `intfloat/multilingual-e5-small` + 章节感知切块，collection 存配置指纹，改配置必须重建。[检索](docs/architecture/retrieval.md)、[为什么这样选](evals/reports/rag-v1-retrospective.md) |
 

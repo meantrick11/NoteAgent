@@ -1,7 +1,7 @@
 # frontend
 
-NoteAgent 的现行界面：Vue 3 + TypeScript + Vite 单页应用，一个顶部导航加五个页面
-（Home / Assistant / Records / Library / Settings）。构建产物由 FastAPI 从
+NoteAgent 的现行界面：Vue 3 + TypeScript + Vite 单页应用，顶部四个工作入口
+（Home / Assistant / Records / Library）加右上角设置齿轮，共五个页面。构建产物由 FastAPI 从
 `src/noteagent/web/dist/` 托管，挂在 `/ui-assets/` 下。
 
 ## 环境
@@ -41,9 +41,10 @@ python main.py            # 需要 DATABASE_URL 指向可用的 PostgreSQL
 ```text
 src/
   main.ts / App.vue / router.ts     入口、根组件、页面路由
-  layouts/AppShell.vue              顶部导航 + 全局对话框与浮层
-  pages/                            五个页面模块
+  layouts/AppShell.vue              顶部主导航＋设置齿轮、全局对话框与浮层
+  pages/                            五个页面模块（Settings 用 ?section= 选分类）
   features/{chat,notes,models}/      领域状态（store.ts）与组件
+  features/settings/                设置分类定义、分类布局与两个分类面板
   shared/{api,navigation,ui,unsaved-guard}
 tests/
   unit/                             Vitest（纯逻辑与 store）

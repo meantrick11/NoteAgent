@@ -1,8 +1,8 @@
 # rag evals
 
-> 复盘与经验：[docs/architecture/rag-v1-retrospective.md](../../docs/architecture/rag-v1-retrospective.md)。
+> 复盘与经验：[rag-v1-retrospective.md](../reports/rag-v1-retrospective.md)。
 
-检索（RAG）评测的**数据与产物**。准则、指标定义与字段契约在 [docs/evaluations/rag-quality.md](../../docs/evaluations/rag-quality.md)。
+检索（RAG）评测的**数据与产物**。准则、指标定义与字段契约在 [rag-quality.md](../criteria/rag-quality.md)。
 
 ## 数据位置
 
@@ -50,11 +50,11 @@ uv run python scripts/eval_rag.py --split dev --variant candidate-multi \
 
 模型文件用 [`scripts/download_models.py`](../../scripts/download_models.py) 走镜像取（hf.co 直连不通；huggingface_hub 因镜像不回 `x-repo-commit` 头而拒绝下载，脚本改为手工构建 HF 缓存布局）。缓存在 `EMBEDDING_CACHE_DIR`（当前 `D:\develop\aidevelop\transformer_models`）。
 
-对照 run 都留在 `results/`：切块五项（`rag-v1-baseline-dev`、`rag-v1-heading-dev`、`rag-v1-heading-prefix-dev`、`rag-v1-char320-dev`、`rag-v1-heading-prefix-320-dev`）、向量模型两项（`rag-v1-candidate-zh-dev` = bge-small-zh、`rag-v1-candidate-multi-dev` = 选定 e5-small），以及最终验收两项（`rag-v1-baseline-holdout`、`rag-v1-selected-holdout`）。结论见 [docs/evaluations/rag-v1-report.md](../../docs/evaluations/rag-v1-report.md) §5、§6、§1.1。
+对照 run 都留在 `results/`：切块五项（`rag-v1-baseline-dev`、`rag-v1-heading-dev`、`rag-v1-heading-prefix-dev`、`rag-v1-char320-dev`、`rag-v1-heading-prefix-320-dev`）、向量模型两项（`rag-v1-candidate-zh-dev` = bge-small-zh、`rag-v1-candidate-multi-dev` = 选定 e5-small），以及最终验收两项（`rag-v1-baseline-holdout`、`rag-v1-selected-holdout`）。结论见 [rag-v1-report.md](../reports/rag-v1-report.md) §5、§6、§1.1。
 
 ## 查询集字段
 
-契约见 [docs/evaluations/rag-quality.md](../../docs/evaluations/rag-quality.md) §3。要点：
+契约见 [rag-quality.md](../criteria/rag-quality.md) §3。要点：
 
 - `id`、`group_id`、`split`（dev/holdout）、`query`、`category`、`answerable`、`evidence_units`；
 - 证据写 `note_id`、`heading_path`、`start_char`、`end_char`、`quote`，偏移基于**应用实际读到的文本**（`Path.read_text` 会把 CRLF 规范成 LF），`quote` 必须等于该切片；

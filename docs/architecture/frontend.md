@@ -13,7 +13,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 形态 | Vue 3 + TypeScript + Vite 单页应用，一个顶部导航 + 五个页面模块（`frontend/`） |
+| 形态 | Vue 3 + TypeScript + Vite 单页应用，顶部四个工作入口＋设置齿轮，五个页面模块（`frontend/`） |
 | 下发 | `GET /`、`/assistant`、`/records`、`/library`、`/settings`、`/documents` 返回 SPA 外壳；资源挂在 `/ui-assets/` |
 | 视图 | `/documents` 兼容跳到 `/library`；页面白名单之外一律 404，不用 HTML 兜底 |
 | 回退 | `FRONTEND_MODE=legacy`：`/` 与 `/documents` 回旧模板，其余入口按旧地址 307 跳转 |
@@ -23,11 +23,24 @@
 
 ## 0. 现行实现（Vue）
 
-> 后续设计说明：右上角设置齿轮与设置分类见 [Settings 设计](../product/settings-architecture.md) 和 [执行计划](../plans/2026-09-28-settings-navigation-and-sections.md)，目前尚未实施。下文继续描述实际五文字导航，实施后再更新。
+> 设置入口与分类（2026-09-28 已实施）：右上角齿轮进入 `/settings`，页面用 `?section=` 表达分类。
+> 产品语义见 [Settings 设计](../product/settings-architecture.md)，执行记录见
+> [结果文档](../plans/2026-09-28-settings-navigation-and-sections-results.md)。
 
-**页面与导航。** 顶部横栏顺序固定为 **Home → Assistant → Records → Library → Settings**
-（[`shared/navigation.ts`](../../frontend/src/shared/navigation.ts) 是唯一来源，路由表与它一一对应并有单测钉住）。
+**页面与导航。** 顶部横栏由主导航和工具区组成：主导航固定为 **Home → Assistant → Records → Library**
+四个工作入口，右上角齿轮（可访问名称「设置」）进入 **Settings** 页。Home 的快捷入口仍是四项——
+Assistant、Records、Library、Settings。
+（[`shared/navigation.ts`](../../frontend/src/shared/navigation.ts) 是唯一来源，导出 `PRIMARY_NAV_ITEMS`／
+`SETTINGS_ENTRY`／`HOME_SHORTCUTS`，路由表与它们一一对应并有单测钉住。）
 原 Chat 页面成为 Assistant，原 Documents 成为 Library，模型与索引管理归 Settings。
+
+**设置分类。** `/settings` 用 query 表达分类：`?section=models`（模型与连接，默认）与
+`?section=retrieval`（检索与索引）。裸路径按默认分类显示、不主动补 query；无效、未开放或数组值
+replace 成默认分类并保留其他 query，服务端路径始终是 `/settings`。分类是链接而非模拟 tab，位于名为
+「设置分类」的导航中，刷新与前进后退都还原分类。两个分类同时挂载、只切换显隐，所以切分类不会重建
+`ChatProfileForm`、也不丢未提交文本；分类定义见
+[`features/settings/sections.ts`](../../frontend/src/features/settings/sections.ts)，其中仅 `models` 与
+`retrieval` 为 `available`，其余五个 ID 为后续预留、不渲染界面。
 
 **模块分层。** 组件只负责渲染与转发交互，规则集中在 `features/*/store.ts` 与纯函数模块里：
 
@@ -41,6 +54,7 @@
 | [`features/chat/layout.ts`](../../frontend/src/features/chat/layout.ts) | 三栏宽度边界、键盘步进、`noteagent.chat-layout.v1` 持久化 |
 | [`features/notes/store.ts`](../../frontend/src/features/notes/store.ts) | 目录树、当前笔记、未保存正文、索引操作 |
 | [`features/models/store.ts`](../../frontend/src/features/models/store.ts) | 模型配置／revision／维护窗口／重建任务的唯一来源，Settings 与 Assistant 弹层共用 |
+| [`features/settings/`](../../frontend/src/features/settings) | 设置分类定义（`sections.ts`，静态常量，无远程注册）、分类布局与两个分类面板 |
 | [`shared/ui/`](../../frontend/src/shared/ui) | 单例对话框、保存浮层、Markdown 渲染、可拖分隔线 |
 | [`shared/unsaved-guard.ts`](../../frontend/src/shared/unsaved-guard.ts) | 路由守卫与 beforeunload 的未保存保护 |
 
@@ -292,9 +306,9 @@ Records 只保留入口与空状态。
 | 文件 | 内容 |
 |------|------|
 | [`frontend/src/pages/`](../../frontend/src/pages) | 五个页面：Home／Assistant／Records／Library／Settings |
-| [`frontend/src/layouts/AppShell.vue`](../../frontend/src/layouts/AppShell.vue) | 顶部导航、单例对话框与保存浮层 |
+| [`frontend/src/layouts/AppShell.vue`](../../frontend/src/layouts/AppShell.vue) | 顶部主导航四项＋设置齿轮、单例对话框与保存浮层 |
 | [`frontend/src/router.ts`](../../frontend/src/router.ts) | 页面路由、`/documents` 兼容、未知地址回首页 |
-| [`frontend/src/features/`](../../frontend/src/features) | chat／notes／models 三个领域的状态与组件 |
+| [`frontend/src/features/`](../../frontend/src/features) | chat／notes／models／settings 四个领域的状态与组件 |
 | [`frontend/src/shared/`](../../frontend/src/shared) | API 合同、导航定义、未保存守卫、通用 UI |
 | [`frontend/tests/`](../../frontend/tests) | Vitest 单测（状态与协议）与 Playwright 交互回归 |
 | [`web/router.py`](../../src/noteagent/web/router.py) | 页面白名单、vue／legacy 两种模式、产物缺失时的 503 |

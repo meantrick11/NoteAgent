@@ -8,11 +8,11 @@
 
 **技术栈：**Python 3.13、pytest、SQLAlchemy、现有 ChatAgent 与 prompt_eval。
 
-**需求依据：**用户已指定三项工作：写入异常 bug 修复、完整生成验收样例集构建、执行测试并记录结果；用户自行执行手动功能测试。另参考 [版本路线图 V1](../roadmap/versions.md)、[评测说明](../evaluations/README.md)、[prompt 样例说明](../../evals/prompt/README.md)。本计划不代表 V1 已验收。
+**需求依据：**用户已指定三项工作：写入异常 bug 修复、完整生成验收样例集构建、执行测试并记录结果；用户自行执行手动功能测试。另参考 [版本路线图 V1](../product/roadmap.md)、[评测说明](../../evals/README.md)、[prompt 样例说明](../../evals/prompt/README.md)。本计划不代表 V1 已验收。
 
 ## 执行结果摘要（2026-09-26 回填）
 
-执行分支 `feat/v1-acceptance`。完整结果、逐条明细与偏差说明见 [v1-acceptance-report.md](../evaluations/v1-acceptance-report.md)。
+执行分支 `feat/v1-acceptance`。完整结果、逐条明细与偏差说明见 [v1-acceptance-report.md](../../evals/reports/v1-acceptance-report.md)。
 
 | 任务 | 状态 | 实际结果 |
 |------|------|----------|

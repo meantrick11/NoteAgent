@@ -28,13 +28,15 @@ Records 仍只有入口与空状态，其承载的来源尚未决定。
 
 ## 2. 已确认的决策
 
+**2026-09-28 后续调整（已实施）：** 保留五个页面路由，顶部工作导航为 Home → Assistant → Records → Library，Settings 由右上角齿轮进入。Home 仍保留进入其他四页的快捷入口。设置分类及未来个人中心边界见 [Settings 设计](settings-architecture.md)，执行见 [增量计划](../plans/2026-09-28-settings-navigation-and-sections.md) 与 [结果记录](../plans/2026-09-28-settings-navigation-and-sections-results.md)；现行结构见 [frontend.md §0](../architecture/frontend.md)。
+
 | 决策 | 内容 | 理由与影响 |
 |---|---|---|
-| 五个一级页面 | Home、Assistant、Library、Records、Settings | 为后续功能提供稳定归属，避免继续全部集中在聊天页 |
+| 五个页面，四个工作导航 | Home、Assistant、Records、Library；Settings 由右上角齿轮进入（已实施） | 页面职责与导航入口分开，设置保留独立路由 |
 | Chat 归入 Assistant | 现有会话、聊天、问答与草稿交互由助手承接 | 保留已有入口能力，同时允许记录功能独立发展 |
 | Documents 归入 Library | 现有笔记浏览、管理、编辑由资料库承接 | 资料库作为已保存成果的统一入口 |
 | Records 承载记录功能 | 视频记录、会议记录等功能及对应记录过程归入这里 | 用户可以围绕正在记录的内容工作，具体子页面另行设计 |
-| Settings 独立 | 配置能力有独立页面归属 | 设置不再只能依附聊天输入区；是否保留快捷入口另行决定 |
+| Settings 独立且可扩展 | 模型与连接、检索与索引先开放；其他分类只预留 | 保留 Assistant 已有快捷操作；个人中心待多用户体系实现后引入 |
 | 引入 Vue | 采用 Vue 组织新的前端 | 用组件和明确的状态归属承接复杂交互；不在本文件预定组件库、工程模板或具体版本 |
 | 上层设计统一放 product | 本文记录结构与决策，plans 引用它分解任务 | 避免执行计划成为第二份技术设计主文档 |
 
@@ -84,7 +86,7 @@ Assistant 保留自由对话入口；Records 为具体记录功能提供工作�
 
 ## 5. 首轮前端交付范围建议
 
-**本节状态：建议，尚未形成可直接交给 Agent 的执行规格。** 用户已确认总体页面和 Vue 方向；以下是将方向落地的候选边界，详细设计确认后再进入 plans。
+**本节为首轮范围记录。** Vue 初始化已有执行计划与结果，见 §9；新增设置入口与分类调整按 Settings 专题设计另行实施，不把下列首轮记录当作需要重复执行的任务。
 
 1. 建立 Vue 前端基础与统一导航，形成五个一级页面的清晰入口。
 2. 将现有 Chat 能力完整迁入 Assistant，将 Documents 能力迁入 Library。
@@ -153,4 +155,4 @@ AI 生成内容仍经用户审批才写入正式笔记；用户直接编辑继�
 | 使用与开发指南 | [guides/README.md](../guides/README.md) |
 | 评测入口 | [evals/README.md](../../evals/README.md) |
 
-目前没有对应的前端迁移执行计划。本文件首先固化已确认方向；详细方案与首轮边界确认后再生成 plans。实现完成后更新现行前端架构，并在这里补充执行与验收链接。
+首轮 Vue 初始化见 [执行计划](../plans/2026-09-28-vue-frontend-initialization.md) 与 [结果记录](../plans/2026-09-28-vue-frontend-initialization-results.md)。后续设置调整见 [Settings 产品设计](settings-architecture.md)、[执行计划](../plans/2026-09-28-settings-navigation-and-sections.md) 与 [结果记录](../plans/2026-09-28-settings-navigation-and-sections-results.md)。现行行为继续以代码和 architecture 为准。

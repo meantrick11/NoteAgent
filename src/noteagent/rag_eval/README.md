@@ -14,7 +14,7 @@
 | `agent_run.py` | Agent 层：每场景独立沙箱（notes 副本 / Chroma / sqlite）、记录工具与检索轨迹、确定性判定 |
 
 入口：[scripts/eval_rag.py](../../../scripts/eval_rag.py)、[scripts/eval_rag_agent.py](../../../scripts/eval_rag_agent.py)、[scripts/build_rag_queries.py](../../../scripts/build_rag_queries.py)、[scripts/verify_rag_corpus.py](../../../scripts/verify_rag_corpus.py)。
-准则与字段契约：[docs/evaluations/rag-quality.md](../../../docs/evaluations/rag-quality.md)。数据位置：[evals/rag/README.md](../../../evals/rag/README.md)、[evals/agent/README.md](../../../evals/agent/README.md)。
+准则与字段契约：[rag-quality.md](../../../evals/criteria/rag-quality.md)。数据位置：[evals/rag/README.md](../../../evals/rag/README.md)、[evals/agent/README.md](../../../evals/agent/README.md)。
 
 ## 基础使用
 

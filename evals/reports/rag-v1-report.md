@@ -1,8 +1,8 @@
 # RAG v1 评测报告（批次 1：语料、标准与真实基线）
 
-> 复盘（问题、做法、不足与未来方向）：[architecture/rag-v1-retrospective.md](../architecture/rag-v1-retrospective.md)。
+> 复盘（问题、做法、不足与未来方向）：[architecture/rag-v1-retrospective.md](rag-v1-retrospective.md)。
 > 状态：**已交付（2026-09-25）**。批次 1–3 完成：任务 1–4、6–9 交付；任务 5（语料 v2）按用户选择未做；任务 8 的 8.4–8.6 按停止条件跳过（理由见计划）。本文件即最终报告。
-> 准则与字段契约见 [rag-quality.md](./rag-quality.md)；执行计划见 [../plans/2026-09-25-rag-quality-improvement.md](../plans/2026-09-25-rag-quality-improvement.md)。
+> 准则与字段契约见 [rag-quality.md](../criteria/rag-quality.md)；执行计划见 [../plans/2026-09-25-rag-quality-improvement.md](../../docs/plans/2026-09-25-rag-quality-improvement.md)。
 
 ## 1. 本批范围与结论摘要
 
@@ -32,9 +32,11 @@ dev 用于选型；holdout 在此之前从未运行过，只做对照、未据�
 
 | 指标 | 门槛 | baseline（MiniLM + char500） | selected | 判定 |
 |---|---|---|---|---|
-| Evidence Recall@5 | ≥85% | dev 5/18 = 27.8% / holdout 6/12 = 50.0% | **dev 9/18 = 50.0% / holdout 11/12 = 91.7%** | ✅ |
-| Evidence Hit@3 | ≥80% | dev 3/18 = 16.7% / holdout 2/12 = 16.7% | **dev 8/18 = 44.4% / holdout 11/12 = 91.7%** | ✅ |
+| Evidence Recall@5 | ≥85% | dev 5/18 = 27.8% / holdout 6/12 = 50.0% | **dev 17/18 = 94.4% / holdout 11/12 = 91.7%** | ✅ |
+| Evidence Hit@3 | ≥80% | dev 3/18 = 16.7% / holdout 2/12 = 16.7% | **dev 17/18 = 94.4% / holdout 11/12 = 91.7%** | ✅ |
 | Evidence Recall@20（诊断） | — | holdout 9/12 = 75.0% | holdout 12/12 = 100.0% | 内容全部可召回 |
+
+> **2026-09-27 文档勘误。** 本表 selected 列原写 `dev 9/18 = 50.0%`（Recall@5）与 `dev 8/18 = 44.4%`（Hit@3）。这两个数来自**换向量模型之前**的切块对照 run `rag-v1-heading-prefix-dev`（仍是 `all-MiniLM-L6-v2` + 章节路径），不是最终选定配置的成绩。选定配置 `intfloat/multilingual-e5-small` + 章节感知切块（500/50，`embed_heading_prefix=True`）的 dev 结果为 17/18，依据 `evals/rag/results/rag-v1-candidate-multi-dev/summary.json`（`full_recall_at_k` 与 `hit_at_3` 均 17/18 = 0.9444，与 `config.json` 的 `embedding_model=intfloat/multilingual-e5-small` 一致）。holdout 列的 11/12 原本就取自 `rag-v1-selected-holdout`，未改。本次只更正本表，不改任何 run 成绩、门槛或结论；同文 §1 摘要表（9/18 → 17/18）与 §6.2 选型表（17/18）原本即与更正后的值一致。
 | 被模型静默截断的块 | 0 优先 | holdout 50/107 | **0/176** | ✅ |
 | MRR@5 | — | holdout 0.2 | holdout 0.9167 | 诊断 |
 

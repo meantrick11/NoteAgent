@@ -1,33 +1,40 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
-import ChatProfiles from '@/features/models/ChatProfiles.vue'
-import EmbeddingSettings from '@/features/models/EmbeddingSettings.vue'
-import { STAGE_TEXT, useModelsStore } from '@/features/models/store'
+import { useModelsStore } from '@/features/models/store'
+import ModelConnectionsSection from '@/features/settings/ModelConnectionsSection.vue'
+import RetrievalSection from '@/features/settings/RetrievalSection.vue'
+import SettingsLayout from '@/features/settings/SettingsLayout.vue'
+import {
+  AVAILABLE_SETTINGS_SECTIONS,
+  resolveSettingsSection,
+} from '@/features/settings/sections'
 
 /**
- * Settings 承接原来的聊天配置与向量配置。这里挂的组件与 Assistant 输入框下方的
- * 快捷弹层是同一份（`ChatProfiles` / `EmbeddingSettings`），状态也共用同一个 store，
- * 所以两个入口不会各自轮询、也不会各写一套逻辑。
+ * Settings 用 query 表达分类，服务端路径始终是 `/settings`：
+ *   - 裸路径按默认分类显示，不主动补 query；
+ *   - 提供了无效、未开放或数组值时 replace 成默认分类，并保留其他 query；
+ *   - 两个可用分类都保持挂载、用 v-show 切换，切分类不会重建表单。
+ * 分类只改地址，不触发保存、连接测试、切换模型或重建。
  */
+const route = useRoute()
+const router = useRouter()
 const models = useModelsStore()
 
-const STATUS_TEXT: Record<string, string> = {
-  ok: '索引正常',
-  empty: '索引为空',
-  missing: '索引缺失',
-  config_mismatch: '索引配置已变化',
-  unavailable: '索引不可用',
-}
+const activeSection = computed(() => resolveSettingsSection(route.query.section))
 
-const retrievalLabel = computed(() => STATUS_TEXT[models.retrievalState] ?? models.retrievalState)
-const jobLabel = computed(() => {
-  const job = models.embeddingJob
-  if (!job || job.status !== 'running') return ''
-  const stage = STAGE_TEXT[job.stage] ?? job.stage
-  const counter = job.total ? `（${job.completed}/${job.total}）` : ''
-  return `正在切换到 ${job.target_model}：${stage}${counter}`
-})
+/** 只修正「提供了但无效」的分类：裸路径与合法值都不改写地址。 */
+watch(
+  () => route.query.section,
+  (raw) => {
+    if (raw === undefined) return
+    const resolved = resolveSettingsSection(raw)
+    if (raw === resolved) return
+    void router.replace({ path: '/settings', query: { ...route.query, section: resolved } })
+  },
+  { immediate: true },
+)
 
 onMounted(() => {
   void models.fetchStatus(true)
@@ -38,29 +45,16 @@ onMounted(() => {
 <template>
   <section class="page">
     <div class="settings-body">
-      <h1 class="page-title">Settings</h1>
-      <p class="page-hint">
-        这里的配置与 Assistant 输入框下方的模型入口是同一份数据，改任一处两边都会更新。
-      </p>
+      <h1 class="page-title">设置</h1>
+      <p class="page-hint">管理模型连接、检索与应用偏好。</p>
 
-      <section class="card settings-card">
-        <h2 class="settings-heading">聊天模型</h2>
-        <ChatProfiles />
-      </section>
-
-      <section class="card settings-card">
-        <h2 class="settings-heading">向量模型与索引</h2>
-        <p class="settings-summary">
-          <span>当前：{{ models.activeEmbedding?.model_id ?? '未知' }}</span>
-          <span>·</span>
-          <span>{{ retrievalLabel }}</span>
-          <span>·</span>
-          <span>已索引 {{ models.indexedFiles }} 个片段 / {{ models.corpusFiles }} 篇笔记</span>
-          <span v-if="models.busy" class="settings-busy">维护中</span>
-        </p>
-        <p v-if="jobLabel" class="settings-summary">{{ jobLabel }}</p>
-        <EmbeddingSettings />
-      </section>
+      <SettingsLayout :sections="AVAILABLE_SETTINGS_SECTIONS" :active="activeSection">
+        <template #content>
+          <!-- 同时挂载、只切换显隐：切分类不会丢掉表单里尚未提交的文本。 -->
+          <ModelConnectionsSection v-show="activeSection === 'models'" />
+          <RetrievalSection v-show="activeSection === 'retrieval'" />
+        </template>
+      </SettingsLayout>
     </div>
   </section>
 </template>
@@ -68,32 +62,6 @@ onMounted(() => {
 <style scoped>
 .settings-body {
   padding: var(--space-5);
-  max-width: 760px;
-}
-
-.settings-card {
-  margin-top: var(--space-4);
-}
-
-.settings-heading {
-  font-size: 15px;
-  font-weight: 650;
-  margin-bottom: var(--space-2);
-}
-
-.settings-summary {
-  font-size: 12px;
-  color: var(--text-secondary);
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-  margin-bottom: var(--space-2);
-}
-
-.settings-busy {
-  color: var(--warn-text);
-  background: var(--warn-bg);
-  padding: 0 6px;
-  border-radius: var(--radius-pill);
+  max-width: 900px;
 }
 </style>

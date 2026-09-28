@@ -1,6 +1,6 @@
 # V1 收尾修复与生成验收报告
 
-本报告对应计划 [`docs/plans/2026-09-26-v1-acceptance.md`](../plans/2026-09-26-v1-acceptance.md)，记录写入异常修复、25 条生成验收样例集、自动测试与真实模型评测的实际结果。**手动功能验收由用户执行，本报告不代其判定。**
+本报告对应计划 [`docs/plans/2026-09-26-v1-acceptance.md`](../../docs/plans/2026-09-26-v1-acceptance.md)，记录写入异常修复、25 条生成验收样例集、自动测试与真实模型评测的实际结果。**手动功能验收由用户执行，本报告不代其判定。**
 
 ## 1. 范围与身份
 
@@ -19,6 +19,8 @@
 | 修复文件 `drafts.py` | SHA-256 `26858f1ddd57eab619086ecf044fdaca5ac12cad08239b270851eea723b35d4e` |
 
 CLI 使用 `Settings` 的模型配置（`.env`），**不保证等于界面已激活的 profile**。上表记录的是脚本实际运行使用的模型，不是 UI 显示的名称。
+
+> **两个 prompt 哈希是同一份文件（2026-09-27 补注）。** 本表记 system prompt 的 SHA-256 为 `24d3623d…`，而 §7 的对照表记“prompt SHA `25fbb8a9…`”，路径都是 `src/noteagent/chat/prompts/system.txt`。两者不矛盾：`24d3623d…` 是**磁盘原始字节**的哈希（`sha256sum` 口径，8234 字节、64 处 CRLF，见 `var/v1-acceptance/run-identity.txt`，也等于各 run 归档副本 `system.txt` 的字节哈希）；`25fbb8a9…` 是 `config.json` 记录的 `prompt_sha256`，由 `src/noteagent/prompt_eval/run.py` 用 `Path.read_text(encoding="utf-8")`（通用换行：CRLF→LF）计算。对同一份归档副本做 `\r\n`→`\n` 替换即得 `25fbb8a9…`。因此 §7 两轮比较的“prompt 相同”结论成立，不能据截断哈希推断成两个不同 prompt。
 
 ## 2. bug 修复：写盘异常导致待审草稿丢失
 

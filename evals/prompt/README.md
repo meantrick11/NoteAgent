@@ -1,6 +1,6 @@
 # prompt evals
 
-准则见 [docs/evaluations/note-quality.md](../../docs/evaluations/note-quality.md)。不要把私人笔记全文写进 `user`。本目录放考题 JSONL 和离线跑分结果。
+准则见 [note-quality.md](../criteria/note-quality.md)。不要把私人笔记全文写进 `user`。本目录放考题 JSONL 和离线跑分结果。
 
 ## 包含模块
 

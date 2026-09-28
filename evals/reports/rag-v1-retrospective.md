@@ -1,8 +1,8 @@
 # RAG v1 复盘：问题、做法与结果
 
 本文记录 2026-09-25 这一轮「检索质量」工作**遇到什么问题、用什么方式解决、效果如何、还剩什么**。它是复盘，不是规格：
-现行实现看 [architecture.md](./architecture.md) 与 [retrieval.md](./retrieval.md)，度量契约看
-[rag-quality.md](../evaluations/rag-quality.md)，逐次实验与失败样例看 [rag-v1-report.md](../evaluations/rag-v1-report.md)，执行计划看 [2026-09-25-rag-quality-improvement.md](../plans/2026-09-25-rag-quality-improvement.md)。
+现行实现看 [architecture.md](../../docs/architecture/architecture.md) 与 [retrieval.md](../../docs/architecture/retrieval.md)，度量契约看
+[rag-quality.md](../criteria/rag-quality.md)，逐次实验与失败样例看 [rag-v1-report.md](rag-v1-report.md)，执行计划看 [2026-09-25-rag-quality-improvement.md](../../docs/plans/2026-09-25-rag-quality-improvement.md)。
 
 ## 0. 主干
 
@@ -40,7 +40,7 @@ holdout（此前从未运行过）：检索 **6/12 → 11/12**，Agent 任务成
 | M3 | 重复内容检查查的是目标文件 | 原文本来就有那段 → 判定永远为假 | 改查**草稿内容**；并要求草稿真的写入沙箱副本（`draft_applied`），否则"原有事实还在"只是没改过的假象 |
 | M4 | 记录到的检索结果忘了回传给结果对象 | 一整轮"检索调用率 0/30"等指标全部失真 | 修回传，并加 **harness 不变量**：工具事件与落库 stub 不一致、有检索调用却零记录 → 记为该次运行的错误，不静默 |
 | M5 | "无答案"用固定短语表判定 | 把「没有。…**没有命中**任何相关内容」这种**正确**回答判成失败 | 改为「否定词 + 存在性动词」的窗口规则；并新增 `--rescore`：**复用已存模型输出、只重算判定**，重算是幂等的 |
-| M6 | 门槛口径与计划允许项冲突：调用率按全部历史场景算，而计划允许追加场景只走 `list_files` + `read_file` | 把"该不该检索"的行为差异误报成失败（同一配置两次运行 7/12 与 11/12） | 门槛只统计**真正依赖检索**的场景（问答 + 无答案），追加场景另报；改动记入 [rag-quality.md](../evaluations/rag-quality.md) 并作为对计划的偏离报备 |
+| M6 | 门槛口径与计划允许项冲突：调用率按全部历史场景算，而计划允许追加场景只走 `list_files` + `read_file` | 把"该不该检索"的行为差异误报成失败（同一配置两次运行 7/12 与 11/12） | 门槛只统计**真正依赖检索**的场景（问答 + 无答案），追加场景另报；改动记入 [rag-quality.md](../criteria/rag-quality.md) 并作为对计划的偏离报备 |
 
 由此形成两条硬规则，后续任何评测改动都适用：
 
@@ -83,7 +83,7 @@ python scripts/eval_rag_agent.py --split holdout --variant selected --model intf
 
 ## 4. 不足
 
-按影响排序，都写进 [rag-v1-report.md](../evaluations/rag-v1-report.md) §10：
+按影响排序，都写进 [rag-v1-report.md](rag-v1-report.md) §10：
 
 1. **引用只到文件级、未到章节级**（79%）：其余引用来自 `read_file` 整篇，没有原文片段。要么接受整篇引用，要么要求引用一律来自检索片段。**待决策**。
 2. **没有独立人工审查**：全部语义结论都是自动判定（含代理指标与同模型 Judge）。工程验证完成，**语义审查待确认**；自动通过不等于独立验收。

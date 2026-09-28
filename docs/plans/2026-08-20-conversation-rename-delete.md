@@ -4,6 +4,8 @@
 >
 > **做完后不要自称完成。** 列出改过的文件、pytest 命令与结果。浏览器里点一遍「… → 重命名 / 删除」后交给审查 Agent。
 
+> **执行状态（2026-09-27 补注）：已实现，规格清单未回勾。** 侧栏重命名走 `PATCH /conversations/{id}`（不改 `updated_at`）、删除走 `DELETE /conversations/{id}`；现行接口表见 [architecture.md](../architecture/architecture.md) §5.2.1。本文作为执行历史保留。
+
 **Goal:** 侧栏每条历史右侧有 `…`。点开方形菜单：上「重命名」、下「删除」。重命名把该条标题变成行内输入框。删除先弹确认窗；悬停「确认」变红、「取消」灰色。确认后 PostgreSQL 里该会话及其消息一并删除。
 
 **Architecture:** HTTP 只调 `ConversationStore`。表结构已有 `ON DELETE CASCADE`，**不要新迁移**。不改 `agent.py`、不做 Vue、不加用户系统。

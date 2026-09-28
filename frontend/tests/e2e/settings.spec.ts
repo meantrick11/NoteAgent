@@ -113,16 +113,24 @@ async function stubApi(page: Page, options: StubOptions = {}) {
   }
   const status = options.status ?? BASE_STATUS
   let jobPolls = 0
+  let statusReads = 0
+  let candidateReads = 0
 
   /* 先注册宽泛的前缀，再注册各子路径：后注册的优先，否则子路径会被前缀吃掉。 */
   await page.route(
     (url) => url.pathname === '/model-settings',
-    (route) => route.fulfill({ json: status }),
+    (route) => {
+      statusReads += 1
+      return route.fulfill({ json: status })
+    },
   )
 
   await page.route(
     (url) => url.pathname === '/model-settings/embeddings',
-    (route) => route.fulfill({ json: CANDIDATES }),
+    (route) => {
+      candidateReads += 1
+      return route.fulfill({ json: CANDIDATES })
+    },
   )
   await page.route(
     (url) => url.pathname.startsWith('/model-settings/jobs/'),
@@ -185,18 +193,43 @@ async function stubApi(page: Page, options: StubOptions = {}) {
     (route) => route.fulfill({ json: { files: [], folders: [] } }),
   )
 
-  return { calls, jobPolls: () => jobPolls }
+  return {
+    calls,
+    jobPolls: () => jobPolls,
+    statusReads: () => statusReads,
+    candidateReads: () => candidateReads,
+  }
 }
 
-test('设置页列出聊天配置与向量候选，显示当前生效项', async ({ page }) => {
+/** 分类面板按 section testid 定位；不依赖卡片顺序，布局再调整也不会误选。 */
+function section(page: Page, id: 'models' | 'retrieval') {
+  return page.locator(`[data-settings-section="${id}"]`)
+}
+
+test('默认分类列出聊天配置，向量候选不在这个分类里', async ({ page }) => {
   await stubApi(page)
   await page.goto('/settings')
 
+  await expect(page.getByRole('heading', { name: '模型与连接' })).toBeVisible()
   await expect(page.getByText('环境默认')).toBeVisible()
   await expect(page.getByText('本地服务')).toBeVisible()
+  // stub 里没有启用的聊天配置：每条给的是「启用」按钮，而不是「已启用」芯片。
+  const models = section(page, 'models')
+  await expect(models.getByText('DeepSeek · deepseek-v4-flash')).toBeVisible()
+  await expect(models.getByRole('button', { name: '启用' }).first()).toBeVisible()
+
+  // 向量候选在另一个分类里，裸路径不显示它。
+  await expect(page.getByRole('heading', { name: '检索与索引' })).toBeHidden()
+})
+
+test('检索分类列出向量候选与索引摘要', async ({ page }) => {
+  await stubApi(page)
+  await page.goto('/settings?section=retrieval')
+
+  await expect(page.getByRole('heading', { name: '检索与索引' })).toBeVisible()
   await expect(page.locator('.ms-row-title', { hasText: 'multilingual-e5-small' })).toBeVisible()
-  // 已启用的那条有标记，未启用的显示可用性原因。
   await expect(page.getByText('已启用').first()).toBeVisible()
+  // 未启用的显示可用性原因。
   await expect(page.getByText('本地缓存不完整')).toBeVisible()
   await expect(page.getByText('已索引 120 个片段 / 20 篇笔记')).toBeVisible()
 })
@@ -206,7 +239,7 @@ test('普通保存不启用：请求体带 expected_revision 且不带 id（新�
   await page.goto('/settings')
 
   await page.getByRole('button', { name: '＋ 新增配置' }).click()
-  const form = page.locator('.settings-card').first()
+  const form = section(page, 'models')
   await form.locator('#ms-label').fill('新配置')
   await form.locator('#ms-model').fill('deepseek-chat')
   await form.getByRole('button', { name: '保存', exact: true }).click()
@@ -224,7 +257,7 @@ test('保存并启用走 activate，而不是普通保存', async ({ page }) => 
   await page.goto('/settings')
 
   await page.getByRole('button', { name: '＋ 新增配置' }).click()
-  const form = page.locator('.settings-card').first()
+  const form = section(page, 'models')
   await form.locator('#ms-label').fill('新配置')
   await form.locator('#ms-model').fill('deepseek-chat')
   await form.getByRole('button', { name: '保存并启用' }).click()
@@ -240,7 +273,7 @@ test('revision 冲突时保留表单并提示刷新', async ({ page }) => {
   await page.goto('/settings')
 
   await page.getByRole('button', { name: '＋ 新增配置' }).click()
-  const form = page.locator('.settings-card').first()
+  const form = section(page, 'models')
   await form.locator('#ms-label').fill('新配置')
   await form.locator('#ms-model').fill('deepseek-chat')
   await form.getByRole('button', { name: '保存', exact: true }).click()
@@ -259,7 +292,7 @@ test('当前启用的配置不能普通保存，只能保存并启用', async ({
   const row = page.locator('.ms-row', { hasText: '环境默认' }).first()
   await row.getByRole('button', { name: '编辑' }).click()
 
-  const form = page.locator('.settings-card').first()
+  const form = section(page, 'models')
   await expect(form.getByRole('button', { name: '保存', exact: true })).toHaveCount(0)
   await expect(form.getByRole('button', { name: '保存并启用' })).toBeVisible()
   await expect(form.getByText('这是当前启用的配置')).toBeVisible()
@@ -274,7 +307,7 @@ test('编辑时 Key 不回显，留空表示保留', async ({ page }) => {
   const row = page.locator('.ms-row', { hasText: '环境默认' }).first()
   await row.getByRole('button', { name: '编辑' }).click()
 
-  const key = page.locator('.settings-card').first().locator('#ms-key')
+  const key = section(page, 'models').locator('#ms-key')
   await expect(key).toHaveValue('')
   await expect(key).toHaveAttribute('placeholder', '留空保留已保存的 Key')
 })
@@ -284,7 +317,7 @@ test('连接测试把流式与工具调用的结论显示出来', async ({ page 
   await page.goto('/settings')
 
   await page.getByRole('button', { name: '＋ 新增配置' }).click()
-  const form = page.locator('.settings-card').first()
+  const form = section(page, 'models')
   await form.locator('#ms-model').fill('deepseek-chat')
   await form.getByRole('button', { name: '测试连接' }).click()
 
@@ -306,7 +339,7 @@ test('重建并切换会进入维护窗口并轮询任务', async ({ page }) => 
     finished_at: null,
   }
   const stub = await stubApi(page, { switchResponse: { unchanged: false, job: runningJob } })
-  await page.goto('/settings')
+  await page.goto('/settings?section=retrieval')
 
   const row = page.locator('.ms-row', { hasText: 'bge-small-zh-v1.5' }).first()
   await row.getByRole('button', { name: '重建并切换' }).click()
@@ -338,6 +371,126 @@ test('Settings 与 Assistant 快捷弹层是同一份状态', async ({ page }) =
   await expect(popover.getByText('本地服务')).toBeVisible()
 
   // 切回 Settings 不再重复拉状态：整轮状态请求次数保持稳定。
-  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  await page.getByRole('link', { name: '设置' }).click()
   await expect(page.getByText('环境默认')).toBeVisible()
+})
+
+/** 从当前位置按 Tab 走到目标元素；走不到就说明键盘路径断了。 */
+async function tabTo(page: Page, target: ReturnType<Page['locator']>, max = 12): Promise<void> {
+  for (let i = 0; i < max; i += 1) {
+    await page.keyboard.press('Tab')
+    if (await target.evaluate((node) => node === document.activeElement)) return
+  }
+  throw new Error('目标不在 Tab 顺序里')
+}
+
+test('分类深链接、刷新与前进后退都还原分类', async ({ page }) => {
+  await stubApi(page)
+  await page.goto('/settings?section=retrieval')
+  const categories = page.getByRole('navigation', { name: '设置分类' })
+  const retrieval = categories.getByRole('link', { name: '检索与索引', exact: true })
+  await expect(retrieval).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('heading', { name: '检索与索引' })).toBeVisible()
+
+  // 刷新后仍是同一个分类。
+  await page.reload()
+  await expect(page.getByRole('heading', { name: '检索与索引' })).toBeVisible()
+
+  await categories.getByRole('link', { name: '模型与连接', exact: true }).click()
+  await expect(page).toHaveURL(/section=models/)
+  await page.goBack()
+  await expect(page).toHaveURL(/section=retrieval/)
+  await expect(page.getByRole('heading', { name: '检索与索引' })).toBeVisible()
+  await page.goForward()
+  await expect(page.getByRole('heading', { name: '模型与连接' })).toBeVisible()
+})
+
+test('无效或未开放分类 replace 成默认，且不新增历史项', async ({ page }) => {
+  await stubApi(page)
+  // 造一个既无 section 的落点，用来验证 replace 不留下额外历史。
+  await page.goto('/library')
+  await page.goto('/settings?section=general&from=home')
+
+  await expect(page).toHaveURL(/section=models/)
+  await expect(page).toHaveURL(/from=home/)
+  await expect(section(page, 'models').getByText('环境默认')).toBeVisible()
+
+  await page.goBack()
+  await expect(page).toHaveURL(/\/library$/)
+})
+
+test('切换分类不丢模型表单，不自动保存', async ({ page }) => {
+  const stub = await stubApi(page)
+  await page.goto('/settings')
+  await page.getByRole('button', { name: /新增配置/ }).click()
+  await page.locator('#ms-label').fill('尚未保存的配置')
+  const categories = page.getByRole('navigation', { name: '设置分类' })
+  await categories.getByRole('link', { name: '检索与索引', exact: true }).click()
+  await categories.getByRole('link', { name: '模型与连接', exact: true }).click()
+  await expect(page.locator('#ms-label')).toHaveValue('尚未保存的配置')
+  expect(stub.calls.filter((x) => x.method !== 'GET')).toHaveLength(0)
+})
+
+test('切换分类不重复初始化模型状态', async ({ page }) => {
+  const stub = await stubApi(page)
+  await page.goto('/settings')
+  await expect(section(page, 'models').getByText('环境默认')).toBeVisible()
+  const before = { status: stub.statusReads(), candidates: stub.candidateReads() }
+
+  const categories = page.getByRole('navigation', { name: '设置分类' })
+  await categories.getByRole('link', { name: '检索与索引', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '检索与索引' })).toBeVisible()
+  await categories.getByRole('link', { name: '模型与连接', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '模型与连接' })).toBeVisible()
+
+  // 分类只改显隐：状态与候选都不再各拉一遍。
+  expect(stub.statusReads()).toBe(before.status)
+  expect(stub.candidateReads()).toBe(before.candidates)
+})
+
+test('重建中切回检索分类，进度继续更新', async ({ page }) => {
+  const stub = await stubApi(page, { switchResponse: { unchanged: false, job: RUNNING_JOB } })
+  await page.goto('/settings?section=retrieval')
+
+  const row = page.locator('.ms-row', { hasText: 'bge-small-zh-v1.5' }).first()
+  await row.getByRole('button', { name: '重建并切换' }).click()
+  await expect.poll(() => stub.jobPolls()).toBeGreaterThan(1)
+
+  const categories = page.getByRole('navigation', { name: '设置分类' })
+  await categories.getByRole('link', { name: '模型与连接', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '模型与连接' })).toBeVisible()
+  const pollsAfterLeaving = stub.jobPolls()
+
+  // 隐藏的分类不停止轮询：回到检索仍看到进度在走。
+  await categories.getByRole('link', { name: '检索与索引', exact: true }).click()
+  await expect(page.getByText(/正在切换到 BAAI\/bge-small-zh-v1\.5/).first()).toBeVisible()
+  await expect.poll(() => stub.jobPolls()).toBeGreaterThan(pollsAfterLeaving)
+})
+
+test('齿轮与分类都能用键盘操作，当前项可识别', async ({ page }) => {
+  await stubApi(page)
+  await page.goto('/')
+
+  // 从页面开头 Tab 到齿轮，再按 Enter 进入设置。
+  const gear = page.getByRole('link', { name: '设置' })
+  await tabTo(page, gear)
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/settings$/)
+
+  // 焦点仍在齿轮上：继续 Tab 会进入分类导航。
+  const categories = page.getByRole('navigation', { name: '设置分类' })
+  const retrieval = categories.getByRole('link', { name: '检索与索引', exact: true })
+  await tabTo(page, retrieval)
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/section=retrieval/)
+  await expect(retrieval).toHaveAttribute('aria-current', 'page')
+  await expect(categories.getByRole('link', { name: '模型与连接', exact: true })).not.toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+
+  // 主导航回 Home：query 不残留，也不落到错误路由。
+  await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: 'Home' }).click()
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible()
 })

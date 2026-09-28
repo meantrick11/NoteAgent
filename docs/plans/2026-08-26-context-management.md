@@ -11,6 +11,8 @@
 >
 > **做完后不要自称完成。** 列出：改过的文件、每条跑过的 pytest 命令与通过/失败。交给审查 Agent 对照本文「验收」与契约 §8。
 
+> **执行状态（2026-09-27 补注）：已实现，规格清单未回勾。** 本文对应改动前的代码状态，勾选框保留为空，不代表未实现。现行装配公式、`running_summary` / watermark 行为与工具 stub 截断以 [context-management.md](../architecture/context-management.md) 为准，表结构以 [database.md](../architecture/database.md) 为准；本文件只作为执行历史与函数名/测试命令的参考。
+
 **Goal:** 会话上下文改为：Persistent（user + 最终 assistant + tool stub）+ 会话上一栏 `running_summary` + 仅当前 Turn 内存 Runtime 全文；按环境里的 W×触发比例 / 目标比例与完整 Turn 边界压缩；停用 `context.md` 当聊天记忆。
 
 **Architecture:** 只扩现有 `conversations` / `messages`（见 database.md §4）。`ConversationStore` 是库的唯一写入口。`ChatAgent.stream` 用 `bind_tools` 循环 + 局部 `runtime` 列表；**禁止** `create_agent` + 进程级 `InMemorySaver`。压缩纯函数在 `context_compact.py`；W、比例、stub token 上限全部来自 Settings/环境，compact/agent **禁止**写死 32768、0.8、0.6、1000。

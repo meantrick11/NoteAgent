@@ -22,9 +22,9 @@
 | 文件 | 改动 |
 |------|------|
 | [`README.md`](../../README.md) | 短介绍 + 板块入口 |
-| [`docs/tutorials/README.md`](../tutorials/README.md) | 层级 × 语言索引 |
-| [`docs/tutorials/zh/getting-started.md`](../tutorials/zh/getting-started.md) | 零基础 Docker |
-| [`docs/tutorials/zh/local-dev.md`](../tutorials/zh/local-dev.md) | 本机 uv / Postgres |
+| [`docs/tutorials/README.md`](../guides/README.md) | 层级 × 语言索引 |
+| [`docs/tutorials/zh/getting-started.md`](../guides/zh/getting-started.md) | 零基础 Docker |
+| [`docs/tutorials/zh/local-dev.md`](../guides/zh/local-dev.md) | 本机 uv / Postgres |
 | [`docs/README.md`](../README.md) | 目录表加 `tutorials/` |
 | [`.env.example`](../../.env.example) | embedding 默认 `var/models`；本机可下载 |
 

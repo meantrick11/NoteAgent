@@ -6,6 +6,10 @@
 
 **证据分级**（全文统一，不得混用）：自动测试通过 / 人工在运行页面验证通过 / 环境阻塞 / 已知旧问题 / 本次新增问题。
 
+> **后续变更（2026-09-28 同日）：** 本文记录的顶部五文字导航（Home／Assistant／Records／Library／Settings）
+> 随后按 [Settings 入口调整与分类预留](2026-09-28-settings-navigation-and-sections.md) 改为四个工作入口＋右上角设置齿轮，
+> 记录见 [结果文档](2026-09-28-settings-navigation-and-sections-results.md)。本文的导航相关描述是当时的实测证据，未回改。
+
 ---
 
 ## 1. Task 1 执行基线

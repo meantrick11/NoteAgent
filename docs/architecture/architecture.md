@@ -104,10 +104,11 @@ NoteAgent 是个人学习笔记助手：在浏览器里对话，把值得保留�
 
 ```text
 浏览器  Vue SPA（frontend/ 构建产物，由 web/dist 承载）
-    │  顶部导航 Home | Assistant | Records | Library | Settings
+    │  顶部导航 Home | Assistant | Records | Library ＋右上角设置齿轮
     │  Assistant：侧栏会话、气泡、输入、右侧引用/草稿面板、SSE
     │  Library：一层目录树、编辑/预览、拖拽、芯片入库
-    │  Settings：聊天模型与向量模型（与 Assistant 输入框下方的入口共用状态）
+    │  Settings（齿轮进入）：?section= 切换分类，models 管聊天模型，retrieval 管向量模型与索引
+    │            （与 Assistant 输入框下方的入口共用状态）
     ▼
 HTTP  web/router.py      六个页面地址下发 SPA 外壳（vue）或旧模板（legacy）
       chat/router.py     会话；POST /chat；PUT /chat/draft；POST /chat/review
@@ -259,7 +260,7 @@ flowchart TD
 
 ### 5.1 前端
 
-**职责。** 一个 Vue SPA，顶部五页固定为 Home → Assistant → Records → Library → Settings。Assistant 侧栏管会话，主栏画气泡，底栏发消息，待审草稿在右侧面板的草稿模式出现。Library 用一层目录树管已落地的 Markdown：打开即编辑+预览，保存/移动/删除/点芯片同步向量。Settings 管聊天模型与向量模型。工具过程在助手气泡外一排，不进主气泡正文。Records 本轮只有入口与空状态，承载来源尚未确定。
+**职责。** 一个 Vue SPA，顶部固定为 Home → Assistant → Records → Library 四个工作入口，设置由右上角齿轮进入 `/settings`（用 `?section=` 分「模型与连接」「检索与索引」两类）。Assistant 侧栏管会话，主栏画气泡，底栏发消息，待审草稿在右侧面板的草稿模式出现。Library 用一层目录树管已落地的 Markdown：打开即编辑+预览，保存/移动/删除/点芯片同步向量。Settings 管聊天模型与向量模型。工具过程在助手气泡外一排，不进主气泡正文。Records 本轮只有入口与空状态，承载来源尚未确定。
 
 **结构与协作。** `web/router.py` 的页面白名单下发 SPA 外壳，资源由 `create_app` 挂在 `/ui-assets/`（指向 `web/dist`）。Assistant：`GET /conversations`、点会话再取消息、`POST /chat` 读 SSE、`POST /chat/review` 审草稿；点 ① 打开引用面板，保存走 `PUT /notes/{path}`；会话三点走 `PATCH`/`DELETE /conversations/{id}`。输入框下侧靠右有两个模型入口（聊天 / 向量），走 `/model-settings*`，与 Settings 页是同一批组件与同一份状态。Library：文件夹与根 `.md` 同级；拖到文件夹组确认后 `POST /notes/move`；芯片 `POST /notes/{path}/index`。树、弹窗、同步滚动、两条写盘路径的界面约定见 [frontend.md](./frontend.md)。`isStreaming` 为真时不能连发；向量维护窗口内发送与写盘按钮禁用、输入保留。
 

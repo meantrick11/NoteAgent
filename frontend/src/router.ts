@@ -7,7 +7,10 @@ import RecordsPage from '@/pages/RecordsPage.vue'
 import SettingsPage from '@/pages/SettingsPage.vue'
 import { LEGACY_DOCUMENTS_PATH } from '@/shared/navigation'
 
-/** 页面路由；路径必须与 shared/navigation.ts 的 NAV_ITEMS 一一对应（有单测钉住）。 */
+/**
+ * 页面路由；路径必须与 shared/navigation.ts 的 PRIMARY_NAV_ITEMS（四项主入口）
+ * 加 SETTINGS_ENTRY（右上角齿轮）一一对应（有单测钉住）。
+ */
 export const PAGE_ROUTES = [
   { path: '/', name: 'home', component: HomePage },
   { path: '/assistant', name: 'assistant', component: AssistantPage },

@@ -2,7 +2,7 @@
 
 运行时只读上一级 [`system.txt`](../system.txt)。本目录是归档，**不要**改 `ChatAgent` 去加载这里的文件。
 
-从 `system.txt` 入库到现在一共 **10 版**。
+从 `system.txt` 入库到现在一共 **11 版**。
 
 | 版 | 日期 | 来源 | 文件 | 改了什么 |
 |----|------|------|------|----------|
@@ -15,7 +15,8 @@
 | v7 | 2026-09-01 | 写模式 | [v7-2026-09-01-replace-delete.txt](./v7-2026-09-01-replace-delete.txt) | `propose_note` 增加 replace（整文件覆盖）与 delete；模型先判断 append/create/replace/delete |
 | v8 | 2026-09-05 | 一层目录 | [v8-2026-09-05-one-level-folders.txt](./v8-2026-09-05-one-level-folders.txt) | `file_name` 可为 `Folder/Note.md`；list_files 带文件夹；禁止擅自 mkdir。与当时 `system.txt` 相同 |
 | v9 | 2026-09-10 | 学习型笔记 | [v9-2026-09-10-learning-notes.txt](./v9-2026-09-10-learning-notes.txt) | 默认学习型笔记；语义忠实与覆盖；允许有依据的重组；新增知识加工增益 |
-| v10 | 2026-09-25 | 更正前的冲突核对 | [v10-2026-09-25-conflict-before-replace.txt](./v10-2026-09-25-conflict-before-replace.txt) | 用户要更正时，若新说法与读到的原文冲突，先指出冲突与原文依据再问，不要直接 replace 掉原有结论。与现行 `system.txt` 字节一致 |
+| v10 | 2026-09-25 | 更正前的冲突核对 | [v10-2026-09-25-conflict-before-replace.txt](./v10-2026-09-25-conflict-before-replace.txt) | 用户要更正时，若新说法与读到的原文冲突，先指出冲突与原文依据再问，不要直接 replace 掉原有结论 |
+| v11 | 2026-09-26 | 草稿面板措辞 | [v11-2026-09-26-draft-pane-wording.txt](./v11-2026-09-26-draft-pane-wording.txt) | 随「草稿显示在右侧引用面板」一起改措辞。与现行 `system.txt` 字节一致 |
 
 加新版时：复制当时的 `system.txt` 为 `vN-日期-短名.txt`，在本表追加一行，不要改旧档。人工回归见 [evals/prompt/](../../../../../evals/prompt/README.md)。
 

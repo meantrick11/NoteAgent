@@ -34,15 +34,24 @@ body {
   flex-direction: column;
 }
 
-.app-nav {
+.app-header {
   flex-shrink: 0;
   height: var(--header-height);
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  padding: 0 var(--space-4);
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+}
+
+/* 主导航只吃剩余宽度，齿轮常驻右侧：窄屏滚动入口不会把设置推出去。 */
+.app-nav {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-3) 0 var(--space-4);
   /* 窄屏保持入口可达：横向滚动而不是隐藏。 */
   overflow-x: auto;
   scrollbar-width: none;
@@ -80,6 +89,35 @@ body {
   color: var(--text);
   background: var(--bg);
   font-weight: 600;
+}
+
+.app-nav-tools {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding-right: var(--space-3);
+}
+
+.app-icon-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.app-icon-link:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app-icon-link.router-link-exact-active {
+  color: var(--text);
+  background: var(--bg);
 }
 
 .app-main {

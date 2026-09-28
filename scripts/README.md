@@ -67,4 +67,4 @@ python scripts/download_models.py
 # 完整报告在 var/evals/rag/<run-id>/ ；提交版 summary 在 evals/{rag,agent}/results/<run-id>/
 ```
 
-准则与字段契约：[docs/evaluations/rag-quality.md](../docs/evaluations/rag-quality.md)；数据位置：[evals/rag/README.md](../evals/rag/README.md)、[evals/agent/README.md](../evals/agent/README.md)。
+准则与字段契约：[rag-quality.md](../evals/criteria/rag-quality.md)；数据位置：[evals/rag/README.md](../evals/rag/README.md)、[evals/agent/README.md](../evals/agent/README.md)。

@@ -35,6 +35,7 @@ V2.2／V2.3 仍按当前可用处理，其余 V2 迭代在前端扩容后继续�
 
 | 文件 | 状态 | 验证入口 |
 |---|---|---|
+| [2026-09-28-settings-navigation-and-sections.md](./2026-09-28-settings-navigation-and-sections.md) | 已完成 | 执行记录见 [results](./2026-09-28-settings-navigation-and-sections-results.md)：顶部四工作入口＋齿轮、设置两分类；test:unit 120 / test:e2e 54 / build 通过 |
 | [2026-09-28-vue-frontend-initialization.md](./2026-09-28-vue-frontend-initialization.md) | 已完成（实现部分；文档同步见结果文档 §未运行项） | 执行记录见 [results](./2026-09-28-vue-frontend-initialization-results.md)：F01–F16 逐项证据、test:unit 114 / test:e2e 46 / pytest 502 |
 | [2026-09-27-docs-four-directory-consolidation.md](./2026-09-27-docs-four-directory-consolidation.md) | 已完成 | 执行记录见 [2026-09-27-docs-four-directory-consolidation-results.md](./2026-09-27-docs-four-directory-consolidation-results.md) |
 | [2026-09-27-docs-four-directory-consolidation-results.md](./2026-09-27-docs-four-directory-consolidation-results.md) | 整理记录（不是实现任务） | 基线、迁移映射、保护比对与链接验证 |

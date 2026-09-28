@@ -9,7 +9,7 @@
 
 两者共用的只有语料事实源。**检索指标不能用来给正文质量打分**；反过来，正文质量分也不能证明召回效果。
 
-架构见 [architecture/retrieval.md](../architecture/retrieval.md)，Agent 工具边界见 [architecture/chat-tools.md](../architecture/chat-tools.md)。
+架构见 [architecture/retrieval.md](../../docs/architecture/retrieval.md)，Agent 工具边界见 [architecture/chat-tools.md](../../docs/architecture/chat-tools.md)。
 
 ---
 

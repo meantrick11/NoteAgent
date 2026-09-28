@@ -2,6 +2,8 @@
 
 全局职责见 [architecture.md §5.8](./architecture.md#58-观测)。本文是现行输出路径、三层划分、步骤文案与模块对应。切块与 Chroma 点仍以 [retrieval.md](./retrieval.md) 为准。
 
+> 关联文档：日志目录与排错步骤 [guides/zh/local-dev.md](../guides/zh/local-dev.md)；评测运行留痕见 [evals/README.md](../../evals/README.md)。
+
 | 项 | 内容 |
 |---|---|
 | 输出 | 同一份 `var/logs/noteagent.log`（`LOG_DIR`）+ 彩色 stdout |

@@ -284,7 +284,7 @@ test('未保存时离开 Library 会先问，取消则留在原处', async ({ pa
   await page.locator('.docs-row', { hasText: 'Go.md' }).click()
   await page.getByRole('textbox', { name: 'Markdown 正文' }).fill('改过但没保存')
 
-  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  await page.getByRole('link', { name: '设置' }).click()
   const dialog = page.getByRole('dialog', { name: '未保存修改' })
   await expect(dialog).toBeVisible()
   await dialog.getByRole('button', { name: '取消' }).click()

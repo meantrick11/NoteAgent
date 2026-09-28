@@ -6,7 +6,7 @@
 
 ## 首页职责
 
-正文在 [README.md](../../README.md)。教程 [../tutorials/](../tutorials/README.md) 保留给排错与环境变量全表。不要在首页串架构附件阅读顺序。
+正文在 [README.md](../../README.md)。教程 [../tutorials/](../guides/README.md) 保留给排错与环境变量全表。不要在首页串架构附件阅读顺序。
 
 ## 目录
 
