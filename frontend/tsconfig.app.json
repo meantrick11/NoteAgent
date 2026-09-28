@@ -23,5 +23,11 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "tests/unit/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.vue",
+    "tests/fixtures/**/*.ts",
+    "tests/unit/**/*.ts",
+    "tests/e2e/**/*.ts"
+  ]
 }

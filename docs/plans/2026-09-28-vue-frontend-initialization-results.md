@@ -182,13 +182,63 @@ F09（打开右栏后中间区被压缩，与 `chatLayoutBounds` 的收边规则
 
 ---
 
+### Task 3：建立 API、SSE 与共享模型状态 —— 完成
+
+**新增：** `src/shared/api/{types.ts,http.ts}`、`src/features/chat/{api.ts,sse.ts}`、
+`src/features/notes/api.ts`、`src/features/models/{api.ts,store.ts}`、
+`tests/fixtures/api.ts`、`tests/unit/{api.spec.ts,sse.spec.ts,model-state.spec.ts}`。
+**修改：** `frontend/tsconfig.app.json`（把 `tests/fixtures`、`tests/e2e` 纳入类型检查）。
+
+- [x] 逐项建立 TS 合同。类型与 pydantic schema 字段名一一对应，不做重命名；`/notes/move` 与
+      `/notes/folders/rename` 的 JSON 键是 `from`/`to`，`DeleteChatProfile` 的 `expected_revision` 走查询参数——
+      三处最容易写错的地方都有单测钉住。
+- [x] API 层负责 JSON、204、网络错误与 `message`→`detail`→`error`→`HTTP n` 的提取；**写请求不自动重试**（有单测）。
+- [x] SSE 抽成 `consumeSse(stream, onEvent)`，`onEvent` 收 `{event, data: unknown}`；
+      另加 `decodeChatEvent` 做协议校验、`TurnAccumulator` 存一轮状态。协议判断不再散落在组件里。
+- [x] fixtures 覆盖 conversation／多个 token／sources／answer／draft／工具事件；
+      模拟 UTF-8 逐字节分片、空行分片、事件跨块、断流与末行无换行；验证 `answer` 整体替换 token 缓冲、
+      `sources` 先后到达都不丢引用。
+- [x] models store 复用原状态转换与轮询条件：`revision`／`active` 限制、`unchanged`、
+      202 立即进入维护窗口、`visibilitychange` 与 `focus` 由 `init()` 统一注册、`dispose()` 统一清理。
+- [x] Vite 开发代理已配置并**实际验证**（见下）。`changeOrigin: false`，不重写 Origin/Host。
+
+**命令与真实输出**
+
+```text
+$ npm --prefix frontend run test:unit
+ Test Files  4 passed (4)
+      Tests  59 passed (59)      （sse 19 / api 19 / model-state 18 / navigation 3）
+
+$ npm --prefix frontend run type-check
+> vue-tsc -b --force            （无输出，退出码 0）
+```
+
+**开发代理的同源验证**（真实 FastAPI + 真实 Vite 代理，`127.0.0.1:5173 → 127.0.0.1:8000`）
+
+| 请求 | Origin / Host | 结果 | 判读 |
+|---|---|---|---|
+| `PUT /chat/draft`（真实会话 id） | 均为 `127.0.0.1:5173` | **409** | 过了同源检查并进入业务逻辑（该会话没有待审草稿），配对正确 |
+| 同上 | `Origin: https://evil.example` | **403** | 经代理的外部 Origin 仍被拒 |
+| `DELETE /model-settings/chat/profiles/does-not-exist` | 均为 `127.0.0.1:5173` | **409** | 模型写请求同样过了同源检查（不存在的配置，零副作用） |
+| 同上 | `Origin: https://evil.example` | **403** | 外部 Origin 被拒 |
+| `GET /model-settings`、`/notes`、`/conversations` | — | 200 | 读接口代理正常 |
+| `GET /assistant`、`/library`、`/documents` | — | 200 | 页面路由不被代理吞掉，SPA 回退正常 |
+
+`require_same_origin` 比较的是 Origin 的 netloc 与 Host，所以上表的「配对正确」不是推断：
+同一组请求换掉 Origin 就从 409 变 403。后端既有的跨源拒绝测试也仍然通过（见下方整体回归）。
+
+**完成条件评估：** HTTP／SSE 与维护状态已可独立验证；API 地址、字段与业务动作与旧实现一致。
+**本任务仍不迁移任何 UI，F01–F16 的「证据」列保持待迁移。**
+
+---
+
 ## 4. 汇总（随任务推进更新）
 
 | 任务 | 状态 | 提交 | 通过的功能编号 | 验证命令与结果 |
 |---|---|---|---|---|
 | Task 1 基线与回归清单 | 完成 | `4ada6e0` | — | `pytest tests -q` → 490 passed |
-| Task 2 Vue 外壳与路由 | 完成 | 待填 | —（外壳，不含 F 项） | `type-check` 通过；`test:unit` 3 passed；`test:e2e` 6 passed；`build` 成功；`pytest tests -q` → 501 passed |
-| Task 3 API／SSE／模型状态 | 未开始 | — | — | — |
+| Task 2 Vue 外壳与路由 | 完成 | `6174f47` | —（外壳，不含 F 项） | `type-check` 通过；`test:unit` 3 passed；`test:e2e` 6 passed；`build` 成功；`pytest tests -q` → 501 passed |
+| Task 3 API／SSE／模型状态 | 完成 | 待填 | —（基础设施，不含 F 项） | `test:unit` 59 passed；`type-check` 通过；开发代理同源验证见 §3 Task 3 |
 | Task 4 Assistant 迁移 | 未开始 | — | — | — |
 | Task 5 Library 迁移 | 未开始 | — | — | — |
 | Task 6 Settings 迁移 | 未开始 | — | — | — |
@@ -200,3 +250,4 @@ F09（打开右栏后中间区被压缩，与 `chatLayoutBounds` 的收边规则
 - `npm --prefix frontend ci`：本轮用 `npm install` 生成 lockfile，未在干净目录验证 `ci`。
 - `docker compose build app`：Dockerfile 尚未加 Node 阶段（Task 8），本轮未验证。
 - 草稿面板（F06／F07）的旧版人工复核：现有数据没有待审草稿。
+- 真实聊天往返（`POST /chat` 的 provider 调用）：会消耗用户额度，本轮未发起；SSE 用 fixtures 验证。
