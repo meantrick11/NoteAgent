@@ -11,8 +11,9 @@
 import type { Router } from 'vue-router'
 
 import { useChatStore } from '@/features/chat/store'
+import { useNotesStore } from '@/features/notes/store'
 
-/** 返回 true 表示可以离开；需要询问时由这里统一问。 */
+/** 返回 true 表示可以离开 Assistant；需要询问时由这里统一问。 */
 export async function canLeaveAssistant(): Promise<boolean> {
   const chat = useChatStore()
   if (!chat.anyPanelDirty) return true
@@ -22,10 +23,20 @@ export async function canLeaveAssistant(): Promise<boolean> {
   return true
 }
 
+/** 返回 true 表示可以离开 Library；确认放弃只清掉本页这份正文。 */
+export async function canLeaveLibrary(): Promise<boolean> {
+  const notes = useNotesStore()
+  if (!notes.dirty) return true
+  if (!(await notes.confirmDiscard('有未保存修改，确定离开？'))) return false
+  notes.discardEdits()
+  return true
+}
+
 export function installUnsavedGuard(router: Router): void {
   router.beforeEach(async (to, from) => {
     if (to.path === from.path) return true
     if (from.name === 'assistant') return canLeaveAssistant()
+    if (from.name === 'library') return canLeaveLibrary()
     return true
   })
 }
@@ -34,7 +45,8 @@ export function installBeforeUnload(): void {
   if (typeof window === 'undefined') return
   window.addEventListener('beforeunload', (event) => {
     const chat = useChatStore()
-    if (!chat.anyPanelDirty) return
+    const notes = useNotesStore()
+    if (!chat.anyPanelDirty && !notes.dirty) return
     event.preventDefault()
     // 现代浏览器忽略自定义文案，但仍要求设置 returnValue 才会弹确认。
     event.returnValue = ''

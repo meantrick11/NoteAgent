@@ -290,6 +290,47 @@ $ npm --prefix frontend run build          → dist/index.html + assets（195.6 
 
 ---
 
+### Task 5：迁移 Library 与跨页面保存一致性 —— 完成
+
+**新增：** `features/notes/{store.ts,NoteTree.vue,NoteEditor.vue,IndexChip.vue}`、
+`tests/e2e/library.spec.ts`。
+**修改：** `pages/LibraryPage.vue`、`features/chat/store.ts`（跨页面刷新）、`shared/unsaved-guard.ts`（Library 分支）。
+
+**命令与真实输出**
+
+```text
+$ npm --prefix frontend run test:e2e
+  32 passed        （navigation 6 + assistant 7 + drafts-citations 8 + library 11）
+$ npm --prefix frontend run test:unit    114 passed
+$ npm --prefix frontend run type-check   无输出，退出码 0
+$ npm --prefix frontend run build        → 209.9 kB js / 26.0 kB css
+```
+
+**F10–F13 的证据**
+
+| 编号 | 证据 |
+|---|---|
+| F10 | e2e：目录树显示一级目录与根笔记；展开折叠；新建目录后选中它再新建笔记，请求体是 `{file_name: 'bak/新的.md'}`（目录前缀正确） |
+| F11 | e2e：打开笔记后编辑区与预览同时更新，未保存圆点出现；保存发 `PUT /notes/Go.md` 且圆点消失；Ctrl+S 保存；离开 Library 会先问，取消则 URL 与正文都不变 |
+| F12 | e2e：重命名走 `/notes/move` 且请求体是 `{from: 'Go.md', to: 'Golang'}`（**不是** `from_path/to_path`，也不替用户补 `.md`，与旧页面一致）；删除先确认，取消不发 DELETE；**拖动笔记到目录上**会高亮落点、弹确认、再发 `{from: 'Draft.md', to: 'bak/Draft.md'}` |
+| F13 | e2e：已索引／未索引芯片数量正确，点未索引的那个会发 `POST /notes/Draft.md/index` |
+
+**真实后端人工验证：** `/library` 下目录树 24 行、23 个索引芯片；打开
+`Deep_Agents_Context_Engineering.md`（12633 字符）后编辑区与预览并排显示，标题栏含索引芯片与修改时间。
+
+**过程中发现并修掉的一个真实缺陷：** 拖拽落点判定读的是 `dataset.folder`，而模板上的属性是
+`data-folder-group`（对应的键是 `folderGroup`），所以**任何拖到目录上的操作都会被判成落回根目录**，
+根目录下的笔记拖拽直接变成空操作。改为 `dataset.folderGroup` 后拖拽才真正生效。
+
+**跨页面一致性：** 引用面板保存正式笔记后调用 `notes.syncAfterExternalWrite`——目录与索引状态刷新，
+Library 打开着同一篇且没有未保存编辑时换上新正文，有未保存编辑则保留并显示"已在别处更新，请核对"。
+草稿批准写盘后调用 `refreshAfterExternalChange` 刷新目录。
+
+**完成条件评估：** F10–F13 均有 e2e 证据；`/documents` 打开的就是 Library（有专门用例）；
+目录树仍是"树 + 编辑／预览"，没有改成卡片式资料库。
+
+---
+
 ## 4. 汇总（随任务推进更新）
 
 | 任务 | 状态 | 提交 | 通过的功能编号 | 验证命令与结果 |
@@ -297,8 +338,8 @@ $ npm --prefix frontend run build          → dist/index.html + assets（195.6 
 | Task 1 基线与回归清单 | 完成 | `4ada6e0` | — | `pytest tests -q` → 490 passed |
 | Task 2 Vue 外壳与路由 | 完成 | `6174f47` | —（外壳） | `type-check`；`test:unit` 3；`test:e2e` 6；`build`；`pytest` 501 |
 | Task 3 API／SSE／模型状态 | 完成 | `db954d9` | —（基础设施） | `test:unit` 59；`type-check`；开发代理同源验证 |
-| Task 4 Assistant 迁移 | 完成 | 待填 | F01–F09、F16（Assistant 部分） | `test:unit` 114；`test:e2e` 21；`type-check`；`build`；真实后端人工验证 |
-| Task 5 Library 迁移 | 未开始 | — | — | — |
+| Task 4 Assistant 迁移 | 完成 | `66b777f` | F01–F09、F16（Assistant 部分） | `test:unit` 114；`test:e2e` 21；`type-check`；`build`；真实后端人工验证 |
+| Task 5 Library 迁移 | 完成 | 待填 | F10–F13 | `test:e2e` 32；`test:unit` 114；`type-check`；`build`；真实后端人工验证 |
 | Task 6 Settings 迁移 | 未开始 | — | — | — |
 | Task 7 Home／Records／美化 | 未开始 | — | — | — |
 | Task 8 部署接入与总回归 | 未开始 | — | — | — |
@@ -308,5 +349,6 @@ $ npm --prefix frontend run build          → dist/index.html + assets（195.6 
 - `npm --prefix frontend ci`：本轮用 `npm install` 生成 lockfile，未在干净目录验证 `ci`。
 - `docker compose build app`：Dockerfile 尚未加 Node 阶段（Task 8），本轮未验证。
 - 真实聊天往返（`POST /chat` 的 provider 调用）：会消耗用户额度，本轮未发起；
-  真实后端只做了读取与引用浏览（会话列表、历史消息、工具栏、引用定位）。
+  真实后端只做了读取与引用浏览（会话列表、历史消息、工具栏、引用定位）与 Library 的打开／预览。
 - 流式增量的 e2e：`route.fulfill` 一次性下发整个 body，无法断言"token 逐个出现"。
+- 真实数据上的写操作（保存笔记、移动、删除、补建索引）：会改用户笔记，未在真实后端执行。

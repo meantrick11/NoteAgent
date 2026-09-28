@@ -18,6 +18,7 @@ import { showSaveToast } from '@/shared/ui/toast'
 import type { Citation, Conversation, Message, PendingDraft } from '@/shared/api/types'
 // 引用面板读写的是正式笔记，所以走 notes 的接口而不是 chat 的。
 import { readNote, writeNote } from '@/features/notes/api'
+import { useNotesStore } from '@/features/notes/store'
 import * as api from './api'
 import { locateQuote } from './citations'
 
@@ -139,6 +140,7 @@ export type SendOutcome = 'sent' | 'refused' | 'failed'
 
 export const useChatStore = defineStore('chat', () => {
   const models = useModelsStore()
+  const notes = useNotesStore()
 
   const conversations = shallowRef<Conversation[]>([])
   const currentId = ref<string | null>(null)
@@ -401,6 +403,8 @@ export const useChatStore = defineStore('chat', () => {
     }
     patchActivePanel({ dirty: false, hintLocate: '' })
     showSaveToast()
+    /* Library 可能也开着这篇：刷新目录与索引；它没有未保存编辑时才换上新正文。 */
+    await notes.syncAfterExternalWrite(current.fileName, current.text)
     return true
   }
 
@@ -497,6 +501,8 @@ export const useChatStore = defineStore('chat', () => {
             : `已写入 ${result.file_name}`
         clearDraft()
         pushNotice(text)
+        /* 批准会写盘并重建向量：目录与索引状态都要跟着更新。 */
+        await notes.refreshAfterExternalChange()
       } else if (result.status === 'rejected') {
         clearDraft()
         pushNotice('已取消写入')
