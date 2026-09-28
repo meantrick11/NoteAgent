@@ -172,6 +172,8 @@ Key 不回显、连接测试结论、重建并切换的请求体与进度、Sett
 | 新增 | `frontend/src/features/settings/sections.ts`、`SettingsLayout.vue`、`ModelConnectionsSection.vue`、`RetrievalSection.vue` |
 | 测试 | `frontend/tests/unit/navigation.spec.ts`、`frontend/tests/unit/settings-sections.spec.ts`、`frontend/tests/e2e/navigation.spec.ts`、`frontend/tests/e2e/settings.spec.ts`、`frontend/tests/e2e/library.spec.ts`、`frontend/tests/e2e/assistant.spec.ts` |
 | 文档 | 本文件、`docs/plans/README.md`、`docs/plans/2026-09-28-settings-navigation-and-sections.md`（加执行状态指引，正文与勾选框未回改）、`docs/architecture/architecture.md` §3.1／§5.1、`docs/architecture/frontend.md` §0／§8、`docs/product/settings-architecture.md`、`docs/product/frontend-architecture.md`、`docs/product/README.md`、`frontend/README.md` |
+| 用户向说明（复查后补） | `README.md`「五个页面」亮点行、`docs/guides/zh/getting-started.md` §4 界面说明——这两处仍写着顶部五入口，属于本轮遗漏，已按实际入口改写 |
+| 历史记录（只加指引，不回改） | `docs/plans/2026-09-28-vue-frontend-initialization.md` 顶部说明改为「已执行」并附结果链接；`docs/plans/2026-09-28-vue-frontend-initialization-results.md` 顶部加「后续变更」指引，因为其中的导航描述是当时实测证据 |
 
 **未改的文档（判断为不受影响）**：`docs/product/business-architecture.md`、`docs/product/roadmap.md`（本轮不涉及版本范围）、
 `docs/architecture/{retrieval,database,chat-tools,context-management}.md`（后端语义未变）、
