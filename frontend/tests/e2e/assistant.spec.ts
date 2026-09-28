@@ -305,6 +305,27 @@ test('编辑引用后离开页面会先问一次，取消则留在原处', async
   await expect(page).toHaveURL(/\/library$/)
 })
 
+test('未保存时点顶部齿轮离开 Assistant 也会先问', async ({ page }) => {
+  await stubApi(page)
+  await page.goto('/assistant')
+  await page.locator('.cite-ref').first().click()
+
+  const textarea = page.getByRole('textbox', { name: '面板正文' })
+  await textarea.fill('我改过的正文')
+
+  await page.getByRole('link', { name: '设置' }).click()
+  const dialog = page.getByRole('dialog', { name: '未保存修改' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: '取消' }).click()
+
+  await expect(page).toHaveURL(/\/assistant$/)
+  await expect(textarea).toHaveValue('我改过的正文')
+
+  await page.getByRole('link', { name: '设置' }).click()
+  await page.getByRole('dialog', { name: '未保存修改' }).getByRole('button', { name: '放弃修改' }).click()
+  await expect(page).toHaveURL(/\/settings$/)
+})
+
 test('会话菜单可以重命名与删除', async ({ page }) => {
   const calls = await stubApi(page)
   await page.route('**/conversations/c-2', async (route) => {

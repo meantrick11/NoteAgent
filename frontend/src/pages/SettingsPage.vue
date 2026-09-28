@@ -46,9 +46,7 @@ onMounted(() => {
   <section class="page">
     <div class="settings-body">
       <h1 class="page-title">设置</h1>
-      <p class="page-hint">
-        管理模型连接、检索与应用偏好。这里的配置与 Assistant 输入框下方的模型入口是同一份数据，改任一处两边都会更新。
-      </p>
+      <p class="page-hint">管理模型连接、检索与应用偏好。</p>
 
       <SettingsLayout :sections="AVAILABLE_SETTINGS_SECTIONS" :active="activeSection">
         <template #content>

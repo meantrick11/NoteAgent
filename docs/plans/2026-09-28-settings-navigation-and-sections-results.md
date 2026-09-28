@@ -128,23 +128,37 @@
 
 **状态：** 已完成。
 
-**新增／调整的用例**（`frontend/tests/e2e/settings.spec.ts`）
+**新增／调整的用例**
+
+`frontend/tests/e2e/settings.spec.ts`（新增 6 条）：
 
 | 用例 | 覆盖 |
 |---|---|
-| 深链接、刷新与前进后退 | `/settings?section=retrieval` 直达、刷新后仍是检索分类、`goBack`／`goForward` 跟随 |
-| 无效分类 replace 不堆历史 | `?section=nope` → `models`，`goBack` 直接离开设置页，不产生额外历史项；无效值不覆盖其他 query |
-| 切换分类不丢模型表单、不自动保存 | 计划给定的原样用例：写入 `#ms-label` → 切到检索 → 切回模型，值仍在，且 `calls` 中没有非 GET 请求 |
-| 分类切换不重复初始化 | 切换前后 `/model-settings` 与 `/model-settings/embeddings` 请求次数不增加、轮询不重启 |
-| 键盘可达 | 齿轮与两个分类链接均可 Tab 聚焦、Enter 触发，当前分类可识别（`aria-current="page"`） |
-| 未保存离开保护 | Assistant 有未保存内容时点齿轮仍弹原离开确认；取消后 URL 与正文不变 |
+| 分类深链接、刷新与前进后退都还原分类 | `/settings?section=retrieval` 直达、刷新后仍是检索分类、`goBack`／`goForward` 跟随，两分类的标题与 `aria-current` 都对 |
+| 无效或未开放分类 replace 成默认，且不新增历史项 | `?section=general&from=home` → `section=models` 且 `from=home` 保留；`goBack` 直接回到进入设置前的 `/library`，没有多余历史项 |
+| 切换分类不丢模型表单，不自动保存 | 计划给定的原样用例：写入 `#ms-label` → 切检索 → 切回模型，值仍在；`calls` 中没有非 GET 请求 |
+| 切换分类不重复初始化模型状态 | 用 `stubApi` 新增的 `statusReads()`／`candidateReads()` 计数：切换前后 `/model-settings` 与 `/model-settings/embeddings` 请求数不变 |
+| 重建中切回检索分类，进度继续更新 | 切到模型分类期间 `jobPolls()` 继续增长，回到检索仍看到「正在切换到 ……」 |
+| 齿轮与分类都能用键盘操作，当前项可识别 | 真实 Tab 走位（非 `focus()` 直调）到齿轮，Enter 进入 `/settings`；继续 Tab 到「检索与索引」并 Enter，`aria-current` 只在该项；从主导航回 Home 后 URL 是 `/`，没有残留 query |
+
+`frontend/tests/e2e/assistant.spec.ts`（新增 1 条）、`frontend/tests/e2e/library.spec.ts`（Task 1 已改入口）：
+
+| 用例 | 覆盖 |
+|---|---|
+| 未保存时点顶部齿轮离开 Assistant 也会先问 | 齿轮触发原「未保存修改」确认；取消后 URL 与正文不变，确认放弃才真的到 `/settings` |
+| 未保存时离开 Library 会先问，取消则留在原处 | 原有用例，触发入口由顶部 Settings 文字链接换成齿轮，业务断言未动 |
 
 `frontend/tests/e2e/navigation.spec.ts` 侧：四主导航断言、齿轮进入设置、Home 设置快捷卡仍有效、
-320/375px 下主导航可横向滚动且齿轮可点击、`1440/1024` 宽度下主导航为四项。
+320/375px 下主导航可横向滚动且齿轮不被挤走、`1440/1024` 宽度下主导航为四项。
 
 **业务断言未删**：保存与保存并启用的区别、revision 冲突保留输入、当前启用配置只能「保存并启用」、
 Key 不回显、连接测试结论、重建并切换的请求体与进度、Settings 与 Assistant 共享状态——全部保留，
-只把定位从 `.settings-card` 换成带名称的 `region`／`section` testid，把向量用例改走 `?section=retrieval`。
+只把定位从依赖顺序的 `.settings-card.first()` 换成 `[data-settings-section]` 面板，把向量用例改走 `?section=retrieval`。
+原来一条「聊天配置与向量候选同页可见」的用例按分类拆成两条，覆盖没有减少。
+
+**视觉核对发现的一处问题**：桌面截图里页面说明与「模型与连接」的分类说明重复了同一句
+「与 Assistant 输入框下方的模型入口是同一份数据」。已把页面说明收敛为「管理模型连接、检索与应用偏好。」，
+共享状态那句只留在模型分类里（`frontend/src/pages/SettingsPage.vue`）。
 
 ---
 

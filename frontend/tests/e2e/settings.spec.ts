@@ -113,16 +113,24 @@ async function stubApi(page: Page, options: StubOptions = {}) {
   }
   const status = options.status ?? BASE_STATUS
   let jobPolls = 0
+  let statusReads = 0
+  let candidateReads = 0
 
   /* 先注册宽泛的前缀，再注册各子路径：后注册的优先，否则子路径会被前缀吃掉。 */
   await page.route(
     (url) => url.pathname === '/model-settings',
-    (route) => route.fulfill({ json: status }),
+    (route) => {
+      statusReads += 1
+      return route.fulfill({ json: status })
+    },
   )
 
   await page.route(
     (url) => url.pathname === '/model-settings/embeddings',
-    (route) => route.fulfill({ json: CANDIDATES }),
+    (route) => {
+      candidateReads += 1
+      return route.fulfill({ json: CANDIDATES })
+    },
   )
   await page.route(
     (url) => url.pathname.startsWith('/model-settings/jobs/'),
@@ -185,7 +193,12 @@ async function stubApi(page: Page, options: StubOptions = {}) {
     (route) => route.fulfill({ json: { files: [], folders: [] } }),
   )
 
-  return { calls, jobPolls: () => jobPolls }
+  return {
+    calls,
+    jobPolls: () => jobPolls,
+    statusReads: () => statusReads,
+    candidateReads: () => candidateReads,
+  }
 }
 
 /** 分类面板按 section testid 定位；不依赖卡片顺序，布局再调整也不会误选。 */
@@ -360,4 +373,124 @@ test('Settings 与 Assistant 快捷弹层是同一份状态', async ({ page }) =
   // 切回 Settings 不再重复拉状态：整轮状态请求次数保持稳定。
   await page.getByRole('link', { name: '设置' }).click()
   await expect(page.getByText('环境默认')).toBeVisible()
+})
+
+/** 从当前位置按 Tab 走到目标元素；走不到就说明键盘路径断了。 */
+async function tabTo(page: Page, target: ReturnType<Page['locator']>, max = 12): Promise<void> {
+  for (let i = 0; i < max; i += 1) {
+    await page.keyboard.press('Tab')
+    if (await target.evaluate((node) => node === document.activeElement)) return
+  }
+  throw new Error('目标不在 Tab 顺序里')
+}
+
+test('分类深链接、刷新与前进后退都还原分类', async ({ page }) => {
+  await stubApi(page)
+  await page.goto('/settings?section=retrieval')
+  const categories = page.getByRole('navigation', { name: '设置分类' })
+  const retrieval = categories.getByRole('link', { name: '检索与索引', exact: true })
+  await expect(retrieval).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('heading', { name: '检索与索引' })).toBeVisible()
+
+  // 刷新后仍是同一个分类。
+  await page.reload()
+  await expect(page.getByRole('heading', { name: '检索与索引' })).toBeVisible()
+
+  await categories.getByRole('link', { name: '模型与连接', exact: true }).click()
+  await expect(page).toHaveURL(/section=models/)
+  await page.goBack()
+  await expect(page).toHaveURL(/section=retrieval/)
+  await expect(page.getByRole('heading', { name: '检索与索引' })).toBeVisible()
+  await page.goForward()
+  await expect(page.getByRole('heading', { name: '模型与连接' })).toBeVisible()
+})
+
+test('无效或未开放分类 replace 成默认，且不新增历史项', async ({ page }) => {
+  await stubApi(page)
+  // 造一个既无 section 的落点，用来验证 replace 不留下额外历史。
+  await page.goto('/library')
+  await page.goto('/settings?section=general&from=home')
+
+  await expect(page).toHaveURL(/section=models/)
+  await expect(page).toHaveURL(/from=home/)
+  await expect(section(page, 'models').getByText('环境默认')).toBeVisible()
+
+  await page.goBack()
+  await expect(page).toHaveURL(/\/library$/)
+})
+
+test('切换分类不丢模型表单，不自动保存', async ({ page }) => {
+  const stub = await stubApi(page)
+  await page.goto('/settings')
+  await page.getByRole('button', { name: /新增配置/ }).click()
+  await page.locator('#ms-label').fill('尚未保存的配置')
+  const categories = page.getByRole('navigation', { name: '设置分类' })
+  await categories.getByRole('link', { name: '检索与索引', exact: true }).click()
+  await categories.getByRole('link', { name: '模型与连接', exact: true }).click()
+  await expect(page.locator('#ms-label')).toHaveValue('尚未保存的配置')
+  expect(stub.calls.filter((x) => x.method !== 'GET')).toHaveLength(0)
+})
+
+test('切换分类不重复初始化模型状态', async ({ page }) => {
+  const stub = await stubApi(page)
+  await page.goto('/settings')
+  await expect(section(page, 'models').getByText('环境默认')).toBeVisible()
+  const before = { status: stub.statusReads(), candidates: stub.candidateReads() }
+
+  const categories = page.getByRole('navigation', { name: '设置分类' })
+  await categories.getByRole('link', { name: '检索与索引', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '检索与索引' })).toBeVisible()
+  await categories.getByRole('link', { name: '模型与连接', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '模型与连接' })).toBeVisible()
+
+  // 分类只改显隐：状态与候选都不再各拉一遍。
+  expect(stub.statusReads()).toBe(before.status)
+  expect(stub.candidateReads()).toBe(before.candidates)
+})
+
+test('重建中切回检索分类，进度继续更新', async ({ page }) => {
+  const stub = await stubApi(page, { switchResponse: { unchanged: false, job: RUNNING_JOB } })
+  await page.goto('/settings?section=retrieval')
+
+  const row = page.locator('.ms-row', { hasText: 'bge-small-zh-v1.5' }).first()
+  await row.getByRole('button', { name: '重建并切换' }).click()
+  await expect.poll(() => stub.jobPolls()).toBeGreaterThan(1)
+
+  const categories = page.getByRole('navigation', { name: '设置分类' })
+  await categories.getByRole('link', { name: '模型与连接', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '模型与连接' })).toBeVisible()
+  const pollsAfterLeaving = stub.jobPolls()
+
+  // 隐藏的分类不停止轮询：回到检索仍看到进度在走。
+  await categories.getByRole('link', { name: '检索与索引', exact: true }).click()
+  await expect(page.getByText(/正在切换到 BAAI\/bge-small-zh-v1\.5/).first()).toBeVisible()
+  await expect.poll(() => stub.jobPolls()).toBeGreaterThan(pollsAfterLeaving)
+})
+
+test('齿轮与分类都能用键盘操作，当前项可识别', async ({ page }) => {
+  await stubApi(page)
+  await page.goto('/')
+
+  // 从页面开头 Tab 到齿轮，再按 Enter 进入设置。
+  const gear = page.getByRole('link', { name: '设置' })
+  await tabTo(page, gear)
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/settings$/)
+
+  // 焦点仍在齿轮上：继续 Tab 会进入分类导航。
+  const categories = page.getByRole('navigation', { name: '设置分类' })
+  const retrieval = categories.getByRole('link', { name: '检索与索引', exact: true })
+  await tabTo(page, retrieval)
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/section=retrieval/)
+  await expect(retrieval).toHaveAttribute('aria-current', 'page')
+  await expect(categories.getByRole('link', { name: '模型与连接', exact: true })).not.toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+
+  // 主导航回 Home：query 不残留，也不落到错误路由。
+  await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: 'Home' }).click()
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible()
 })
