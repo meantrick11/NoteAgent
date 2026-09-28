@@ -232,14 +232,72 @@ $ npm --prefix frontend run type-check
 
 ---
 
+### Task 4：迁移 Assistant 全部行为 —— 完成
+
+**新增：** `features/chat/{citations.ts,trace.ts,layout.ts,store.ts,ConversationList.vue,MessageList.vue,
+ToolTrace.vue,ChatComposer.vue,NotePane.vue,DraftActions.vue}`、
+`features/models/{ChatProfiles.vue,ChatProfileForm.vue,EmbeddingSettings.vue,ModelQuickControls.vue}`、
+`shared/ui/{confirm.ts,ConfirmDialog.vue,toast.ts,SaveToast.vue,markdown.ts,MarkdownPreview.vue,ResizablePane.vue}`、
+`shared/unsaved-guard.ts`、`tests/unit/{citations,layout,chat-state}.spec.ts`、
+`tests/e2e/{assistant,drafts-citations}.spec.ts`。
+**修改：** `App.vue`、`main.ts`、`layouts/AppShell.vue`、`pages/AssistantPage.vue`、`styles/base.css`。
+
+模型设置组件（`ChatProfiles` / `ChatProfileForm` / `EmbeddingSettings`）在本次就做成可复用组件，
+**Task 6 只把它们挂进 Settings 页**，不重写第二份，避免"设置页与快捷弹层两份逻辑"。
+
+**命令与真实输出**
+
+```text
+$ npm --prefix frontend run test:unit
+ Test Files  7 passed (7)
+      Tests  114 passed (114)     （新增 citations 16 / layout 20 / chat-state 19）
+
+$ npm --prefix frontend run test:e2e
+  21 passed                      （navigation 6 + assistant 7 + drafts-citations 8）
+
+$ npm --prefix frontend run type-check     （无输出，退出码 0）
+$ npm --prefix frontend run build          → dist/index.html + assets（195.6 kB js / 21.5 kB css）
+```
+
+**F01–F09、F16（Assistant 部分）的证据**
+
+| 编号 | 证据 |
+|---|---|
+| F01 | 单测：双击发送只发一次请求、只有一条用户消息；e2e：真实后端下侧栏列出 5 条会话，菜单可重命名（PATCH）与删除（DELETE 后列表少一条） |
+| F02 | 单测：`send` 在第一次 await 前上锁；e2e：Shift+Enter 只换行、Enter 才发送、发送后输入框清空；维护窗口下内容退回输入框且不发 `/chat` |
+| F03 | 单测：thinking→tool→生成的阶段不会同时挂着两个进行中步骤；e2e：轨迹标题为 `Explored …`，点开后能看到 `Searched …` |
+| F04 | 单测：编号重排、未知编号丢弃、`locateQuote` 四级匹配与找不到时返回 -1；e2e：真实后端下点引用打开 `Deep_Agents_Context_Engineering.md` 并精确选中 `## 上下文的类型 …` 片段 |
+| F05 | 单测：`saveCitation` 只调 `PUT /notes/Go.md` 并清掉未保存标记；e2e：保存后出现"文件已保存"且请求方法是 PUT |
+| F06 | 单测：保存草稿只调 `PUT /chat/draft` 且不碰 `/notes/`；同意前先用同一份正文落库再 review；保存失败则不审批；e2e：8 条草稿用例 |
+| F07 | e2e：常驻同意／拒绝，菜单默认不占位，选中后才渲染对应表单；Esc 先收菜单不关面板；replace 没有覆盖入口 |
+| F08 | 单测：两个会话各有独立快照、切回来仍是自己的正文、服务端草稿不覆盖本地未保存编辑、慢请求不覆盖新选中会话；e2e：未保存时离开会先问，取消则 URL 与正文都不变 |
+| F09 | 单测 20 条覆盖边界与键盘步进、存储值校验与键名；真实后端下两条分隔线渲染为 `role="separator"`，`aria-valuemin/max/now` 随实际宽度走 |
+| F16 | 单测：`canSend` 随 busy、`modelActionsLocked` 随流式与重建；e2e：维护窗口下聊天区提示 + 工具栏常驻提示，发送按钮不可用 |
+
+**过程中发现并修掉的两个真实缺陷**（都是测试先失败才暴露的，不是事后补测）：
+
+1. **进行中的那一轮被重复追加。** 写进 `liveTurn` 后组件读到的是 Vue 代理，而 `send` 继续改原始对象：
+   既不触发刷新，`liveTurn.value === turn` 也永远为假，收尾时这一轮被同时留在 `liveTurn` 与 `messages` 里。
+   改为 `reactive()` 持有代理。这条同时解释了"流式增量不刷新"。
+2. **服务端待审草稿不显示。** 快照的默认值 `hidden: true` 让 `applyServerDraft` 永远保持隐藏，
+   而旧实现的语义是"只有用户主动收起过才隐藏"。修正为 `existing ? existing.hidden : false`。
+
+另外把首屏"自动打开最近一条会话"改成先比对 `selectionVersion`：用户在列表返回前点了「新对话」时不再抢他的选择。
+
+**完成条件评估：** F01–F09 与 F16 的 Assistant 部分均有单测或 e2e 证据。
+流式增量渲染只在单测层验证（e2e 的 `route.fulfill` 不能分段下发），未用真实 provider 跑一轮——
+那会消耗用户额度，见 §4.1。
+
+---
+
 ## 4. 汇总（随任务推进更新）
 
 | 任务 | 状态 | 提交 | 通过的功能编号 | 验证命令与结果 |
 |---|---|---|---|---|
 | Task 1 基线与回归清单 | 完成 | `4ada6e0` | — | `pytest tests -q` → 490 passed |
-| Task 2 Vue 外壳与路由 | 完成 | `6174f47` | —（外壳，不含 F 项） | `type-check` 通过；`test:unit` 3 passed；`test:e2e` 6 passed；`build` 成功；`pytest tests -q` → 501 passed |
-| Task 3 API／SSE／模型状态 | 完成 | 待填 | —（基础设施，不含 F 项） | `test:unit` 59 passed；`type-check` 通过；开发代理同源验证见 §3 Task 3 |
-| Task 4 Assistant 迁移 | 未开始 | — | — | — |
+| Task 2 Vue 外壳与路由 | 完成 | `6174f47` | —（外壳） | `type-check`；`test:unit` 3；`test:e2e` 6；`build`；`pytest` 501 |
+| Task 3 API／SSE／模型状态 | 完成 | `db954d9` | —（基础设施） | `test:unit` 59；`type-check`；开发代理同源验证 |
+| Task 4 Assistant 迁移 | 完成 | 待填 | F01–F09、F16（Assistant 部分） | `test:unit` 114；`test:e2e` 21；`type-check`；`build`；真实后端人工验证 |
 | Task 5 Library 迁移 | 未开始 | — | — | — |
 | Task 6 Settings 迁移 | 未开始 | — | — | — |
 | Task 7 Home／Records／美化 | 未开始 | — | — | — |
@@ -249,5 +307,6 @@ $ npm --prefix frontend run type-check
 
 - `npm --prefix frontend ci`：本轮用 `npm install` 生成 lockfile，未在干净目录验证 `ci`。
 - `docker compose build app`：Dockerfile 尚未加 Node 阶段（Task 8），本轮未验证。
-- 草稿面板（F06／F07）的旧版人工复核：现有数据没有待审草稿。
-- 真实聊天往返（`POST /chat` 的 provider 调用）：会消耗用户额度，本轮未发起；SSE 用 fixtures 验证。
+- 真实聊天往返（`POST /chat` 的 provider 调用）：会消耗用户额度，本轮未发起；
+  真实后端只做了读取与引用浏览（会话列表、历史消息、工具栏、引用定位）。
+- 流式增量的 e2e：`route.fulfill` 一次性下发整个 body，无法断言"token 逐个出现"。

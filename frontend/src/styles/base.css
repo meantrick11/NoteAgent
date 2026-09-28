@@ -89,6 +89,12 @@ body {
   flex-direction: column;
 }
 
+/* 拖动分隔线时锁定光标与选区，避免拖到文字上误选中。 */
+body.pane-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
 /* ====== 页面容器 ====== */
 .page {
   flex: 1;

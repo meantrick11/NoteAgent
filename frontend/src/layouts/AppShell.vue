@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
 
+import ConfirmDialog from '@/shared/ui/ConfirmDialog.vue'
+import SaveToast from '@/shared/ui/SaveToast.vue'
 import { NAV_ITEMS } from '@/shared/navigation'
 </script>
 
@@ -20,5 +22,8 @@ import { NAV_ITEMS } from '@/shared/navigation'
     <main class="app-main">
       <RouterView />
     </main>
+    <!-- 全局单例：一次只可能有一个对话框与一个保存提示。 -->
+    <ConfirmDialog />
+    <SaveToast />
   </div>
 </template>
