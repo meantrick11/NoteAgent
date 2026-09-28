@@ -43,12 +43,12 @@ onMounted(() => {
         这里的配置与 Assistant 输入框下方的模型入口是同一份数据，改任一处两边都会更新。
       </p>
 
-      <section class="settings-card">
+      <section class="card settings-card">
         <h2 class="settings-heading">聊天模型</h2>
         <ChatProfiles />
       </section>
 
-      <section class="settings-card">
+      <section class="card settings-card">
         <h2 class="settings-heading">向量模型与索引</h2>
         <p class="settings-summary">
           <span>当前：{{ models.activeEmbedding?.model_id ?? '未知' }}</span>
@@ -72,11 +72,7 @@ onMounted(() => {
 }
 
 .settings-card {
-  margin-top: var(--space-5);
-  padding: var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
+  margin-top: var(--space-4);
 }
 
 .settings-heading {

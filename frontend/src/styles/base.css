@@ -184,3 +184,16 @@ body.pane-resizing {
   background: var(--border);
   color: var(--text-secondary);
 }
+
+/* 统一的卡片容器：设置页、Home 概览共用同一边距与描边。 */
+.card {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+/* 链接型卡片（Home 快捷入口）不继承下划线。 */
+a.card {
+  text-decoration: none;
+}

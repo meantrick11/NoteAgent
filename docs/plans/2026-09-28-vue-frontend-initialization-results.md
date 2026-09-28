@@ -366,6 +366,37 @@ $ npm --prefix frontend run build        → 211.3 kB js / 26.6 kB css
 
 ---
 
+### Task 7：填充最小 Home、Records 空状态与统一美化 —— 完成
+
+**修改：** `pages/HomePage.vue`、`pages/RecordsPage.vue`、`pages/SettingsPage.vue`（卡片样式并到 `.card`）、
+`styles/base.css`（新增 `.card`）、`tests/e2e/navigation.spec.ts`。
+
+**命令与真实输出**
+
+```text
+$ npm --prefix frontend run test:e2e
+  46 passed      （navigation 12 + assistant 7 + drafts-citations 8 + library 11 + settings 8… settings 9）
+$ npm --prefix frontend run type-check   无输出，退出码 0
+$ npm --prefix frontend run build        → 214.0 kB js / 28.7 kB css
+```
+
+- [x] Home 只呈现真实笔记／索引概览与四个导航入口，不新建统计接口：
+      数字取自 `GET /notes` 的 `files`（总数 / `indexed=true` / 差值），直接调接口而不是复用 notes store，
+      以便区分"读失败"和"读到 0"。
+- [x] 分别处理加载、读失败、索引不可用与维护中：读失败显示错误 + 重试且**不显示数字区**；
+      索引不可用时显示后端给的原因（"索引 collection 不存在，需要重建。"），不当成逐篇未索引。
+- [x] Records 只有空状态说明与两个虚线占位块，没有按钮、没有未来流程；不预留虚假入口。
+- [x] 统一间距、字体、边框与按钮：Home 与 Settings 共用同一套 `.card`，焦点态统一走 `:focus-visible`。
+- [x] 1440 与 1024 宽度下核对导航、目录树、工具栏与编辑区都可达（有专门用例）。
+
+**真实后端人工验证：** `/` 显示 22 篇笔记 / 17 已索引 / 5 未索引，四个快捷入口（Records 标注"尚未开放"）；
+`/records` 只有空状态。
+
+**完成条件评估：** 五页可用或明确空状态；没有模拟业务数据；美化未改动 F01–F16 的行为
+（前四个任务的 e2e 全量重跑通过，见下方总数）。
+
+---
+
 ## 4. 汇总（随任务推进更新）
 
 | 任务 | 状态 | 提交 | 通过的功能编号 | 验证命令与结果 |
@@ -375,8 +406,8 @@ $ npm --prefix frontend run build        → 211.3 kB js / 26.6 kB css
 | Task 3 API／SSE／模型状态 | 完成 | `db954d9` | —（基础设施） | `test:unit` 59；`type-check`；开发代理同源验证 |
 | Task 4 Assistant 迁移 | 完成 | `66b777f` | F01–F09、F16（Assistant 部分） | `test:unit` 114；`test:e2e` 21；`type-check`；`build`；真实后端人工验证 |
 | Task 5 Library 迁移 | 完成 | `22b47d1` | F10–F13 | `test:e2e` 32；`test:unit` 114；`type-check`；`build`；真实后端人工验证 |
-| Task 6 Settings 迁移 | 完成 | 待填 | F14–F16 | `test:e2e` 41；`test:unit` 114；`type-check`；`build`；真实后端人工验证 |
-| Task 7 Home／Records／美化 | 未开始 | — | — | — |
+| Task 6 Settings 迁移 | 完成 | `a15f39d` | F14–F16 | `test:e2e` 41；`test:unit` 114；`type-check`；`build`；真实后端人工验证 |
+| Task 7 Home／Records／美化 | 完成 | 待填 | —（Home／Records 无 F 项） | `test:e2e` 46；`type-check`；`build`；真实后端人工验证 |
 | Task 8 部署接入与总回归 | 未开始 | — | — | — |
 
 ### 4.1 未运行项（不得勾选）

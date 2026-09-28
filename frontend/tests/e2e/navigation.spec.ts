@@ -68,3 +68,116 @@ test('窄屏下五个入口仍然可达', async ({ page }) => {
   await nav.getByRole('link', { name: 'Settings', exact: true }).click()
   await expect(page).toHaveURL(/\/settings$/)
 })
+
+const NOTES = {
+  files: [
+    { file_name: 'A.md', folder: '', mtime: 1758998400, indexed: true },
+    { file_name: 'B.md', folder: '', mtime: 1758998400, indexed: true },
+    { file_name: 'C.md', folder: '', mtime: 1758998400, indexed: false },
+  ],
+  folders: [],
+}
+
+const MODEL_SETTINGS = {
+  revision: 1,
+  chat_profiles: [],
+  active_chat: null,
+  active_embedding: null,
+  retrieval_available: true,
+  retrieval_problem: null,
+  retrieval_state: 'ok',
+  indexed_files: 2,
+  corpus_files: 3,
+  busy: false,
+  embedding_job: null,
+}
+
+async function stubHome(page: import('@playwright/test').Page, notesStatus = 200) {
+  await page.route(
+    (url) => url.pathname === '/notes',
+    (route) =>
+      notesStatus === 200
+        ? route.fulfill({ json: NOTES })
+        : route.fulfill({ status: notesStatus, json: { detail: '笔记目录读取失败' } }),
+  )
+  await page.route(
+    (url) => url.pathname.startsWith('/model-settings'),
+    (route) => route.fulfill({ json: MODEL_SETTINGS }),
+  )
+}
+
+test('Home 显示真实笔记与索引数量，并提供四个入口', async ({ page }) => {
+  await stubHome(page)
+  await page.goto('/')
+
+  const stats = page.locator('.stat')
+  await expect(stats.nth(0)).toContainText('笔记总数')
+  await expect(stats.nth(0).locator('.stat-value')).toHaveText('3')
+  await expect(stats.nth(1).locator('.stat-value')).toHaveText('2')
+  await expect(stats.nth(2).locator('.stat-value')).toHaveText('1')
+
+  // 四个快捷入口与顶部导航指向同一批路由。
+  const shortcuts = page.locator('.shortcut')
+  await expect(shortcuts).toHaveCount(4)
+  await expect(shortcuts).toHaveText([
+    /Assistant/,
+    /Records/,
+    /Library/,
+    /Settings/,
+  ])
+
+  await shortcuts.first().click()
+  await expect(page).toHaveURL(/\/assistant$/)
+})
+
+test('Home 读不到笔记时显示错误与重试，而不是显示 0', async ({ page }) => {
+  await stubHome(page, 500)
+  await page.goto('/')
+
+  await expect(page.getByText(/读取笔记目录失败/)).toBeVisible()
+  await expect(page.getByRole('button', { name: '重试' })).toBeVisible()
+  // 数字区不出现，避免 0 被当成真实值。
+  await expect(page.locator('.stat-value')).toHaveCount(0)
+})
+
+test('Home 在索引不可用时说清原因，而不是当成逐篇未索引', async ({ page }) => {
+  await page.route(
+    (url) => url.pathname === '/notes',
+    (route) => route.fulfill({ json: NOTES }),
+  )
+  await page.route(
+    (url) => url.pathname.startsWith('/model-settings'),
+    (route) =>
+      route.fulfill({
+        json: {
+          ...MODEL_SETTINGS,
+          retrieval_available: false,
+          retrieval_state: 'missing',
+          retrieval_problem: '索引 collection 不存在，需要重建。',
+        },
+      }),
+  )
+  await page.goto('/')
+  await expect(page.locator('.home-note')).toContainText('索引 collection 不存在')
+})
+
+test('Records 只有空状态，没有可点的业务操作', async ({ page }) => {
+  await page.goto('/records')
+  await expect(page.getByText('尚未开放')).toBeVisible()
+  await expect(page.getByText(/不提供任何操作/)).toBeVisible()
+  // 没有按钮：不预留虚假的录制／导入等入口。
+  await expect(page.locator('main button')).toHaveCount(0)
+})
+
+test('1440 与 1024 宽度下导航与内容都可达', async ({ page }) => {
+  for (const width of [1440, 1024]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/library')
+    const nav = page.getByRole('navigation', { name: '主导航' })
+    await expect(nav.getByRole('link')).toHaveCount(5)
+    // 目录树、工具栏按钮与编辑区都要在视口内可用。
+    await expect(page.locator('[data-notes-tree]')).toBeVisible()
+    await expect(page.getByRole('button', { name: '＋ 新建笔记' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '保存' })).toBeVisible()
+  }
+})
