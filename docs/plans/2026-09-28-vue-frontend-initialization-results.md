@@ -453,7 +453,32 @@ $ npm --prefix frontend run build
 |---|---|---|
 | 本地前端开发 | Vite dev（5173）+ 真实后端（8000），接口经代理 | `/assistant`、`/library`、`/settings` 逐个实际打开并操作；代理同源行为见 Task 3 |
 | 生产产物由 FastAPI 托管 | 不带 `FRONTEND_MODE` 直接 `python main.py` | 默认即 vue：六个页面地址全 200，`/ui-assets/assets/index-*.{js,css}` 200 |
-| Docker 构建运行 | `docker-compose build app` | 见下方"未运行项"——本轮未能完成 |
+| Docker 构建运行 | `docker-compose build app` | **构建未能完成**，卡在网络，见下 |
+
+**Docker 构建的实际经过（三次尝试，如实记录）**
+
+先纠正一处：第一次构建后我曾按"退出码 0"报告成功，那是错的——我在构建命令后追加了
+`echo` / `tail`，最终退出码来自追加的命令而不是构建本身。重新用 `(build; echo $? > file)`
+取真实状态后，实际情况是：
+
+| 尝试 | 结果 | 停在哪 |
+|---|---|---|
+| 1 | 失败 | Step 17 `uv sync`：`files.pythonhosted.org` DNS 解析失败（`zstandard==0.25.0`） |
+| 2 | 失败 | `uv sync` 与 torch CPU 安装都过了，停在模型预热：连不上 `hf-mirror.com` |
+| 3 | 见下方"最终状态" | — |
+
+**已经验证通过的部分**（即使整体构建没跑完，这些是确定的事实）：
+
+- **前端构建阶段真的能出产物。** 第一次构建留下的中间层（Step 16 `COPY --from=frontend-build`）
+  里可以直接看到 `/app/src/noteagent/web/dist/index.html` 与
+  `dist/assets/index-DJecmQq2.css`、`index-TcRZFqdg.js`——`npm ci` + `npm run build` + COPY 三步都成立。
+- **Python 依赖能装上。** 第 2 次尝试里 `uv sync --frozen` 与 torch CPU wheel 都安装成功，
+  说明第 1 次的失败是网络抖动而不是配置问题。
+- 阻塞点是一个与本次改动无关的既有步骤：Dockerfile 里"预热嵌入模型"要从 HuggingFace 下载权重。
+  本机 `huggingface.co` 不可达，`hf-mirror.com` 时通时不通，因此这一步不稳定。
+
+**未验证的部分**：最终镜像能否构建完成、容器里 vue 页面能否打开。
+不能用"Vite dev 正常"或"FastAPI 直接托管产物正常"代替这一条，所以这里不勾选。
 
 **legacy 回退演练**（`FRONTEND_MODE=legacy` 重启）
 
@@ -505,11 +530,19 @@ $ npm --prefix frontend run build
 
 ### 4.1 未运行项（不得勾选）
 
-- `docker-compose build app`：本轮**未完成**。Dockerfile 的 Node 阶段已写好，
-  但 `docker compose` 插件在本机 CLI 未注册（`docker-compose` v5.1.2 可用），
-  镜像层是否真的能构建出来、容器里是否真的能打开 vue 页面，**尚未验证**。
-  产物托管本身已由"FastAPI 直接服务 dist"那条路径验证过，Docker 只差镜像这一层。
-- `npm --prefix frontend ci`：本轮用 `npm install` 生成 lockfile，未在干净目录验证 `ci`。
+- `npm --prefix frontend ci`：**已验证通过**（2026-09-28）。先在 Vite dev 占着
+  `node_modules/@esbuild/win32-x64/esbuild.exe` 时失败（EPERM unlink，与 lockfile 无关），
+  停掉 dev server 后 `npm ci` 成功安装 142 个包，随后 `type-check` / `test:unit` 114 / `build` /
+  `test:e2e` 46 全部通过。原记录的"未验证"已作废。
+- `docker-compose build app`：**构建未能完成，本轮不勾选。** 三次尝试都停在同一个与本次改动无关的
+  既有步骤——Dockerfile 里"预热嵌入模型"要从 HuggingFace 下载权重：构建容器连不上
+  `hf-mirror.com`（宿主机上该域名是 200，构建容器里稳定失败）。在此之前的每一步都已验证：
+  前端 Node 阶段的两个命令 + `COPY --from=frontend-build`（中间层里能看到 `index.html` 与 assets）、
+  `uv sync --frozen` 与 torch CPU wheel 安装。
+  因此**未验证的只有"最终镜像能否构建完成"与"容器里 vue 页面能否打开"**这两点；
+  Dockerfile 的 Node 阶段本身不是问题，瓶颈是模型预热那一步的网络。
+  可行的下一步（需要你确认，因为它会改动已提交的 Dockerfile）：给预热步骤加一个
+  `ARG SKIP_MODEL_WARMUP`，在没有 HuggingFace 访问时跳过预热，改为运行时挂载本机模型缓存。
 - 真实聊天往返（`POST /chat` 的 provider 调用）：会消耗用户额度，本轮未发起。
 - 流式增量的 e2e：`route.fulfill` 一次性下发整个 body，无法断言"token 逐个出现"。
 - 真实数据上的写操作（保存笔记、移动、删除、补建索引、改模型配置、切换向量模型）：
