@@ -720,6 +720,13 @@ def test_maintenance_window_blocks_chat_and_note_writes(tmp_path):
         )
         assert review.status_code == 409
 
+        draft_update = client.put(
+            "/chat/draft",
+            json={"thread_id": conversation.id, "content": "## 改过了\n\n"},
+        )
+        assert draft_update.status_code == 409
+        assert draft_update.json()["code"] == "busy"
+
         # 读路径不受影响。
         assert client.get("/notes").status_code == 200
         assert client.get(f"/notes/Go.md").status_code == 200

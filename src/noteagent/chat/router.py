@@ -4,7 +4,6 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from noteagent.chat.history import (
@@ -16,32 +15,24 @@ from noteagent.chat.schemas import (
     CitationOut,
     ConversationDetailOut,
     ConversationOut,
+    DraftContentRequest,
     MessageOut,
     RenameConversation,
     RequestModel,
     ReviewRequest,
     ToolStepOut,
 )       #获取对应的路由请求体或者响应体的pydantic模型
-from noteagent.model_management.router import chat_lease, write_lease
+from noteagent.model_management.router import (
+    chat_lease,
+    require_same_origin,
+    write_lease,
+)
 from noteagent.model_management.service import RuntimeSnapshot
-from noteagent.web import read_home_html    #返回前端初始网页
 
 _logger = logging.getLogger(__name__)
 #APIRouter 本身不会直接接收请求，必须用 app.include_router(router) 挂载到主 app 才生效。
 #方便进行模块拆分，如果直接@app.POST()直接挂载到应用上，不方便进行分模块化
 router = APIRouter()
-
-# 初始页面路由，加载主页面
-@router.get("/", response_class=HTMLResponse)
-async def home() -> str:
-    """Serve the single-page chat UI."""
-    return read_home_html()
-
-
-@router.get("/documents", response_class=HTMLResponse)
-async def documents_home() -> str:
-    """Same SPA; frontend switches to the Documents view."""
-    return read_home_html()
 
 #在初始路由之后，直接尝试加载对应的历史对话
 @router.get("/conversations")
@@ -200,6 +191,30 @@ async def chat_with(
         )
 
 # 
+@router.put("/chat/draft", dependencies=[Depends(require_same_origin)])
+async def update_chat_draft(
+    request: Request,
+    require: Annotated[DraftContentRequest, Body()],
+    snapshot: Annotated[RuntimeSnapshot, Depends(write_lease)],
+) -> dict:
+    """Save edits to the pending draft's body.
+
+    Only conversations.pending_draft changes here: no note is written and no
+    vector is touched. Approval still goes through POST /chat/review.
+    """
+    history = request.app.state.container.history
+    if history.get(require.thread_id) is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    agent = snapshot.chat_agent
+    _logger.info(
+        "[thread=%s] draft update chars=%d", require.thread_id, len(require.content)
+    )
+    result = agent.update_draft_content(require.thread_id, require.content)
+    if "error" in result:
+        raise HTTPException(status_code=409, detail=result["error"])
+    return result
+
+
 @router.post("/chat/review")
 async def chat_review(
     request: Request,

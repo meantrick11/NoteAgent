@@ -18,6 +18,7 @@
     --user-bubble: #eef2ff;
     --radius: 12px;
     --sidebar-width: 260px;
+    --note-pane-width: 400px;
     --header-height: 48px;
   }
 
@@ -459,6 +460,7 @@
   /* ====== Chat area ====== */
   .chat-container {
     flex: 1;
+    min-width: 0;
     overflow-y: auto;
     padding: 24px 0;
   }
@@ -473,15 +475,42 @@
     min-height: 0;
   }
   .cite-pane {
-    width: 42%;
-    min-width: 260px;
-    max-width: 520px;
+    width: var(--note-pane-width);
+    flex-shrink: 0;
     border-left: 1px solid var(--border);
     background: var(--surface);
     display: flex;
     flex-direction: column;
   }
   .cite-pane[hidden] { display: none; }
+  /* 三栏调宽：8px 命中区，视觉仍是 1px 分隔线。 */
+  .pane-resize-handle {
+    flex: 0 0 8px;
+    align-self: stretch;
+    cursor: col-resize;
+    position: relative;
+    margin: 0 -4px;
+    z-index: 5;
+    touch-action: none;
+    background: transparent;
+  }
+  .pane-resize-handle[hidden] { display: none; }
+  .pane-resize-handle::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: transparent;
+  }
+  .pane-resize-handle:hover::after,
+  .pane-resize-handle:focus-visible::after,
+  .pane-resize-handle.dragging::after { background: var(--accent); }
+  .pane-resize-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .pane-resize-handle.dragging,
+  body.pane-resizing { cursor: col-resize; }
+  body.pane-resizing { user-select: none; }
   .cite-pane-head {
     display: flex;
     align-items: center;
@@ -489,6 +518,20 @@
     padding: 10px 12px;
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
+  }
+  .cite-pane-badge {
+    flex-shrink: 0;
+    font-size: 11px;
+    line-height: 1.6;
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    background: var(--bg);
+  }
+  .cite-pane[data-mode="draft"] .cite-pane-badge {
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .cite-pane-title {
     flex: 1;
@@ -807,35 +850,29 @@
   .chat-container::-webkit-scrollbar { width: 6px; }
   .chat-container::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
 
-  .draft-card {
-    max-width: 768px;
-    margin: 0 auto 20px;
-    padding: 16px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+  .draft-pane-actions {
+    flex-shrink: 0;
+    border-top: 1px solid var(--border);
+    padding: 10px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
-  .draft-card .draft-label {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin-bottom: 8px;
+  .draft-pane-actions[hidden] { display: none; }
+  .draft-pane-ask {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
   }
-  .draft-card .draft-body {
-    font-size: 14px;
-    line-height: 1.7;
-    margin-bottom: 12px;
-  }
-  .draft-card .draft-ask {
-    font-size: 14px;
-    margin-bottom: 12px;
-  }
-  .draft-card .draft-actions {
+  .draft-pane-buttons {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
   }
-  .draft-card button, .draft-card select, .draft-card input {
+  .draft-pane-buttons button,
+  .draft-pane-buttons select,
+  .draft-pane-buttons input {
     font-size: 13px;
     font-family: inherit;
     padding: 6px 10px;
@@ -843,13 +880,59 @@
     border: 1px solid var(--border);
     background: var(--bg);
   }
-  .draft-card button.primary {
+  .draft-pane-buttons button.primary {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
     cursor: pointer;
   }
-  .draft-card button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .draft-pane-buttons button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .draft-pane-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+  }
+  .draft-pane-menu[hidden] { display: none; }
+  .draft-pane-menu button {
+    text-align: left;
+    font-size: 13px;
+    font-family: inherit;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+  }
+  .draft-pane-menu button:hover,
+  .draft-pane-menu button:focus-visible { background: var(--surface); }
+  .draft-pane-menu button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .draft-pane-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding-top: 2px;
+  }
+  .draft-pane-form[hidden] { display: none; }
+  .draft-pane-form label {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .draft-pane-form button,
+  .draft-pane-form select,
+  .draft-pane-form input {
+    font-size: 13px;
+    font-family: inherit;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .draft-pane-form button:disabled { opacity: 0.4; cursor: not-allowed; }
   .save-toast {
     position: fixed;
     top: 12px;
@@ -896,6 +979,10 @@
   </div>
 </aside>
 
+<div class="pane-resize-handle" id="conversationResizeHandle" role="separator"
+  aria-orientation="vertical" aria-label="调整会话列表宽度" tabindex="0"
+  aria-valuemin="200" aria-valuemax="400" aria-valuenow="260"></div>
+
 <!-- Main -->
 <div class="main">
   <div class="main-header">学习笔记助手</div>
@@ -909,14 +996,27 @@
       </div>
     </div>
   </div>
-  <aside class="cite-pane" id="citePane" hidden>
+  <div class="pane-resize-handle" id="notePaneResizeHandle" role="separator"
+    aria-orientation="vertical" aria-label="调整笔记面板宽度" tabindex="0"
+    aria-valuemin="300" aria-valuemax="600" aria-valuenow="400" hidden></div>
+  <aside class="cite-pane" id="citePane" data-mode="citation" hidden>
     <div class="cite-pane-head">
+      <span class="cite-pane-badge" id="citePaneBadge">引用</span>
       <span class="cite-pane-title" id="citePaneTitle"></span>
-      <button type="button" class="cite-pane-save" id="citePaneSave" disabled>保存</button>
+      <button type="button" class="cite-pane-save" id="citePaneSave" disabled>保存到 Markdown</button>
       <button type="button" class="cite-pane-close" id="citePaneClose">关闭</button>
     </div>
     <p class="cite-pane-hint" id="citePaneHint" hidden></p>
-    <textarea class="cite-pane-text" id="citePaneText" disabled></textarea>
+    <textarea class="cite-pane-text" id="citePaneText" aria-label="面板正文" disabled></textarea>
+    <div class="draft-pane-actions" id="citePaneActions" hidden>
+      <p class="draft-pane-ask" id="citePaneAsk"></p>
+      <div class="draft-pane-buttons" id="citePaneButtons"></div>
+      <div class="draft-pane-menu" id="citePaneMenu" role="menu" aria-label="更多草稿操作" hidden>
+        <button type="button" role="menuitem" data-pick="append">追加到笔记</button>
+        <button type="button" role="menuitem" data-pick="create">新建笔记</button>
+      </div>
+      <div class="draft-pane-form" id="citePaneForm" hidden></div>
+    </div>
   </aside>
   </div>
 
@@ -1018,13 +1118,27 @@ const chatInner = document.getElementById("chatInner");
 const chatContainer = document.getElementById("chatContainer");
 const textarea = document.getElementById("question");
 const citePane = document.getElementById("citePane");
+const citePaneBadge = document.getElementById("citePaneBadge");
 const citePaneTitle = document.getElementById("citePaneTitle");
 const citePaneHint = document.getElementById("citePaneHint");
 const citePaneText = document.getElementById("citePaneText");
 const citePaneSave = document.getElementById("citePaneSave");
+const citePaneActions = document.getElementById("citePaneActions");
+const citePaneAsk = document.getElementById("citePaneAsk");
+const citePaneButtons = document.getElementById("citePaneButtons");
+const citePaneMenu = document.getElementById("citePaneMenu");
+const citePaneForm = document.getElementById("citePaneForm");
 let citeFileName = null;
 let citeDirty = false;
 let citeHintLocate = "";
+let citeBusy = false;
+// 面板两种模式：citation 读写正式笔记，draft 只读写 conversations.pending_draft。
+const CITE_MODE_CITATION = "citation";
+const CITE_MODE_DRAFT = "draft";
+let citeMode = CITE_MODE_CITATION;
+let citeDraft = null;
+// 草稿覆盖方式：null 表示未选择；"append" / "create" 时只显示对应表单。
+let draftOverrideMode = null;
 const CITE_PENDING = "__pending__";
 const citePaneByConv = {};
 let citeRestoreGen = 0;
@@ -1100,14 +1214,52 @@ function setCiteHint() {
   citePaneHint.textContent = parts.join(" · ");
 }
 
+/** 草稿动作的中文名，用于面板标题与审批按钮。 */
+const DRAFT_ACTION_LABEL = { append: "追加", replace: "覆盖", delete: "删除", create: "新建" };
+
+function draftApproveLabel(action) {
+  if (action === "append") return "同意追加";
+  if (action === "replace") return "同意覆盖";
+  if (action === "delete") return "同意删除";
+  return "同意新建";
+}
+
+/** 审批前的一句确认语，沿用改动前草稿卡片的措辞。 */
+function draftAsk(draft) {
+  const similar = (draft.similar || []).filter(Boolean);
+  if (draft.action === "append") {
+    const extra = similar.length ? `，相近：${similar.join("、")}` : "";
+    return `识别到已经有笔记「${draft.file_name}」${extra}，是否要追加？`;
+  }
+  if (draft.action === "replace") {
+    return `是否用以下内容覆盖「${draft.file_name}」？旧内容将被替换。`;
+  }
+  if (draft.action === "delete") {
+    return `是否删除笔记「${draft.file_name}」？删除后无法从本页恢复。`;
+  }
+  return `没有相关笔记，是否要新建笔记文件（提议文件名：${draft.file_name}）？`;
+}
+
 function resetCitePane() {
   citeFileName = null;
   citeDirty = false;
   citeHintLocate = "";
+  citeMode = CITE_MODE_CITATION;
+  citeDraft = null;
+  citeBusy = false;
+  draftOverrideMode = null;
+  citePane.dataset.mode = CITE_MODE_CITATION;
+  citePaneBadge.textContent = "引用";
   citePaneText.value = "";
   citePaneText.disabled = true;
+  citePaneSave.textContent = "保存到 Markdown";
   citePaneSave.disabled = true;
   citePaneTitle.textContent = "";
+  citePaneActions.hidden = true;
+  citePaneAsk.textContent = "";
+  citePaneButtons.innerHTML = "";
+  closeDraftOverrideMenu();
+  renderDraftOverrideForm();
   setCiteHint();
 }
 
@@ -1118,7 +1270,9 @@ function citePaneKey(id) {
 function snapshotCitePane(id) {
   citePaneByConv[citePaneKey(id)] = {
     hidden: citePane.hidden,
+    mode: citeMode,
     fileName: citeFileName,
+    draft: citeDraft,
     text: citePaneText.value,
     dirty: citeDirty,
     hintLocate: citeHintLocate,
@@ -1151,14 +1305,35 @@ function restoreCiteSelection(snap) {
   citePaneText.scrollTop = snap.scrollTop || 0;
 }
 
+/** 面板标题：草稿模式显示「动作 · 目标文件」，引用模式显示笔记路径。 */
+function draftPaneTitle(draft) {
+  const label = DRAFT_ACTION_LABEL[draft.action] || "草稿";
+  return `${label} · ${draft.file_name}`;
+}
+
 async function restoreCitePane(id) {
   const gen = ++citeRestoreGen;
   const snap = citePaneByConv[citePaneKey(id)];
-  if (!snap || snap.hidden || !snap.fileName) {
+  if (!snap || snap.hidden) {
+    hideCitePaneVisual();
+    return;
+  }
+  if (snap.mode === CITE_MODE_DRAFT && snap.draft) {
+    restoreDraftPane(snap);
+    return;
+  }
+  if (!snap.fileName) {
     hideCitePaneVisual();
     return;
   }
   citePane.hidden = false;
+  citeMode = CITE_MODE_CITATION;
+  citePane.dataset.mode = CITE_MODE_CITATION;
+  citePaneBadge.textContent = "引用";
+  citePaneSave.textContent = "保存到 Markdown";
+  citePaneActions.hidden = true;
+  citePaneButtons.innerHTML = "";
+  citeDraft = null;
   citeFileName = snap.fileName;
   citeHintLocate = snap.hintLocate || "";
   citePaneTitle.textContent = snap.fileName;
@@ -1191,6 +1366,558 @@ async function restoreCitePane(id) {
   restoreCiteSelection(snap);
 }
 
+/** 恢复某会话的草稿模式：本地未保存的编辑缓冲优先，不被旧的服务端快照覆盖。 */
+function restoreDraftPane(snap) {
+  citePane.hidden = false;
+  citeMode = CITE_MODE_DRAFT;
+  citePane.dataset.mode = CITE_MODE_DRAFT;
+  citePaneBadge.textContent = "待审批草稿";
+  citeDraft = snap.draft;
+  citeFileName = snap.fileName || null;
+  citeHintLocate = snap.hintLocate || "";
+  citePaneTitle.textContent = draftPaneTitle(citeDraft);
+  citePaneText.value = snap.dirty ? (snap.text || "") : (citeDraft.content || "");
+  citePaneText.disabled = false;
+  citePaneSave.textContent = "保存草稿";
+  citeDirty = !!snap.dirty;
+  renderDraftActions();
+  syncCiteSave();
+  setCiteHint();
+  restoreCiteSelection(snap);
+}
+
+/** 服务端返回的 pending_draft 进会话快照；本地未保存缓冲优先保留。 */
+function applyServerDraft(id, draft) {
+  const key = citePaneKey(id);
+  const snap = citePaneByConv[key] || {};
+  if (!draft) {
+    if (snap.mode === CITE_MODE_DRAFT) {
+      // 草稿已在别处完成（批准/拒绝），本会话的草稿模式作废。
+      citePaneByConv[key] = {
+        ...snap,
+        mode: CITE_MODE_CITATION,
+        draft: null,
+        dirty: false,
+        text: "",
+      };
+    }
+    return;
+  }
+  if (snap.mode === CITE_MODE_DRAFT && snap.dirty) {
+    // 本地有未保存的草稿编辑：只更新服务端字段，保留编辑缓冲与可见状态。
+    citePaneByConv[key] = { ...snap, draft, hidden: snap.hidden === true };
+    return;
+  }
+  citePaneByConv[key] = {
+    ...snap,
+    mode: CITE_MODE_DRAFT,
+    draft,
+    dirty: false,
+    text: draft.content || "",
+    hidden: snap.hidden === true,
+  };
+}
+
+function setCiteBusy(busy) {
+  citeBusy = busy;
+  citePaneButtons.querySelectorAll("button").forEach((btn) => { btn.disabled = busy; });
+  citePaneMenu.querySelectorAll("button").forEach((btn) => { btn.disabled = busy; });
+  citePaneForm.querySelectorAll("button").forEach((btn) => { btn.disabled = busy; });
+  syncCiteSave();
+}
+
+/** 保存按钮可用性：草稿模式要有非空正文，引用模式要已载入内容。 */
+function syncCiteSave() {
+  if (citeBusy) {
+    citePaneSave.disabled = true;
+    return;
+  }
+  citePaneSave.disabled = citeMode === CITE_MODE_DRAFT
+    ? !citePaneText.value.trim()
+    : citePaneText.disabled;
+}
+
+function draftOverrideAvailable(draft) {
+  return !!draft && (draft.action === "append" || draft.action === "create");
+}
+
+function closeDraftOverrideMenu() {
+  citePaneMenu.hidden = true;
+  const trigger = citePaneButtons.querySelector('[data-act="more"]');
+  if (trigger) trigger.setAttribute("aria-expanded", "false");
+}
+
+function draftOverrideMenuOpen() {
+  return !citePaneMenu.hidden;
+}
+
+function openDraftOverrideMenu() {
+  citePaneMenu.hidden = false;
+  const trigger = citePaneButtons.querySelector('[data-act="more"]');
+  if (trigger) trigger.setAttribute("aria-expanded", "true");
+  const first = citePaneMenu.querySelector('[role="menuitem"]');
+  if (first) first.focus();
+}
+
+/** 选择一种覆盖方式：关掉菜单，只渲染该方式需要的表单。 */
+function pickDraftOverride(mode) {
+  draftOverrideMode = mode;
+  closeDraftOverrideMenu();
+  renderDraftOverrideForm();
+}
+
+/** 覆盖表单：一次只渲染所选方式，避免两个表单同时占满面板底部。 */
+function renderDraftOverrideForm() {
+  const draft = citeDraft;
+  if (!draftOverrideMode || !draftOverrideAvailable(draft)) {
+    citePaneForm.hidden = true;
+    citePaneForm.innerHTML = "";
+    return;
+  }
+  citePaneForm.hidden = false;
+  if (draftOverrideMode === "append") {
+    const options = (draft.existing_files || [])
+      .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
+      .join("");
+    citePaneForm.innerHTML = `
+      <label for="citePaneAppendTarget">追加到笔记</label>
+      <select id="citePaneAppendTarget" data-role="append-target">${options}</select>
+      <button type="button" data-act="submit-append">追加到所选笔记</button>
+    `;
+    const select = citePaneForm.querySelector('[data-role="append-target"]');
+    const submit = citePaneForm.querySelector('[data-act="submit-append"]');
+    submit.onclick = () => {
+      if (!select || !select.value) return;
+      submitDraftOverride("append", select.value);
+    };
+    if (select) select.focus();
+    return;
+  }
+  const proposed = draft.action === "create" ? draft.file_name : "";
+  citePaneForm.innerHTML = `
+    <label for="citePaneNewName">新建笔记</label>
+    <input id="citePaneNewName" data-role="new-name" placeholder="新文件名.md" value="${escapeHtml(proposed)}">
+    <button type="button" data-act="submit-create">新建这篇笔记</button>
+  `;
+  const input = citePaneForm.querySelector('[data-role="new-name"]');
+  const submit = citePaneForm.querySelector('[data-act="submit-create"]');
+  submit.onclick = () => {
+    const name = (input && input.value.trim()) || draft.file_name;
+    submitDraftOverride("create", name);
+  };
+  if (input) input.focus();
+}
+
+function submitDraftOverride(writeAction, fileName) {
+  if (citeBusy || !fileName) return;
+  setCiteBusy(true);
+  sendReview({ action: "override", write_action: writeAction, file_name: fileName })
+    .finally(() => setCiteBusy(false));
+}
+
+/** 草稿模式常驻操作：批准、更多操作、拒绝。覆盖方式收进菜单。 */
+function renderDraftActions() {
+  const draft = citeDraft;
+  if (!draft) {
+    citePaneActions.hidden = true;
+    citePaneAsk.textContent = "";
+    citePaneButtons.innerHTML = "";
+    citePaneForm.hidden = true;
+    citePaneForm.innerHTML = "";
+    closeDraftOverrideMenu();
+    return;
+  }
+  // replace / delete 没有覆盖入口：清掉可能残留的选择与菜单。
+  if (!draftOverrideAvailable(draft)) draftOverrideMode = null;
+  citePaneActions.hidden = false;
+  citePaneAsk.textContent = draftAsk(draft);
+  const showOverride = draftOverrideAvailable(draft);
+  citePaneButtons.innerHTML = `
+    <button type="button" class="primary" data-act="approve">${draftApproveLabel(draft.action)}</button>
+    ${showOverride ? `<button type="button" data-act="more" aria-haspopup="menu" aria-expanded="false" aria-controls="citePaneMenu">更多操作 ▾</button>` : ""}
+    <button type="button" data-act="reject">拒绝</button>
+  `;
+  citePaneButtons.querySelector('[data-act="approve"]').onclick = () => {
+    if (citeBusy) return;
+    setCiteBusy(true);
+    sendReview({ action: "approve" }).finally(() => setCiteBusy(false));
+  };
+  const more = citePaneButtons.querySelector('[data-act="more"]');
+  if (more) {
+    more.onclick = () => {
+      if (draftOverrideMenuOpen()) closeDraftOverrideMenu();
+      else openDraftOverrideMenu();
+    };
+  }
+  citePaneButtons.querySelector('[data-act="reject"]').onclick = () => {
+    if (citeBusy) return;
+    setCiteBusy(true);
+    sendReview({ action: "reject" }).finally(() => setCiteBusy(false));
+  };
+  citePaneMenu.querySelectorAll('[role="menuitem"]').forEach((item) => {
+    item.onclick = () => pickDraftOverride(item.dataset.pick);
+  });
+  closeDraftOverrideMenu();
+  renderDraftOverrideForm();
+}
+
+/** 菜单打开时 Escape 只收菜单，返回 true 让面板的 Escape 处理提前退出。 */
+function handleDraftMenuEscape(event) {
+  if (event.key !== "Escape" || !draftOverrideMenuOpen()) return false;
+  closeDraftOverrideMenu();
+  const trigger = citePaneButtons.querySelector('[data-act="more"]');
+  if (trigger) trigger.focus();
+  return true;
+}
+
+document.addEventListener("click", (event) => {
+  if (citePaneMenu.hidden) return;
+  if (citePaneMenu.contains(event.target)) return;
+  const trigger = citePaneButtons.querySelector('[data-act="more"]');
+  if (trigger && trigger.contains(event.target)) return;
+  closeDraftOverrideMenu();
+});
+
+// ========== 三栏调宽（左侧会话列表 / 中间聊天 / 右侧笔记面板）==========
+// 只持久化左右两栏宽度，中间区用剩余空间，因此不存它的固定宽度。
+const CHAT_LAYOUT_KEY = "noteagent.chat-layout.v1";
+const LAYOUT_DEFAULTS = { sidebarWidth: 260, notePaneWidth: 400 };
+const LAYOUT_LIMITS = { sidebarMin: 200, sidebarMax: 400, paneMin: 300, paneMax: 600, chatMin: 440 };
+const KEYBOARD_STEP = 10;
+const KEYBOARD_STEP_LARGE = 40;
+
+const chatShell = document.getElementById("viewChat");
+const conversationResizeHandle = document.getElementById("conversationResizeHandle");
+const notePaneResizeHandle = document.getElementById("notePaneResizeHandle");
+let chatLayout = { ...LAYOUT_DEFAULTS };
+let paneDrag = null;
+
+/** 当前视口下的有效上下界：先压右栏，再压左栏，最后允许中间区被压到 0。 */
+function chatLayoutBounds(viewport) {
+  const L = LAYOUT_LIMITS;
+  const paneMax = Math.min(L.paneMax, Math.max(L.paneMin, viewport - L.sidebarMin - L.chatMin));
+  const sidebarMax = Math.min(L.sidebarMax, Math.max(L.sidebarMin, viewport - L.paneMin - L.chatMin));
+  let paneMin = L.paneMin;
+  let sidebarMin = L.sidebarMin;
+  if (sidebarMin + paneMin > viewport) {
+    paneMin = Math.max(0, Math.min(paneMin, viewport - sidebarMin));
+    sidebarMin = Math.max(0, Math.min(sidebarMin, viewport - paneMin));
+  }
+  return { sidebarMin, sidebarMax, paneMin, paneMax };
+}
+
+function clampValue(value, low, high) {
+  return Math.round(Math.min(high, Math.max(low, value)));
+}
+
+/** 把用户意图按当前视口收进边界；返回实际生效的宽度。 */
+function effectiveChatLayout() {
+  const bounds = chatLayoutBounds(window.innerWidth);
+  return {
+    sidebarWidth: clampValue(chatLayout.sidebarWidth, bounds.sidebarMin, bounds.sidebarMax),
+    notePaneWidth: clampValue(chatLayout.notePaneWidth, bounds.paneMin, bounds.paneMax),
+    bounds,
+  };
+}
+
+function setHandleAria(handle, value, bounds) {
+  handle.setAttribute("aria-valuemin", String(bounds[0]));
+  handle.setAttribute("aria-valuemax", String(bounds[1]));
+  handle.setAttribute("aria-valuenow", String(value));
+}
+
+function applyChatLayout() {
+  const effective = effectiveChatLayout();
+  chatShell.style.setProperty("--sidebar-width", `${effective.sidebarWidth}px`);
+  chatShell.style.setProperty("--note-pane-width", `${effective.notePaneWidth}px`);
+  setHandleAria(
+    conversationResizeHandle,
+    effective.sidebarWidth,
+    [effective.bounds.sidebarMin, effective.bounds.sidebarMax],
+  );
+  setHandleAria(
+    notePaneResizeHandle,
+    effective.notePaneWidth,
+    [effective.bounds.paneMin, effective.bounds.paneMax],
+  );
+}
+
+/** 右侧面板隐藏时收起它的分隔线。 */
+function syncNotePaneHandle() {
+  notePaneResizeHandle.hidden = citePane.hidden;
+}
+
+function readStoredChatLayout() {
+  try {
+    const raw = window.localStorage.getItem(CHAT_LAYOUT_KEY);
+    if (!raw) return { ...LAYOUT_DEFAULTS };
+    const parsed = JSON.parse(raw);
+    return {
+      sidebarWidth: storedWidth(
+        parsed && parsed.sidebarWidth,
+        LAYOUT_DEFAULTS.sidebarWidth,
+        LAYOUT_LIMITS.sidebarMin,
+        LAYOUT_LIMITS.sidebarMax,
+      ),
+      notePaneWidth: storedWidth(
+        parsed && parsed.notePaneWidth,
+        LAYOUT_DEFAULTS.notePaneWidth,
+        LAYOUT_LIMITS.paneMin,
+        LAYOUT_LIMITS.paneMax,
+      ),
+    };
+  } catch {
+    // 存储损坏或不可用：退回默认宽度，页面照常可用。
+    return { ...LAYOUT_DEFAULTS };
+  }
+}
+
+/** 只接受范围内的有限数值，越界或类型不对都回退默认，再由当前视口收边。 */
+function storedWidth(value, fallback, low, high) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  if (value < low || value > high) return fallback;
+  return value;
+}
+
+function saveChatLayout() {
+  try {
+    window.localStorage.setItem(CHAT_LAYOUT_KEY, JSON.stringify(chatLayout));
+  } catch {
+    // 忽略写入失败：布局仍在本次会话内生效。
+  }
+}
+
+/** 拖动与键盘都走这里：先按边界收进意图，再重排并更新 ARIA。 */
+function setPaneWidth(kind, value) {
+  const bounds = chatLayoutBounds(window.innerWidth);
+  if (kind === "sidebar") {
+    chatLayout.sidebarWidth = clampValue(value, bounds.sidebarMin, bounds.sidebarMax);
+  } else {
+    chatLayout.notePaneWidth = clampValue(value, bounds.paneMin, bounds.paneMax);
+  }
+  applyChatLayout();
+}
+
+function paneWidthOf(kind, effective) {
+  return kind === "sidebar" ? effective.sidebarWidth : effective.notePaneWidth;
+}
+
+function beginPaneDrag(kind, handle, event) {
+  if (event.button != null && event.button !== 0) return;
+  const effective = effectiveChatLayout();
+  paneDrag = {
+    kind,
+    handle,
+    startX: event.clientX,
+    startWidth: paneWidthOf(kind, effective),
+  };
+  handle.classList.add("dragging");
+  document.body.classList.add("pane-resizing");
+  if (handle.setPointerCapture && event.pointerId != null) {
+    handle.setPointerCapture(event.pointerId);
+  }
+  event.preventDefault();
+}
+
+function movePaneDrag(event) {
+  if (!paneDrag) return;
+  // 右栏往左拖是变宽，所以取负号。
+  const delta = event.clientX - paneDrag.startX;
+  const next = paneDrag.kind === "sidebar"
+    ? paneDrag.startWidth + delta
+    : paneDrag.startWidth - delta;
+  setPaneWidth(paneDrag.kind, next);
+}
+
+function endPaneDrag() {
+  if (!paneDrag) return;
+  const { handle } = paneDrag;
+  paneDrag = null;
+  handle.classList.remove("dragging");
+  document.body.classList.remove("pane-resizing");
+  saveChatLayout();
+}
+
+function keyPaneWidth(kind, event) {
+  const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+  if (!keys.includes(event.key)) return;
+  const bounds = chatLayoutBounds(window.innerWidth);
+  const inSidebar = kind === "sidebar";
+  const lo = inSidebar ? bounds.sidebarMin : bounds.paneMin;
+  const hi = inSidebar ? bounds.sidebarMax : bounds.paneMax;
+  const current = paneWidthOf(kind, effectiveChatLayout());
+  let next = current;
+  if (event.key === "Home") {
+    next = lo;
+  } else if (event.key === "End") {
+    next = hi;
+  } else {
+    const step = event.shiftKey ? KEYBOARD_STEP_LARGE : KEYBOARD_STEP;
+    // 右栏向左是变宽，方向与左栏相反。
+    const grow = inSidebar
+      ? (event.key === "ArrowRight" ? step : -step)
+      : (event.key === "ArrowLeft" ? step : -step);
+    next = current + grow;
+  }
+  setPaneWidth(kind, next);
+  saveChatLayout();
+  event.preventDefault();
+}
+
+function wirePaneResizeHandle(kind, handle) {
+  handle.addEventListener("pointerdown", (event) => beginPaneDrag(kind, handle, event));
+  handle.addEventListener("pointermove", (event) => movePaneDrag(event));
+  handle.addEventListener("pointerup", () => endPaneDrag());
+  handle.addEventListener("pointercancel", () => endPaneDrag());
+  handle.addEventListener("keydown", (event) => keyPaneWidth(kind, event));
+}
+
+chatLayout = readStoredChatLayout();
+wirePaneResizeHandle("sidebar", conversationResizeHandle);
+wirePaneResizeHandle("pane", notePaneResizeHandle);
+applyChatLayout();
+syncNotePaneHandle();
+new MutationObserver(syncNotePaneHandle).observe(citePane, {
+  attributes: true,
+  attributeFilter: ["hidden"],
+});
+window.addEventListener("resize", () => {
+  // 视口变化只重新收边，不改用户意图，也不写存储。
+  applyChatLayout();
+});
+
+/** 把草稿切进面板。已有未保存的引用编辑时先按既有确认约定问一次。 */
+async function openDraftPane(draft) {
+  if (!draft || typeof draft !== "object") return;
+  if (citeMode === CITE_MODE_CITATION && citeDirty) {
+    const ok = await docsConfirm({
+      title: "未保存修改",
+      body: "引用笔记有未保存修改，切换到待审草稿会放弃这些修改。",
+      confirmText: "放弃修改",
+      danger: false,
+    });
+    if (!ok) return;
+  }
+  citePane.hidden = false;
+  citeMode = CITE_MODE_DRAFT;
+  draftOverrideMode = null;
+  citeDraft = {
+    ...draft,
+    similar: [...(draft.similar || [])],
+    existing_files: [...(draft.existing_files || [])],
+  };
+  citeDirty = false;
+  citeHintLocate = "";
+  citePane.dataset.mode = CITE_MODE_DRAFT;
+  citePaneBadge.textContent = "待审批草稿";
+  citePaneTitle.textContent = draftPaneTitle(citeDraft);
+  citePaneText.value = citeDraft.content || "";
+  citePaneText.disabled = false;
+  citePaneSave.textContent = "保存草稿";
+  renderDraftActions();
+  syncCiteSave();
+  setCiteHint();
+  snapshotCitePane(currentConversationId);
+}
+
+/** 只把草稿写进快照，不改可见面板；用于草稿属于别的会话时。 */
+function stashDraftForConversation(id, draft) {
+  const key = citePaneKey(id);
+  const snap = citePaneByConv[key] || {};
+  citePaneByConv[key] = {
+    ...snap,
+    mode: CITE_MODE_DRAFT,
+    draft,
+    dirty: false,
+    text: draft.content || "",
+  };
+}
+
+/** 保存草稿正文到 conversations.pending_draft。只改待审状态，不写正式笔记。 */
+async function saveDraftContent() {
+  if (citeMode !== CITE_MODE_DRAFT || !citeDraft) return false;
+  const content = citePaneText.value;
+  if (!content.trim()) {
+    await docsAlert("无法保存", "草稿正文不能为空。");
+    return false;
+  }
+  const res = await fetch("/chat/draft", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ thread_id: currentConversationId, content }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    // 失败保留编辑文本与未保存状态，可重试。
+    await docsAlert("保存失败", errorMessage(json, res));
+    return false;
+  }
+  citeDraft = json.pending_draft;
+  citeDirty = false;
+  setCiteHint();
+  snapshotCitePane(currentConversationId);
+  showSaveToast();
+  return true;
+}
+
+/** 审批完成后丢弃该会话的草稿状态：没有引用内容就关掉面板。 */
+function clearDraftPane() {
+  citeDraft = null;
+  citeDirty = false;
+  citeMode = CITE_MODE_CITATION;
+  const key = citePaneKey(currentConversationId);
+  const snap = citePaneByConv[key];
+  if (snap) {
+    snap.mode = CITE_MODE_CITATION;
+    snap.draft = null;
+    snap.dirty = false;
+    snap.text = "";
+  }
+  if (snap && snap.hidden !== true && snap.fileName) {
+    restoreCitePane(currentConversationId);
+    return;
+  }
+  hideCitePaneVisual();
+  snapshotCitePane(currentConversationId);
+}
+
+/** 面板草稿模式的审批入口：未保存的正文先落库，再调用既有 /chat/review。 */
+async function sendReview(body) {
+  if (!citeDraft) return;
+  if (citeDirty && !(await saveDraftContent())) return;
+  const draft = citeDraft;
+  const res = await fetch("/chat/review", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ thread_id: currentConversationId, ...body }),
+  });
+  const json = await res.json().catch(() => ({}));
+  let text;
+  if (json.status === "written") {
+    text = json.action === "delete"
+      ? `已删除 ${json.file_name}`
+      : `已写入 ${json.file_name}`;
+    clearDraftPane();
+  } else if (json.status === "rejected") {
+    text = "已取消写入";
+    clearDraftPane();
+  } else {
+    // 失败保留草稿、正文与动作选择，按钮恢复后可重试。
+    text = "审批失败：" + (json.error || res.status);
+    citeHintLocate = `审批失败：${json.error || res.status}，可修正后重试。`;
+    setCiteHint();
+    restoreDraftPane({
+      mode: CITE_MODE_DRAFT,
+      draft,
+      text: citePaneText.value,
+      dirty: citeDirty,
+      fileName: citeFileName,
+      hintLocate: citeHintLocate,
+    });
+  }
+  appendMessage("assistant", text);
+}
+
 function adoptCitePaneConversation(newId) {
   if (!newId) return;
   const pending = citePaneByConv[CITE_PENDING];
@@ -1200,11 +1927,21 @@ function adoptCitePaneConversation(newId) {
   delete citePaneByConv[CITE_PENDING];
 }
 
+/** 未保存提示的文案：草稿模式与引用模式的后果不同，不能共用一句话。 */
+function citeUnsavedBody(leaving) {
+  const tail = leaving ? "确定离开？" : "确定放弃？";
+  if (citeMode === CITE_MODE_DRAFT) {
+    return `待审草稿有未保存修改，${tail}草稿本身仍保留在待审批状态。`;
+  }
+  return `出处笔记有未保存修改，${tail}`;
+}
+
 async function confirmCiteDiscard() {
   if (!citeDirty) return true;
   return docsConfirm({
     title: "未保存修改",
-    body: "出处笔记有未保存修改，确定放弃？",
+    body: citeUnsavedBody(false),
+    confirmText: "放弃修改",
     danger: false,
   });
 }
@@ -1225,9 +1962,20 @@ function scrollCiteTo(index) {
 
 async function openCitedNote(cite) {
   if (!cite || !cite.file_name) return;
-  if (citeFileName && cite.file_name !== citeFileName && !(await confirmCiteDiscard())) {
+  const leavingDraft = citeMode === CITE_MODE_DRAFT;
+  if (
+    (leavingDraft || (citeFileName && cite.file_name !== citeFileName))
+    && !(await confirmCiteDiscard())
+  ) {
     return;
   }
+  citeMode = CITE_MODE_CITATION;
+  citeDraft = null;
+  citePane.dataset.mode = CITE_MODE_CITATION;
+  citePaneBadge.textContent = "引用";
+  citePaneSave.textContent = "保存到 Markdown";
+  citePaneActions.hidden = true;
+  citePaneButtons.innerHTML = "";
   citePane.hidden = false;
   citeFileName = cite.file_name;
   citeDirty = false;
@@ -1260,6 +2008,7 @@ async function openCitedNote(cite) {
 }
 
 async function saveCitedNote() {
+  if (citeMode !== CITE_MODE_CITATION) return;
   if (!citeFileName || citePaneText.disabled) return;
   const res = await fetch(noteUrl(citeFileName), {
     method: "PUT",
@@ -1287,11 +2036,16 @@ document.getElementById("citePaneClose").addEventListener("click", () => {
   closeCitePane();
 });
 citePaneSave.addEventListener("click", () => {
+  if (citeMode === CITE_MODE_DRAFT) {
+    saveDraftContent();
+    return;
+  }
   saveCitedNote();
 });
 citePaneText.addEventListener("input", () => {
   if (citePaneText.disabled) return;
   citeDirty = true;
+  syncCiteSave();
   setCiteHint();
 });
 chatInner.addEventListener("click", (e) => {
@@ -1365,7 +2119,8 @@ async function showView(name, push) {
     if (anyCiteDirty()) {
       const ok = await docsConfirm({
         title: "未保存修改",
-        body: "出处笔记有未保存修改，确定离开？",
+        body: citeUnsavedBody(true),
+        confirmText: "放弃修改",
         danger: false,
       });
       if (!ok) return;
@@ -2126,7 +2881,8 @@ async function openConversation(id) {
   });
   if (convRes.ok) {
     const conv = await convRes.json();
-    if (conv.pending_draft) renderDraftCard(conv.pending_draft);
+    // 服务端草稿进快照；同会话已有的未保存编辑缓冲优先保留。
+    applyServerDraft(id, conv.pending_draft);
   }
   document.querySelectorAll(".conversation-item").forEach((el) => {
     el.classList.toggle("active", el.dataset.id === id);
@@ -2301,6 +3057,7 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
+    if (handleDraftMenuEscape(e)) return;
     closeConversationMenu();
     closeDeleteDialog();
     if (!docsModalResolve && !citePane.hidden && !isDocumentsPath()) closeCitePane();
@@ -2374,6 +3131,8 @@ async function ask() {
     let rawText = "";
     let eventName = "token";
     let citations = [];
+    // 本轮 SSE 归属的会话：用户中途切走时，草稿要进它自己的快照而不是当前面板。
+    let streamConversationId = null;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -2399,6 +3158,7 @@ async function ask() {
             if (payload && typeof payload === "object") {
               adoptCitePaneConversation(payload.id);
               currentConversationId = payload.id;
+              streamConversationId = payload.id;
               loadConversations(payload.id);
             }
           } else if (eventName === "thinking") {
@@ -2442,7 +3202,12 @@ async function ask() {
             }
             paintTrace(assistEl, steps, true);
           } else if (eventName === "draft") {
-            renderDraftCard(payload);
+            // 只有草稿属于当前正在看的会话时才动可见面板，否则进它自己的快照。
+            if (!streamConversationId || streamConversationId === currentConversationId) {
+              openDraftPane(payload);
+            } else {
+              stashDraftForConversation(streamConversationId, payload);
+            }
           } else if (eventName === "sources") {
             citations = Array.isArray(payload) ? payload : [];
             assistEl.dataset.citations = JSON.stringify(
@@ -2715,115 +3480,6 @@ function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str;
   return div.innerHTML;
-}
-
-function renderDraftCard(draft) {
-  const card = document.createElement("div");
-  card.className = "draft-card";
-  const similar = (draft.similar || []).filter(Boolean);
-  const files = draft.existing_files || [];
-  const action = draft.action;
-  let ask;
-  let approveLabel;
-  if (action === "append") {
-    const extra = similar.length ? `，相近：${similar.join("、")}` : "";
-    ask = `识别到已经有笔记「${draft.file_name}」${extra}，是否要追加？`;
-    approveLabel = "同意追加";
-  } else if (action === "replace") {
-    ask = `是否用以下内容覆盖「${draft.file_name}」？旧内容将被替换。`;
-    approveLabel = "同意覆盖";
-  } else if (action === "delete") {
-    ask = `是否删除笔记「${draft.file_name}」？删除后无法从本页恢复。`;
-    approveLabel = "同意删除";
-  } else {
-    ask = `没有相关笔记，是否要新建笔记文件（提议文件名：${draft.file_name}）？`;
-    approveLabel = "同意新建";
-  }
-  const showOverride = action === "append" || action === "create";
-  const options = files.map(
-    (name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`
-  ).join("");
-  const bodyHtml = action === "delete"
-    ? ""
-    : `<div class="draft-body">${marked.parse(draft.content || "")}</div>`;
-  const overrideHtml = showOverride
-    ? `<select data-role="append-target">${options}</select>
-      <button data-act="override-append">改追加到所选</button>
-      <input data-role="new-name" placeholder="新文件名.md" value="${action === "create" ? escapeHtml(draft.file_name) : ""}">
-      <button data-act="override-create">改为新建</button>`
-    : "";
-  card.innerHTML = `
-    <div class="draft-label">笔记草稿</div>
-    ${bodyHtml}
-    <p class="draft-ask">${escapeHtml(ask)}</p>
-    <div class="draft-actions">
-      <button class="primary" data-act="approve">${approveLabel}</button>
-      ${overrideHtml}
-      <button data-act="reject">拒绝</button>
-    </div>
-  `;
-  const buttons = card.querySelectorAll("button");
-  const disable = () => buttons.forEach((btn) => { btn.disabled = true; });
-  card.querySelector('[data-act="approve"]').onclick = async () => {
-    disable();
-    await sendReview({ action: "approve" }, card);
-  };
-  const overrideAppend = card.querySelector('[data-act="override-append"]');
-  if (overrideAppend) {
-    overrideAppend.onclick = async () => {
-      const select = card.querySelector('[data-role="append-target"]');
-      if (!select || !select.value) return;
-      disable();
-      await sendReview({
-        action: "override",
-        write_action: "append",
-        file_name: select.value,
-      }, card);
-    };
-  }
-  const overrideCreate = card.querySelector('[data-act="override-create"]');
-  if (overrideCreate) {
-    overrideCreate.onclick = async () => {
-      const input = card.querySelector('[data-role="new-name"]');
-      const name = (input && input.value.trim()) || draft.file_name;
-      disable();
-      await sendReview({
-        action: "override",
-        write_action: "create",
-        file_name: name,
-      }, card);
-    };
-  }
-  card.querySelector('[data-act="reject"]').onclick = async () => {
-    disable();
-    await sendReview({ action: "reject" }, card);
-  };
-  chatInner.appendChild(card);
-  chatContainer.scrollTop = chatContainer.scrollHeight;
-}
-
-async function sendReview(body, card) {
-  const res = await fetch("/chat/review", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ thread_id: currentConversationId, ...body }),
-  });
-  const json = await res.json();
-  let text;
-  if (json.status === "written") {
-    text = json.action === "delete"
-      ? `已删除 ${json.file_name}`
-      : `已写入 ${json.file_name}`;
-    if (card) card.remove();
-  } else if (json.status === "rejected") {
-    text = "已取消写入";
-    if (card) card.remove();
-  } else {
-    text = "审批失败：" + (json.error || res.status);
-    if (card) card.querySelectorAll("button").forEach((btn) => { btn.disabled = false; });
-  }
-  const row = appendMessage("assistant", text);
-  return row;
 }
 
 // ========== 页面加载：载入历史 ==========

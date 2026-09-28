@@ -43,3 +43,12 @@ logs/
 .idea/
 .vscode/
 *.swp
+
+# Frontend (Vue + Vite): 依赖与产物都不入库，由 npm ci / npm run build 生成
+node_modules/
+frontend/playwright-report/
+frontend/test-results/
+frontend/coverage/
+frontend/node_modules/
+frontend/.vite/
+src/noteagent/web/dist/

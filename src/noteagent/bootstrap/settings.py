@@ -1,4 +1,5 @@
 from pathlib import Path    #路径解析模块Path
+from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator  #数据校验模块
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -66,6 +67,14 @@ class Settings(BaseSettings):
     log_level: str = "DEBUG"
 
     database_url: str = Field(default="", validation_alias="DATABASE_URL")  #默认数据库连接的URL为空
+
+    # 前端形态：legacy 用 web/templates/home.html，vue 用 frontend 构建产物。
+    # 迁移完成后的默认值；vue 模式找不到产物会返回 503 构建提示，不静默回退旧页。
+    # 回退只需 FRONTEND_MODE=legacy 重启，不动任何数据。
+    frontend_mode: Literal["legacy", "vue"] = Field(
+        default="vue",
+        validation_alias="FRONTEND_MODE",
+    )
 
     # 上下文压缩与 stub 截断相关（token 估算用字符/4）。禁止在 compact/agent 里写死这些数字。
     chat_context_window: int = Field(default=32768, validation_alias="CHAT_CONTEXT_WINDOW")

@@ -27,7 +27,8 @@ from noteagent.model_management.service import (
 from noteagent.model_management.store import ModelSettingsStore
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.retrieval.service import RetrievalService
-from noteagent.web import STATIC_DIR
+from noteagent.web import DIST_DIR, STATIC_DIR
+from noteagent.web.router import router as web_router
 
 _logger = logging.getLogger(__name__)
 
@@ -101,9 +102,17 @@ def create_app(container: AppContainer) -> FastAPI:
     app.state.container = container   #将容器(包括所有的chat_agent,db,history等的一个container容器类)attach到应用状态
     # 模型设置的前端代码在 web/static 下，必须显式挂载才能被浏览器取到。
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    # Vue 产物由构建阶段生成，可能还不存在；check_dir=False 让应用照常启动，
+    # 缺失的文件按 404 处理，页面路由再给出明确的构建提示。
+    app.mount(
+        "/ui-assets",
+        StaticFiles(directory=str(DIST_DIR), check_dir=False),
+        name="ui-assets",
+    )
     # 模型管理的错误结构与参数错误脱敏统一在这里注册，覆盖所有路由。
     app.add_exception_handler(ModelManagementError, model_management_error_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
+    app.include_router(web_router)   #注册页面路由（SPA 外壳 / 旧模板）
     app.include_router(chat_router)   #注册聊天路由
     app.include_router(notes_router)
     app.include_router(model_settings_router)

@@ -1,29 +1,72 @@
 # 前端（现行界面）
 
-> 以 [`home.html`](../../src/noteagent/web/templates/home.html) 为准。全局职责见 [architecture.md §5.1](./architecture.md#51-前端)。  
-> 聊天工具与人审卡片字段见 [chat-tools.md](./chat-tools.md)。  
+> 现行实现是 [`frontend/`](../../frontend) 下的 Vue 3 SPA，产物由 `src/noteagent/web/dist/` 承载；
+> 旧的单模板 [`home.html`](../../src/noteagent/web/templates/home.html) 只在 `FRONTEND_MODE=legacy` 时下发，作为回退。
+> 全局职责见 [architecture.md §5.1](./architecture.md#51-前端)。
+> 聊天工具与人审卡片字段见 [chat-tools.md](./chat-tools.md)。
 > 磁盘与向量同步见 [retrieval.md](./retrieval.md)。
+
+> 关联文档：执行切片 [2026-09-28-vue-frontend-initialization.md](../plans/2026-09-28-vue-frontend-initialization.md)
+> 与执行记录 [2026-09-28-vue-frontend-initialization-results.md](../plans/2026-09-28-vue-frontend-initialization-results.md)；
+> 模型入口的运维说明 [2026-09-25-model-switching-reliability.md](../plans/2026-09-25-model-switching-reliability.md) §9；
+> 启动教程 [guides/zh/getting-started.md](../guides/zh/getting-started.md)。
 
 | 项 | 内容 |
 |---|---|
-| 形态 | 单页，无独立前端工程、无 Vue/React 打包 |
-| 下发 | `GET /` 与 `GET /documents` 都返回同一 `home.html`；`read_home_html()` 每次读盘 |
-| 视图 | 顶栏切 Chat / Documents；用 `pathname` + `history.pushState` |
-| 分区 | 聊天脚本不复用 Documents 弹窗 DOM；笔记路由不经过 Agent |
+| 形态 | Vue 3 + TypeScript + Vite 单页应用，一个顶部导航 + 五个页面模块（`frontend/`） |
+| 下发 | `GET /`、`/assistant`、`/records`、`/library`、`/settings`、`/documents` 返回 SPA 外壳；资源挂在 `/ui-assets/` |
+| 视图 | `/documents` 兼容跳到 `/library`；页面白名单之外一律 404，不用 HTML 兜底 |
+| 回退 | `FRONTEND_MODE=legacy`：`/` 与 `/documents` 回旧模板，其余入口按旧地址 307 跳转 |
+| 构建 | 本地 `npm --prefix frontend run build`；镜像里由 Node 阶段构建后拷进 Python 镜像 |
+
+---
+
+## 0. 现行实现（Vue）
+
+> 后续设计说明：右上角设置齿轮与设置分类见 [Settings 设计](../product/settings-architecture.md) 和 [执行计划](../plans/2026-09-28-settings-navigation-and-sections.md)，目前尚未实施。下文继续描述实际五文字导航，实施后再更新。
+
+**页面与导航。** 顶部横栏顺序固定为 **Home → Assistant → Records → Library → Settings**
+（[`shared/navigation.ts`](../../frontend/src/shared/navigation.ts) 是唯一来源，路由表与它一一对应并有单测钉住）。
+原 Chat 页面成为 Assistant，原 Documents 成为 Library，模型与索引管理归 Settings。
+
+**模块分层。** 组件只负责渲染与转发交互，规则集中在 `features/*/store.ts` 与纯函数模块里：
+
+| 模块 | 职责 |
+|---|---|
+| [`shared/api/{types,http}.ts`](../../frontend/src/shared/api) | pydantic schema 的 TS 合同；JSON／204／网络错误与 `message`→`detail`→`error` 文案提取；写请求不自动重试 |
+| [`features/chat/store.ts`](../../frontend/src/features/chat/store.ts) | 会话、消息、发送门闩、按会话隔离的面板快照 |
+| [`features/chat/sse.ts`](../../frontend/src/features/chat/sse.ts) | `consumeSse` 字节流解析 + `decodeChatEvent` 协议校验 + `TurnAccumulator` 一轮状态 |
+| [`features/chat/citations.ts`](../../frontend/src/features/chat/citations.ts) | 引用编号重排、正文渲染、`locateQuote` 匹配 |
+| [`features/chat/trace.ts`](../../frontend/src/features/chat/trace.ts) | 工具轨迹文案（实时／历史两套措辞） |
+| [`features/chat/layout.ts`](../../frontend/src/features/chat/layout.ts) | 三栏宽度边界、键盘步进、`noteagent.chat-layout.v1` 持久化 |
+| [`features/notes/store.ts`](../../frontend/src/features/notes/store.ts) | 目录树、当前笔记、未保存正文、索引操作 |
+| [`features/models/store.ts`](../../frontend/src/features/models/store.ts) | 模型配置／revision／维护窗口／重建任务的唯一来源，Settings 与 Assistant 弹层共用 |
+| [`shared/ui/`](../../frontend/src/shared/ui) | 单例对话框、保存浮层、Markdown 渲染、可拖分隔线 |
+| [`shared/unsaved-guard.ts`](../../frontend/src/shared/unsaved-guard.ts) | 路由守卫与 beforeunload 的未保存保护 |
+
+**两条运行时约束。** 一是模型状态只在应用根部 `models.init()` 初始化一次（可见性与跨标签监听各一份，
+轮询不随页面切换增加）；二是引用面板保存正式笔记后会通知 notes store——目录与索引状态刷新，
+Library 打开着同一篇且没有未保存编辑时才换上新正文。
+
+**未保存保护覆盖三条路径**：应用内跳转（路由守卫，取消时 URL 不变）、刷新关闭（beforeunload）、
+会话切换与关闭面板（各自动作里询问）。确认放弃只清掉这次动作涉及的缓冲，不动其他会话的草稿。
+
+下文 §1–§6 记录的是这些模块必须保持的**业务行为**（迁移前写在 `home.html` 与 `model-settings.js` 里），
+行文仍沿用旧页面的分区名称；把 Chat 读作 Assistant、Documents 读作 Library 即可。
 
 ---
 
 ## 1. 范围与原则
 
-一张 HTML 里两套主界面，CSS/JS 写在同一文件，但**业务不要串**：
+原页面是一张 HTML 里两套主界面；迁移后拆成五个页面模块，但**业务仍然不许串**：
 
-1. **Chat 不管磁盘。** 侧栏是 PostgreSQL 会话。Agent 改笔记只通过审批卡片 → `POST /chat/review`。点 ① 打开的出处侧栏是人类写盘，走与 Documents 相同的 `PUT /notes/{path}`（无删除、无预览）。
+1. **Chat 不管磁盘。** 侧栏是 PostgreSQL 会话。Agent 改笔记只通过右侧面板的草稿模式 → `POST /chat/review`；在面板里改草稿正文走 `PUT /chat/draft`，只改待审状态。点 ① 打开的出处侧栏是人类写盘，走与 Documents 相同的 `PUT /notes/{path}`（无删除、无预览）。
 2. **Documents 不调模型。** 树、编辑、入库只打 `/notes*`。保存/新建/移动/删除都是人类操作，与聊天审批并列，都算「人写盘」。
 3. **工具过程单独一排。** 进行中英文当前步可闪烁（ing + `...`），live 也可点 ▼ 看步骤；写回答时为 Generating...。有工具则结束后标题为 Explored N files；无工具则隐藏过程排。步骤完成后改成 Thought / Read / Searched。有正文的 Thought 可展开。主气泡仍是最终 `assistant` 正文。Documents 树不显示 Agent hop。
 4. **不建笔记表。** 最近修改用文件 `mtime`；已/未索引看 Chroma 有没有该相对路径的点。
 5. **一层目录。** 树上文件夹与根目录 `.md` 同级；文件夹内笔记再缩进。根文件仍是 `notes/*.md`，不造磁盘上的「未分类/」。
 
-Python 只负责读模板。业务规则在 `home.html` 的 fetch 与后端路由，不在 `web/` 里再包一层 API client。
+Python 只负责挑页面、读产物。业务规则在 SPA 的 `store.ts`／纯函数模块与后端路由，不在 `web/` 里再包一层 API client；`web/` 里只做页面白名单与静态托管。
 
 ---
 
@@ -58,13 +101,26 @@ Chat 的会话删除 overlay（`.modal-overlay` + `deleteOverlay`）与 Document
 
 左：会话列表、三点重命名（行内 input）/删除（overlay）。中：欢迎语或气泡（与底栏输入框同宽，栏宽取 768 与满宽的中点，助手/用户左右边距对齐）。底：输入框，Enter 发送、Shift+Enter 换行。
 
-进页 `GET /conversations`；点会话 `GET /conversations/{id}/messages` 画气泡，再 `GET /conversations/{id}` 回湿 `pending_draft` 卡片。发一句立刻画 user 气泡和空 assistant。读 SSE：`conversation` → `thinking` / `think` / `tool` / `tool_done` / `generating`（过程排 live 也可展开；当前步英文闪烁）→ `token`（marked，并把该条消息内的 `[[cite:N]]` 绘成蓝色上标 ①，编号按该条首次出现为 1..n）→ 可选 `sources` / `draft`。结束后有工具则为 `Explored 2 files, 1 search` 这类英文汇总 + ▼；无工具不留过程排。点 ① 时聊天区收窄，右侧 textarea 打开该笔记（无预览）；检索片段用选区定位。切到另一个会话时侧栏按 `conversation_id` 快照（含未保存缓冲），互不顶替；关页或进 Documents 时若有未保存出处再确认。保存/Ctrl+S 走 `PUT /notes/{path}`，与 Documents 一样先删旧向量再整篇索引。关闭、Escape、切到 Documents 时若未保存先确认。无删除。`isStreaming` 时不能连发。
+进页 `GET /conversations`；点会话 `GET /conversations/{id}/messages` 画气泡，再 `GET /conversations/{id}` 把 `pending_draft` 送进右侧面板的草稿模式。发一句立刻画 user 气泡和空 assistant。读 SSE：`conversation` → `thinking` / `think` / `tool` / `tool_done` / `generating`（过程排 live 也可展开；当前步英文闪烁）→ `token`（marked，并把该条消息内的 `[[cite:N]]` 绘成蓝色上标 ①，编号按该条首次出现为 1..n）→ 可选 `sources` / `draft`。结束后有工具则为 `Explored 2 files, 1 search` 这类英文汇总 + ▼；无工具不留过程排。点 ① 时聊天区收窄，右侧 textarea 打开该笔记（无预览）；检索片段用选区定位。切到另一个会话时侧栏按 `conversation_id` 快照（含未保存缓冲），互不顶替；关页或进 Documents 时若有未保存出处再确认。保存/Ctrl+S 走 `PUT /notes/{path}`，与 Documents 一样先删旧向量再整篇索引。关闭、Escape、切到 Documents 时若未保存先确认。无删除。`isStreaming` 时不能连发。
 
-审批卡片：同意 / 拒绝；create、append 可改目标文件名。`POST /chat/review`。卡片字段与动作见 [chat-tools.md](./chat-tools.md)。
+审批区在同一个右侧面板里，不占用聊天气泡。`draft` SSE 与恢复会话都打开面板的草稿模式：徽标「待审批草稿」，标题为「动作 · 目标文件」，同一个 textarea 显示并编辑草稿正文，textarea 下方是确认语与常驻的 保存草稿 / 同意追加·覆盖·删除·新建 / 更多操作 / 拒绝。覆盖方式收进「更多操作」菜单（追加到笔记、新建笔记），选中后只渲染那一种表单（追加的目标选择或新建的文件名输入），两个表单不会同时占位；菜单用 `aria-haspopup` / `aria-expanded`，打开时焦点进菜单，Escape 只收菜单并把焦点还给触发器，不会顺手关掉面板。create 与 append 才有「更多操作」，replace 与 delete 没有（与改动前的卡片一致，没有静默移除入口）；delete 无正文，正文为空时保存按钮禁用。草稿编辑只改 `conversations.pending_draft`（`PUT /chat/draft`），**不写 Markdown**；批准/拒绝时若正文未保存，先保存成功再 `POST /chat/review`，保存失败不审批旧版本。审批或拒绝成功后清掉该会话的草稿模式：本会话没有引用内容就关闭面板，有引用则回到引用模式。两种模式共用 textarea，同一时刻只显示一种，模式与缓冲随 `conversation_id` 快照；被引用面板以外的会话收到的草稿不写可见面板，切回该会话时由 `GET /conversations/{id}` 恢复。请求进行中常驻按钮、菜单项与表单提交一起禁用，避免重复提交。
+
+草稿字段与动作语义见 [chat-tools.md](./chat-tools.md)。
+
+### 3.1 三栏调宽
+
+Chat 分三栏：左会话列表、中聊天区、右笔记/草稿面板，两栏之间各有一条可拖分隔线（`#conversationResizeHandle`、`#notePaneResizeHandle`，共 8px 命中区，视觉仍是 1px 边界，hover/focus 时变强调色）。中间区始终吃剩余空间，**只持久化左右两栏宽度**，不存一个会互相矛盾的中间宽度。
+
+- 持久化键 `noteagent.chat-layout.v1`，存 `{sidebarWidth, notePaneWidth}`；只在拖动结束与键盘调整后写入，不在每次 `pointermove` 里写。默认 260 / 400。
+- 范围：左栏 200–400、右栏 300–600，中间区尽量不少于 440。边界随视口收紧：先压右栏，再压左栏（950px 以下中间区可小于 440），窗口连两栏最小值都放不下时两栏按最小值保留、中间区可被压到 0，页面不产生横向滚动。
+- 读取时只接受范围内的有限数值；缺失、非数字、越界或 `localStorage` 不可用都回退默认，恢复后仍按当前视口重新 clamp。窗口 resize 只重新收边，不改已保存的意图，也不写存储。
+- 拖动用 Pointer Events + `setPointerCapture`（鼠标 / 触控笔 / 触摸同一套），`pointerup` 与 `pointercancel` 都收尾并清理临时 class 与 `user-select`。分隔线是 `role="separator"` + `aria-orientation="vertical"` + 动态 `aria-valuemin/max/now`，可聚焦：方向键 ±10px、Shift ±40px、Home/End 到该栏边界。
+- 右侧面板隐藏时它的分隔线一起隐藏（`MutationObserver` 跟随面板 `hidden`）。
+- 分隔线只存在于 Chat 视图内，宽度通过 `#viewChat` 上的 `--sidebar-width` / `--note-pane-width` 生效；Documents 侧栏仍走自己的 300px 规则，不读也不被 Chat 布局影响。
 
 用户气泡 `.msg-row.user .msg-body` 为 `pre-wrap`；助手走 marked。
 
-### 3.1 模型入口（输入框下方右侧）
+### 3.2 模型入口（输入框下方右侧）
 
 聊天模型与本地向量模型两个入口固定在输入框下侧靠右（`.model-toolbar`，`justify-content: flex-end`，窄屏换行）。功能区只在 Chat 输入栏，不挤占 Documents 编辑器。
 
@@ -209,6 +265,7 @@ flowchart LR
 
 ```text
 Chat 审批     POST /chat/review  → drafts.commit_review → notes + Chroma
+Chat 草稿正文 PUT /chat/draft    → conversations.pending_draft（不写盘、不索引）
 Chat 出处侧栏 PUT /notes/{path}  → notes.router（与 Documents 保存相同；无删除）
 Documents     /notes*            → notes.router         → notes + Chroma
 Agent 工具    propose_note       → conversations.pending_draft，不写盘
@@ -222,20 +279,42 @@ Agent 工具    propose_note       → conversations.pending_draft，不写盘
 
 ## 7. 刻意不做
 
-多层目录、拖文件夹、点「已索引」再入库、按标题精确同步滚动、独立 SPA、暗色整站、笔记元数据表。
+多层目录、拖文件夹、点「已索引」再入库、按标题精确同步滚动、暗色整站、笔记元数据表。
+Records 的最终来源、资料侧 AI 对话、复习系统、录制与网页抓取也都不在本轮范围内——
+Records 只保留入口与空状态。
 
 ---
 
 ## 8. 代码落点
 
+现行实现（Vue）：
+
 | 文件 | 内容 |
 |------|------|
-| [`web/templates/home.html`](../../src/noteagent/web/templates/home.html) | 布局、样式、Chat/Documents JS；模型入口按钮与页面接线 |
-| [`web/static/model-settings.js`](../../src/noteagent/web/static/model-settings.js) | `ModelSettings`：状态轮询、聊天表单、向量候选与进度 |
-| [`web/static/model-settings.css`](../../src/noteagent/web/static/model-settings.css) | 工具栏、弹层、表单、进度与错误样式 |
-| [`web/__init__.py`](../../src/noteagent/web/__init__.py) | `read_home_html()`、`STATIC_DIR` |
-| [`chat/router.py`](../../src/noteagent/chat/router.py) | `GET /`、`GET /documents`、会话与聊天 HTTP |
+| [`frontend/src/pages/`](../../frontend/src/pages) | 五个页面：Home／Assistant／Records／Library／Settings |
+| [`frontend/src/layouts/AppShell.vue`](../../frontend/src/layouts/AppShell.vue) | 顶部导航、单例对话框与保存浮层 |
+| [`frontend/src/router.ts`](../../frontend/src/router.ts) | 页面路由、`/documents` 兼容、未知地址回首页 |
+| [`frontend/src/features/`](../../frontend/src/features) | chat／notes／models 三个领域的状态与组件 |
+| [`frontend/src/shared/`](../../frontend/src/shared) | API 合同、导航定义、未保存守卫、通用 UI |
+| [`frontend/tests/`](../../frontend/tests) | Vitest 单测（状态与协议）与 Playwright 交互回归 |
+| [`web/router.py`](../../src/noteagent/web/router.py) | 页面白名单、vue／legacy 两种模式、产物缺失时的 503 |
+| [`web/__init__.py`](../../src/noteagent/web/__init__.py) | `read_spa_html()`、`read_home_html()`、`STATIC_DIR`、`DIST_DIR` |
+| [`bootstrap/settings.py`](../../src/noteagent/bootstrap/settings.py) | `frontend_mode`（默认 `vue`） |
+
+回退路径（`FRONTEND_MODE=legacy` 时才会用到，迁移完成后先留着，删除另开清理任务）：
+
+| 文件 | 内容 |
+|------|------|
+| [`web/templates/home.html`](../../src/noteagent/web/templates/home.html) | 旧布局、样式与 Chat／Documents 全部逻辑 |
+| [`web/static/model-settings.js`](../../src/noteagent/web/static/model-settings.js) | 旧 `ModelSettings`：状态轮询、聊天表单、向量候选与进度 |
+| [`web/static/model-settings.css`](../../src/noteagent/web/static/model-settings.css) | 旧工具栏、弹层、表单、进度与错误样式 |
+
+其余后端落点：
+
+| 文件 | 内容 |
+|------|------|
+| [`chat/router.py`](../../src/noteagent/chat/router.py) | 会话与聊天 HTTP（页面路由已移到 `web/router.py`） |
 | [`notes/router.py`](../../src/noteagent/notes/router.py) | Documents 笔记 HTTP |
 | [`model_management/router.py`](../../src/noteagent/model_management/router.py) | `/model-settings*`，并导出请求级租约依赖 |
 
-包说明：[`web/README.md`](../../src/noteagent/web/README.md)、[`web/templates/README.md`](../../src/noteagent/web/templates/README.md)、[`model_management/README.md`](../../src/noteagent/model_management/README.md)。
+包说明：[`web/README.md`](../../src/noteagent/web/README.md)、[`web/templates/README.md`](../../src/noteagent/web/templates/README.md)、[`frontend/README.md`](../../frontend/README.md)、[`model_management/README.md`](../../src/noteagent/model_management/README.md)。

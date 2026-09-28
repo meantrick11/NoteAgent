@@ -1,6 +1,6 @@
 import logging
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
@@ -119,6 +119,21 @@ class DraftStore:
             return None
         self._history.clear_pending_draft(thread_id)
         return draft
+
+    def update_content(self, thread_id: str, content: str) -> NoteDraft | None:
+        """Rewrite only the pending draft's content; None when this thread has no draft.
+
+        Editing a draft is not a write to disk: action, target file, reason and
+        similar stay as proposed, and the notes repository is never touched.
+        """
+        if not content.strip():
+            raise ValueError("no content given")
+        draft = self.get(thread_id)
+        if draft is None:
+            return None
+        updated = replace(draft, content=content)
+        self.put(thread_id, updated)
+        return updated
 
 ##如果用户确认提交对应的笔记，此函数表示确认然后执行write到对应文件的
 def commit_review(
