@@ -1,20 +1,19 @@
 import { expect, test } from '@playwright/test'
 
-test('顶部入口顺序固定且各页面可刷新', async ({ page }) => {
+test('主导航固定四项，设置由齿轮进入且各页面可刷新', async ({ page }) => {
   await page.goto('/')
   const nav = page.getByRole('navigation', { name: '主导航' })
+  const gear = page.getByRole('link', { name: '设置' })
   await expect(nav.getByRole('link')).toHaveText([
     'Home',
     'Assistant',
     'Records',
     'Library',
-    'Settings',
   ])
   for (const [label, path] of [
     ['Assistant', '/assistant'],
     ['Records', '/records'],
     ['Library', '/library'],
-    ['Settings', '/settings'],
     ['Home', '/'],
   ]) {
     await nav.getByRole('link', { name: label, exact: true }).click()
@@ -25,6 +24,11 @@ test('顶部入口顺序固定且各页面可刷新', async ({ page }) => {
       'page',
     )
   }
+  // 设置不在主导航里，从任意页面都能用齿轮到达并刷新。
+  await gear.click()
+  await expect(page).toHaveURL(/\/settings$/)
+  await page.reload()
+  await expect(gear).toHaveAttribute('aria-current', 'page')
 })
 
 test('当前页有唯一选中态', async ({ page }) => {
@@ -32,6 +36,14 @@ test('当前页有唯一选中态', async ({ page }) => {
   const nav = page.getByRole('navigation', { name: '主导航' })
   await expect(nav.locator('[aria-current="page"]')).toHaveCount(1)
   await expect(nav.locator('[aria-current="page"]')).toHaveText('Library')
+
+  // 设置页：选中态在齿轮上，四个工作入口都不误选。
+  await page.getByRole('link', { name: '设置' }).click()
+  await expect(nav.locator('[aria-current="page"]')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: '设置' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
 })
 
 test('旧地址 /documents 落到 Library', async ({ page }) => {
@@ -59,14 +71,21 @@ test('浏览器前进后退跟随路由', async ({ page }) => {
   await expect(page).toHaveURL(/\/records$/)
 })
 
-test('窄屏下五个入口仍然可达', async ({ page }) => {
-  await page.setViewportSize({ width: 420, height: 720 })
-  await page.goto('/')
-  const nav = page.getByRole('navigation', { name: '主导航' })
-  // 横向滚动而不是隐藏入口：逐个可点且能切换。
-  await nav.getByRole('link', { name: 'Settings', exact: true }).scrollIntoViewIfNeeded()
-  await nav.getByRole('link', { name: 'Settings', exact: true }).click()
-  await expect(page).toHaveURL(/\/settings$/)
+test('窄屏下四个入口可滚动，齿轮始终可点', async ({ page }) => {
+  for (const width of [320, 375]) {
+    await page.setViewportSize({ width, height: 720 })
+    await page.goto('/')
+    const nav = page.getByRole('navigation', { name: '主导航' })
+    // 横向滚动而不是隐藏入口：逐个可点且能切换。
+    await nav.getByRole('link', { name: 'Library', exact: true }).scrollIntoViewIfNeeded()
+    await nav.getByRole('link', { name: 'Library', exact: true }).click()
+    await expect(page).toHaveURL(/\/library$/)
+
+    // 齿轮不被滚动的入口挤走：不滚动也能直接点到。
+    const gear = page.getByRole('link', { name: '设置' })
+    await gear.click()
+    await expect(page).toHaveURL(/\/settings$/)
+  }
 })
 
 const NOTES = {
@@ -128,6 +147,11 @@ test('Home 显示真实笔记与索引数量，并提供四个入口', async ({ 
 
   await shortcuts.first().click()
   await expect(page).toHaveURL(/\/assistant$/)
+
+  // 设置从顶部文字项移走后，Home 的设置快捷卡仍然有效。
+  await page.goto('/')
+  await page.locator('.shortcut', { hasText: 'Settings' }).click()
+  await expect(page).toHaveURL(/\/settings$/)
 })
 
 test('Home 读不到笔记时显示错误与重试，而不是显示 0', async ({ page }) => {
@@ -174,7 +198,8 @@ test('1440 与 1024 宽度下导航与内容都可达', async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/library')
     const nav = page.getByRole('navigation', { name: '主导航' })
-    await expect(nav.getByRole('link')).toHaveCount(5)
+    await expect(nav.getByRole('link')).toHaveCount(4)
+    await expect(page.getByRole('link', { name: '设置' })).toBeVisible()
     // 目录树、工具栏按钮与编辑区都要在视口内可用。
     await expect(page.locator('[data-notes-tree]')).toBeVisible()
     await expect(page.getByRole('button', { name: '＋ 新建笔记' })).toBeVisible()

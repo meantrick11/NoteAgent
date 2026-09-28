@@ -4,7 +4,7 @@ import { RouterLink } from 'vue-router'
 
 import { useModelsStore } from '@/features/models/store'
 import { listNotes } from '@/features/notes/api'
-import { NAV_ITEMS } from '@/shared/navigation'
+import { HOME_SHORTCUTS } from '@/shared/navigation'
 
 /**
  * Home 只呈现现有接口能给出的东西：`GET /notes` 的笔记／索引数量，
@@ -29,9 +29,6 @@ const retrievalNote = computed(() => {
   if (models.retrievalState !== 'ok') return models.retrievalStatus?.text ?? ''
   return ''
 })
-
-/** 顶部导航之外的快捷入口；顺序与顶部一致，只是去掉了 Home 自己。 */
-const shortcuts = computed(() => NAV_ITEMS.filter((item) => item.name !== 'home'))
 
 async function load(): Promise<void> {
   loading.value = true
@@ -92,7 +89,7 @@ onMounted(load)
       <h2 class="home-heading">入口</h2>
       <div class="shortcut-grid">
         <RouterLink
-          v-for="item in shortcuts"
+          v-for="item in HOME_SHORTCUTS"
           :key="item.name"
           class="card shortcut"
           :to="item.path"

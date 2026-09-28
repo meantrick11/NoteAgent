@@ -338,6 +338,6 @@ test('Settings 与 Assistant 快捷弹层是同一份状态', async ({ page }) =
   await expect(popover.getByText('本地服务')).toBeVisible()
 
   // 切回 Settings 不再重复拉状态：整轮状态请求次数保持稳定。
-  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  await page.getByRole('link', { name: '设置' }).click()
   await expect(page.getByText('环境默认')).toBeVisible()
 })
