@@ -94,7 +94,7 @@
 | `frontend/src/features/settings/SettingsLayout.vue` | 两栏骨架：`nav[aria-label="设置分类"]` ＋ `<slot name="content">` |
 | `frontend/src/features/settings/ModelConnectionsSection.vue` | 包装 `ChatProfiles`；标题／说明按产品设计 |
 | `frontend/src/features/settings/RetrievalSection.vue` | 承接原向量摘要、`STAGE_TEXT` 进度行与 `EmbeddingSettings` |
-| `frontend/tests/unit/settings-sections.spec.ts` | 计划 §Task 2 给定的两条合同用例，逐字实现 |
+| `frontend/tests/unit/settings-sections.spec.ts` | 计划 §Task 2 给定的两条合同用例逐字实现，另加「七个 ID 与标题固定」「预留分类不能经 URL 进入」两条 |
 
 **修改文件**
 
@@ -122,7 +122,7 @@
 - `npm --prefix frontend run type-check`：通过。
 - `npm --prefix frontend run test:unit`：8 文件 / 120 用例通过，其中 `settings-sections.spec.ts` 4 条
   （开放分类、未知/未开放/数组回默认、七个 ID 与标题、预留分类不能经 URL 进入）。
-- `npm --prefix frontend run test:e2e -- tests/e2e/settings.spec.ts`：10 用例通过。
+- `npm --prefix frontend run test:e2e -- tests/e2e/settings.spec.ts`：此时 10 用例通过（Task 3 再补 6 条后为 16）。
 
 ### Task 3：状态与跨页面回归
 
@@ -162,9 +162,39 @@ Key 不回显、连接测试结论、重建并切换的请求体与进度、Sett
 
 ---
 
-## 3. 总检查（Task 4）
+## 3. 总检查与文档回填（Task 4）
 
-见 §4 命令结果与 §5 未执行项。
+**改动文件（本轮全部）**
+
+| 类型 | 文件 |
+|---|---|
+| 源码 | `frontend/src/shared/navigation.ts`、`frontend/src/layouts/AppShell.vue`、`frontend/src/pages/HomePage.vue`、`frontend/src/pages/SettingsPage.vue`、`frontend/src/router.ts`（注释）、`frontend/src/styles/base.css` |
+| 新增 | `frontend/src/features/settings/sections.ts`、`SettingsLayout.vue`、`ModelConnectionsSection.vue`、`RetrievalSection.vue` |
+| 测试 | `frontend/tests/unit/navigation.spec.ts`、`frontend/tests/unit/settings-sections.spec.ts`、`frontend/tests/e2e/navigation.spec.ts`、`frontend/tests/e2e/settings.spec.ts`、`frontend/tests/e2e/library.spec.ts`、`frontend/tests/e2e/assistant.spec.ts` |
+| 文档 | 本文件、`docs/plans/README.md`、`docs/plans/2026-09-28-settings-navigation-and-sections.md`（加执行状态指引，正文与勾选框未回改）、`docs/architecture/architecture.md` §3.1／§5.1、`docs/architecture/frontend.md` §0／§8、`docs/product/settings-architecture.md`、`docs/product/frontend-architecture.md`、`docs/product/README.md`、`frontend/README.md` |
+
+**未改的文档（判断为不受影响）**：`docs/product/business-architecture.md`、`docs/product/roadmap.md`（本轮不涉及版本范围）、
+`docs/architecture/{retrieval,database,chat-tools,context-management}.md`（后端语义未变）、
+`evals/**`、legacy 页面与 `FRONTEND_MODE=legacy` 相关说明。
+
+**工作区注意事项：** 进入本轮时工作区已有一轮未提交的文档整理（四目录迁移：`docs/evaluations/**`、`docs/tutorials/**`、
+`docs/roadmap/versions.md` 等的新旧路径、`docs/product/` 下的新文件）。本轮**未还原、未覆盖、未代为提交**那批改动；
+本文件改到的 `docs/product/{README,settings-architecture,frontend-architecture}.md` 属于那批未跟踪／已改文件，
+提交时会连同其中与设置入口相关的既有整理一起入库——`frontend-architecture.md` 的决策表行是「上一轮改写 + 本轮把
+待实施改为已实施」，无法拆成两个提交，这里明确记录以便追溯。
+
+**截图记录（用固定 fixtures，不含真实凭据）**
+
+用一份临时 Playwright 脚本（`tests/e2e/__shots.spec.ts`，核对后已删除，不在提交里）以固定响应渲染真实界面，
+产物留在仓库运行目录 `var/settings-shots/`（`var/*` 已在 `.gitignore`）：
+
+| 截图 | 内容 |
+|---|---|
+| `01-home-desktop.png` | 1440×900：四个主导航＋右上角齿轮、Home 三项计数与四张快捷卡 |
+| `02-settings-models-desktop.png`、`03-settings-retrieval-desktop.png` | 1440×900：两个分类各自的内容与左侧分类选中态 |
+| `04-settings-form-desktop.png` | 1440×900：新增配置表单（未保存文本留在分类里） |
+| `05-home-375.png`、`06-settings-models-375.png`、`07-settings-retrieval-375.png` | 375px：分类上移并换行，齿轮不被滚动入口挤走 |
+| `08-library-320.png` | 320px：主导航横向滚动，齿轮常驻可见 |
 
 ---
 
@@ -173,13 +203,17 @@ Key 不回显、连接测试结论、重建并切换的请求体与进度、Sett
 | 命令 | 结果 |
 |---|---|
 | `npm --prefix frontend run type-check` | 通过 |
-| `npm --prefix frontend run test:unit` | 8 文件 / 116 用例通过 |
+| `npm --prefix frontend run test:unit` | 8 文件 / 120 用例通过 |
 | `npm --prefix frontend run test:e2e -- tests/e2e/navigation.spec.ts tests/e2e/settings.spec.ts` | 27 用例通过 |
-| `npm --prefix frontend run test:e2e` | 53 用例通过 |
-| `npm --prefix frontend run build` | 通过（`vue-tsc -b` ＋ `vite build`） |
+| `npm --prefix frontend run test:e2e` | 54 用例通过 |
+| `npm --prefix frontend run build` | 通过（`vue-tsc -b` ＋ `vite build`，产物 `src/noteagent/web/dist/`） |
+
+基线对比：`type-check` 同通过；`test:unit` 由 114 → 120（`navigation.spec.ts` 3 → 5、新增 `settings-sections.spec.ts` 4 条）；
+`test:e2e` 由 46 → 54（settings 9 → 16，其中 1 条按分类拆分、6 条为新增；assistant +1；navigation 与 library 用例数不变）。
 
 浏览器：Playwright 默认 `channel: msedge`（本机 Edge），未额外安装浏览器，未改测试框架。
-环境限制：本机未起后端，e2e 全部走 `tests/fixtures` 的固定响应拦截；e2e 使用 Vite 开发服务器。
+环境限制：本机未起后端（:8000 无服务），e2e 全部走 `tests/fixtures` 与各 spec 自带的固定响应拦截，
+不使用真实笔记或真实凭据；e2e 跑在 Vite 开发服务器上。
 
 ---
 
