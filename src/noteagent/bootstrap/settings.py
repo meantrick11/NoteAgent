@@ -69,9 +69,10 @@ class Settings(BaseSettings):
     database_url: str = Field(default="", validation_alias="DATABASE_URL")  #默认数据库连接的URL为空
 
     # 前端形态：legacy 用 web/templates/home.html，vue 用 frontend 构建产物。
-    # 首轮默认 legacy，完整验收后再切 vue；回退只需设为 legacy 重启，不动数据。
+    # 迁移完成后的默认值；vue 模式找不到产物会返回 503 构建提示，不静默回退旧页。
+    # 回退只需 FRONTEND_MODE=legacy 重启，不动任何数据。
     frontend_mode: Literal["legacy", "vue"] = Field(
-        default="legacy",
+        default="vue",
         validation_alias="FRONTEND_MODE",
     )
 

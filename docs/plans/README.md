@@ -1,31 +1,71 @@
 # plans
 
-给实现 Agent 按任务执行的规格。现行系统以 [../architecture/architecture.md](../architecture/architecture.md) 为准。上下文公式以 [../architecture/context-management.md](../architecture/context-management.md) 为准。
+**只承载 Agent 的执行计划与执行结果**：某一次任务改哪些文件、按什么步骤做、做完记录了什么。技术方案与关键决策不在这里——它们属于 [product/](../product/README.md)。
 
-## 文件
+现行系统以 [../architecture/architecture.md](../architecture/architecture.md) 为准，上下文公式以 [../architecture/context-management.md](../architecture/context-management.md) 为准，会话表 head 以 [../architecture/database.md](../architecture/database.md) 为准（不在本目录复制迁移号）。每份计划都应引用它的产品设计或经确认的简单需求；一份上层设计可以对应多份执行计划。
+
+> 状态分三档：**执行中/待执行**、**已完成或部分完成**、**历史参考**。三条判读规则：
+> 1. 计划顶部写的“待实现”是当时的规格，不代表现状；清单未回勾也不代表未实现。
+> 2. “已勾选”不等于“已验证”。实现、测试存在与执行通过是不同证据。
+> 3. 结论看对应报告与 run 记录；本索引只给状态与验证入口，不重述成绩。
+
+## 新计划的约定结构
+
+1. **需求 / 设计依据**：引用 [product/](../product/README.md) 中的设计，或写明经用户确认的简单需求；
+2. 目标和范围；
+3. 前置条件（当前代码状态、依赖、边界）；
+4. 执行步骤（可勾选、可验证）；
+5. 验收检查（命令或可判读的结果）；
+6. 执行结果和遗留项（回填，不覆盖原步骤）。
+
+不要把“技术方案与关键决策”写成执行计划的权威章节。执行中发现要改变方案，先更新 [product/](../product/README.md) 的设计并确认，再同步本目录的计划，不在计划内悄悄改决策。
+
+历史计划即使正文含方案与理由，也保持原样；本轮不为对齐新格式而改写它们。本索引在需要时注明“历史格式含设计说明，不作为当前设计主入口”。
+
+## 执行中 / 待执行
+
+| 文件 | 状态 | 说明 |
+|---|---|---|
+| [2026-09-10-learning-note-quality.md](./2026-09-10-learning-note-quality.md) | 部分完成（持续） | 学习型笔记 v0.2 准则、语义 Judge、Prompt 迭代留痕已交付；l01 的加工维度仍未达合格线（现行 prompt 见 [note-quality.md](../../evals/criteria/note-quality.md)） |
+
+V2.7 前端初始化计划的实现部分已完成（见下方"已完成"表），Tasks 1–8 逐项有验证证据。
+V2.2／V2.3 仍按当前可用处理，其余 V2 迭代在前端扩容后继续——前端扩容不等于 V2 整体验收通过。
+
+## 已完成或部分完成
+
+| 文件 | 状态 | 验证入口 |
+|---|---|---|
+| [2026-09-28-vue-frontend-initialization.md](./2026-09-28-vue-frontend-initialization.md) | 已完成（实现部分；文档同步见结果文档 §未运行项） | 执行记录见 [results](./2026-09-28-vue-frontend-initialization-results.md)：F01–F16 逐项证据、test:unit 114 / test:e2e 46 / pytest 502 |
+| [2026-09-27-docs-four-directory-consolidation.md](./2026-09-27-docs-four-directory-consolidation.md) | 已完成 | 执行记录见 [2026-09-27-docs-four-directory-consolidation-results.md](./2026-09-27-docs-four-directory-consolidation-results.md) |
+| [2026-09-27-docs-four-directory-consolidation-results.md](./2026-09-27-docs-four-directory-consolidation-results.md) | 整理记录（不是实现任务） | 基线、迁移映射、保护比对与链接验证 |
+| [2026-09-27-documentation-reorganization.md](./2026-09-27-documentation-reorganization.md) | 已完成（目录规则已由四目录整理调整） | 执行记录见 [2026-09-27-documentation-audit.md](./2026-09-27-documentation-audit.md)；当时范围与结论未改 |
+| [2026-09-27-documentation-audit.md](./2026-09-27-documentation-audit.md) | 整理记录（不是实现任务） | 基线、清单、冲突矩阵、验证结果 |
+| [2026-09-26-v1-acceptance.md](./2026-09-26-v1-acceptance.md) | 已完成 | [v1-acceptance-report.md](../../evals/reports/v1-acceptance-report.md)；V1 已验收，tag `v1.0.0` |
+| [2026-09-26-chat-draft-in-citation-pane.md](./2026-09-26-chat-draft-in-citation-pane.md) | 已完成 | 计划 §执行结果摘要（2026-09-26 回填） |
+| [2026-09-26-chat-layout-resize-and-draft-actions.md](./2026-09-26-chat-layout-resize-and-draft-actions.md) | 已完成 | 计划 §执行结果摘要；界面现状见 [frontend.md](../architecture/frontend.md) §3.1 |
+| [2026-09-25-rag-quality-improvement.md](./2026-09-25-rag-quality-improvement.md) | 已完成（任务 5 未做，8.4–8.6 按停止条件跳过） | [rag-v1-report.md](../../evals/reports/rag-v1-report.md) |
+| [2026-09-25-model-switching-reliability.md](./2026-09-25-model-switching-reliability.md) | 已完成（1 项部分：双击发送缺前端自动化回归） | 计划 §9 执行结果（2026-09-26），含未完成项与运维迁移说明 |
+| [2026-09-25-model-switching-ui.md](./2026-09-25-model-switching-ui.md) | 已完成 | 计划 §9 执行结果（2026-09-25） |
+| [2026-08-26-context-management.md](./2026-08-26-context-management.md) | 已实现（原规格未回勾） | [context-management.md](../architecture/context-management.md)、[database.md](../architecture/database.md) |
+| [2026-08-20-chat-history-persistence.md](./2026-08-20-chat-history-persistence.md) | 已实现（原规格未回勾） | [database.md](../architecture/database.md) |
+| [2026-08-20-conversation-rename-delete.md](./2026-08-20-conversation-rename-delete.md) | 已实现（原规格未回勾） | PATCH / DELETE `/conversations/{id}`，见 [architecture.md](../architecture/architecture.md) §5.2.1 |
+| [2026-09-05-documents-panel.md](./2026-09-05-documents-panel.md) | 已实现 | [frontend.md](../architecture/frontend.md) §4–5 |
+| [2026-09-02-auto-index-on-approve.md](./2026-09-02-auto-index-on-approve.md) | 已实现 | [retrieval.md](../architecture/retrieval.md) |
+| [2026-09-06-prompt-eval.md](./2026-09-06-prompt-eval.md) | 已实现 | [evaluations/README.md](../../evals/README.md) |
+| [2026-09-06-readme-homepage.md](./2026-09-06-readme-homepage.md)、[2026-09-06-readme-tutorials.md](./2026-09-06-readme-tutorials.md) | 已实现 | 根 [README.md](../../README.md)、[tutorials/](../guides/README.md) |
+| [2026-09-07-chat-citations.md](./2026-09-07-chat-citations.md)、[2026-09-07-chat-cite-edit.md](./2026-09-07-chat-cite-edit.md) | 已实现 | [frontend.md](../architecture/frontend.md) §3；`messages.citations` 见 [database.md](../architecture/database.md) §3.2 |
+| 过程排系列：[2026-09-09-pending-draft.md](./2026-09-09-pending-draft.md)、[2026-09-09-cite-pane-isolation.md](./2026-09-09-cite-pane-isolation.md)、[2026-09-09-chat-trace-cursor-flow.md](./2026-09-09-chat-trace-cursor-flow.md)、[2026-09-10-chat-trace-tense.md](./2026-09-10-chat-trace-tense.md) | 已实现，后序计划取代前序口径 | [frontend.md](../architecture/frontend.md) §3；时态与标题以最后一份为准 |
+
+## 历史参考
 
 | 文件 | 说明 |
-|------|------|
-| [2026-09-26-chat-layout-resize-and-draft-actions.md](./2026-09-26-chat-layout-resize-and-draft-actions.md) | 已做：草稿操作收敛、聊天三栏拖动调宽与设置持久化 |
-| [2026-09-26-chat-draft-in-citation-pane.md](./2026-09-26-chat-draft-in-citation-pane.md) | 已做：把 AI 待审笔记草稿移入右侧引用面板编辑与审批，保留草稿动作和引用笔记编辑行为 |
-| [2026-09-26-v1-acceptance.md](./2026-09-26-v1-acceptance.md) | 待执行：Claude 修复审批写盘异常草稿丢失、构建 25 条生成验收样例、运行测试及评测并归档；手动功能验收由用户负责 |
-| [2026-08-20-chat-history-persistence.md](./2026-08-20-chat-history-persistence.md) | 会话列表 + PostgreSQL 消息落库（已做） |
-| [2026-08-20-conversation-rename-delete.md](./2026-08-20-conversation-rename-delete.md) | 侧栏重命名、删除（已做） |
-| [2026-08-26-context-management.md](./2026-08-26-context-management.md) | 短期记忆实现规格（已做）。表结构对照 [../architecture/database.md](../architecture/database.md)。生产库须 `alembic upgrade head` 到 `3d1c2b8a9e4f`。 |
-| [2026-09-02-auto-index-on-approve.md](./2026-09-02-auto-index-on-approve.md) | 人审写盘后按文件重建 Chroma（已做） |
-| [2026-09-05-documents-panel.md](./2026-09-05-documents-panel.md) | Chat \| Documents；一层目录分类；保存后按路径重索引 |
-| [2026-09-06-readme-tutorials.md](./2026-09-06-readme-tutorials.md) | 根 README 首页 + `docs/tutorials/`（按层级 × 语言）（已做） |
-| [2026-09-06-readme-homepage.md](./2026-09-06-readme-homepage.md) | 根 README 按 Adventure 结构写清功能与起步（已做） |
-| [2026-09-06-prompt-eval.md](./2026-09-06-prompt-eval.md) | 离线提示词评测：黄金集、L1 打分、一键脚本、`n05.md` 结果（已做） |
-| [2026-09-07-chat-citations.md](./2026-09-07-chat-citations.md) | 聊天出处：`[[cite:N]]` → ①；`messages.citations` JSON；右侧笔记预览 |
-| [2026-09-07-chat-cite-edit.md](./2026-09-07-chat-cite-edit.md) | Chat 气泡同栏对齐；出处侧栏可保存（`PUT /notes`），无预览无删除 |
-| [2026-09-09-pending-draft.md](./2026-09-09-pending-draft.md) | 待审草稿进 `conversations.pending_draft`；打开会话回湿卡片 |
-| [2026-09-09-chat-stream-trace.md](./2026-09-09-chat-stream-trace.md) | 真流式 token；助手气泡一行可展开工具过程 |
-| [2026-09-09-chat-trace-summary.md](./2026-09-09-chat-trace-summary.md) | 过程排实时当前步骤；结束 `Finished` + ▼ 展开流程 |
-| [2026-09-09-chat-trace-cursor-flow.md](./2026-09-09-chat-trace-cursor-flow.md) | Cursor 式步骤流；英文汇总标题；live 可展开；Thinking 看推理 |
-| [2026-09-09-cite-pane-isolation.md](./2026-09-09-cite-pane-isolation.md) | 出处侧栏按会话快照；每条助手消息引用重排 1..n |
-| [2026-09-10-chat-trace-tense.md](./2026-09-10-chat-trace-tense.md) | 过程排时态：ing / Thought·Explored；generating 不再画成 Thinking；无工具结束藏排 |
-| [2026-09-10-learning-note-quality.md](./2026-09-10-learning-note-quality.md) | 学习型笔记 v0.2：语义硬门、知识加工增益、Judge 与 Prompt 迭代留痕 |
-| [2026-09-25-rag-quality-improvement.md](./2026-09-25-rag-quality-improvement.md) | 待执行：基础笔记语料、RAG 证据标准、真实检索与 Agent 评测、按指标逐步优化 |
-| [2026-09-25-model-switching-ui.md](./2026-09-25-model-switching-ui.md) | 已实现：输入框下侧右方切换聊天/本地向量模型，配置持久化、索引重建与统一运行状态。结果、浏览器验收与未完成项见文末 §9 |
-| [draft-generation.md](./draft-generation.md) | 入库 Job / URL 源 / 自动索引设想，不是现行架构 |
+|---|---|
+| [2026-09-09-chat-trace-summary.md](./2026-09-09-chat-trace-summary.md) | 明确被 [2026-09-09-chat-trace-cursor-flow.md](./2026-09-09-chat-trace-cursor-flow.md) 取代（英文汇总、live 可展开、Thinking 正文） |
+| [2026-09-09-chat-stream-trace.md](./2026-09-09-chat-stream-trace.md) | 真流式 token 的原始规格；过程排后续细节见后续计划 |
+| [draft-generation.md](./draft-generation.md) | **已归档**：正文在 [archive/designs/ingestion-job-early-design.md](../product/archive/designs/ingestion-job-early-design.md)，本路径只留跳转页。入库 Job / URL 源 / 自动索引设想，不是现行架构 |
+
+## 维护动作
+
+- 行为变更后同步 [architecture/](../architecture/README.md)；执行后同步本索引状态与验证入口。
+- 达到退出标准才改 [versions.md](../product/roadmap.md)；替代旧设计必须两端加替代关系。
+- 单个事实只保留一个主要维护位置，其他文档链接过去，不复制。

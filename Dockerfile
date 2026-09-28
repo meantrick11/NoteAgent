@@ -1,3 +1,18 @@
+# ---------- 前端构建阶段 ----------
+# 只用官方 Node 镜像把 Vue 产物编译出来；运行容器里没有 Node，也没有新的端口。
+# 用 Node 24（Vite 7 的 engines 是 ^20.19 || >=22.12，24 在范围内）。
+FROM node:24-bookworm-slim AS frontend-build
+
+WORKDIR /build/frontend
+# 先只拷依赖清单，package.json 没变时这一层可以复用。
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+# vite.config.ts 把产物写到 ../src/noteagent/web/dist，
+# 即 /build/src/noteagent/web/dist，下面直接从这里取。
+RUN npm run build
+
+
 FROM python:3.13-slim-bookworm
 
 RUN apt-get update \
@@ -19,6 +34,10 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 COPY main.py alembic.ini ./
 COPY alembic ./alembic
+
+# 前端产物放进包目录：项目是 editable 安装，运行时就从这个路径读 index.html。
+# 必须放在 COPY src 之后，否则会被源码那一层覆盖掉。
+COPY --from=frontend-build /build/src/noteagent/web/dist ./src/noteagent/web/dist
 
 # Lock resolves CUDA torch on Linux. Skip those packages and install the CPU wheel.
 RUN uv sync --frozen --no-dev \

@@ -46,8 +46,23 @@ def _install_fake_dist(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(web, "DIST_DIR", dist)
 
 
-def test_default_frontend_mode_is_legacy():
-    assert Settings().frontend_mode == "legacy"
+def test_default_frontend_mode_is_vue():
+    """迁移完成后默认走 Vue；回退靠 FRONTEND_MODE=legacy。"""
+    assert Settings().frontend_mode == "vue"
+
+
+def test_default_mode_without_a_build_still_serves_the_api(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """默认 vue 但没构建产物时：页面 503，业务接口照常可用。"""
+    missing = tmp_path / "not-built" / "index.html"
+    monkeypatch.setattr(web, "SPA_INDEX", missing)
+    client = _client(tmp_path, "vue")
+    assert client.get("/").status_code == 503
+    # API 初始化与业务路由不受影响。
+    assert client.get("/conversations").status_code == 200
+    assert client.get("/notes").status_code == 200
+    assert client.get("/model-settings").status_code == 200
 
 
 class TestLegacyMode:

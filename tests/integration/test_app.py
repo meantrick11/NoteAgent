@@ -90,10 +90,12 @@ def _container(
 
 
 def _client(tmp_path: Path) -> tuple[TestClient, ConversationStore]:
+    # 显式用 legacy：本文件断言的是旧模板与旧 DOM 钩子，默认值切到 vue 后必须写明。
     settings = Settings(
         notes_dir=tmp_path,
         chroma_dir=tmp_path / "chroma",
         model_settings_dir=tmp_path / "model_settings",
+        frontend_mode="legacy",
     )
     engine, history = _sqlite_history()
     container = _container(settings, FileNoteRepository(tmp_path), engine, history, FakeAgent())
@@ -127,6 +129,7 @@ def _draft_client(
         notes_dir=tmp_path,
         chroma_dir=tmp_path / "chroma",
         model_settings_dir=tmp_path / "model_settings",
+        frontend_mode="legacy",
     )
     notes = FileNoteRepository(tmp_path)
     engine, history = _sqlite_history()

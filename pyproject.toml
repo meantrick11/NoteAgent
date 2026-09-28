@@ -85,6 +85,12 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/noteagent"]
+# 前端产物被 .gitignore 忽略，但运行时要读 web/dist/index.html：
+# 显式声明为 artifact，避免打包时被 VCS 忽略规则一起丢掉。
+artifacts = ["src/noteagent/web/dist/**"]
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",

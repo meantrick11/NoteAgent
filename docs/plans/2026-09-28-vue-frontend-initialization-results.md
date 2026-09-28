@@ -397,6 +397,99 @@ $ npm --prefix frontend run build        → 214.0 kB js / 28.7 kB css
 
 ---
 
+### Task 8：部署接入、总回归与文档交接 —— 完成
+
+**新增：** `frontend/README.md`。
+**修改：** `Dockerfile`（加 Node 构建阶段）、`.dockerignore`、`pyproject.toml`（hatchling artifact）、
+`bootstrap/settings.py`（默认切 `vue`）、`tests/integration/test_app.py`（模板断言显式用 legacy）、
+`tests/integration/test_frontend_routes.py`（默认值断言）、`README.md`、
+`docs/architecture/frontend.md`、`docs/product/frontend-architecture.md`、
+`docs/guides/zh/local-dev.md`、`docs/guides/zh/getting-started.md`、`docs/plans/README.md`、本文件。
+
+- [x] **Dockerfile 增加 Node 构建阶段**：`node:24-bookworm-slim` 跑 `npm ci` + `npm run build`，
+      产物 `COPY --from=frontend-build` 进 Python 镜像的 `src/noteagent/web/dist/`。
+      运行容器仍是原来的 FastAPI 服务，不加端口、不带 Node。原有的 Python 依赖安装、
+      模型预热、entrypoint、卷与数据库初始化全部保留。
+- [x] `.dockerignore` 补 `frontend/node_modules`、Playwright 报告与覆盖率目录。
+      `.gitignore` 在 Task 2 已补 `node_modules/`、`frontend/{test-results,playwright-report}`、
+      `src/noteagent/web/dist/`。
+- [x] **检查轮子是否包含产物**：项目是 editable 安装（`.venv` 里是 `_editable_impl_noteagent.pth` → `src`），
+      所以运行时从源码树读 `web/dist`；为防非 editable 安装漏文件，在 `pyproject.toml` 显式声明
+      `[tool.hatch.build.targets.wheel] artifacts = ["src/noteagent/web/dist/**"]`，并**实际构建轮子验证**：
+      `uv build --wheel` 出的 `noteagent-0.1.0-py3-none-any.whl` 含
+      `noteagent/web/dist/index.html` 与 `noteagent/web/dist/assets/*`。
+- [x] **默认切 vue**：`Settings.frontend_mode` 默认从 `legacy` 改为 `vue`；
+      相应地 `test_app.py` 里断言旧模板与旧 DOM 钩子的用例显式传 `frontend_mode="legacy"`，
+      保证旧模板仍被覆盖；`test_frontend_routes.py` 改为断言默认是 `vue`，
+      并新增"默认 vue 但没构建产物时页面 503、业务接口照常"的用例。
+- [x] 未运行项在下方明确列出，未勾选。
+
+**命令与真实输出（总回归）**
+
+```text
+$ .venv/Scripts/python.exe -m pytest tests -q
+  502 passed, 1 warning
+
+$ npm --prefix frontend run type-check
+> vue-tsc -b --force               （无输出，退出码 0）
+
+$ npm --prefix frontend run test:unit
+ Test Files  7 passed (7)
+      Tests  114 passed (114)
+
+$ npm --prefix frontend run test:e2e
+  46 passed
+
+$ npm --prefix frontend run build
+../src/noteagent/web/dist/index.html                   0.42 kB │ gzip:  0.28 kB
+../src/noteagent/web/dist/assets/index-DJecmQq2.css   28.71 kB │ gzip:  5.38 kB
+../src/noteagent/web/dist/assets/index-TcRZFqdg.js   213.98 kB │ gzip: 76.58 kB
+✓ built in 975ms
+```
+
+**三条运行路径的验证**
+
+| 路径 | 做法 | 结果 |
+|---|---|---|
+| 本地前端开发 | Vite dev（5173）+ 真实后端（8000），接口经代理 | `/assistant`、`/library`、`/settings` 逐个实际打开并操作；代理同源行为见 Task 3 |
+| 生产产物由 FastAPI 托管 | 不带 `FRONTEND_MODE` 直接 `python main.py` | 默认即 vue：六个页面地址全 200，`/ui-assets/assets/index-*.{js,css}` 200 |
+| Docker 构建运行 | `docker-compose build app` | 见下方"未运行项"——本轮未能完成 |
+
+**legacy 回退演练**（`FRONTEND_MODE=legacy` 重启）
+
+```text
+/            200        /documents  200
+/assistant   307 -> /   /records    307 -> /
+/library     307 -> /documents       /settings   307 -> /
+/ 返回的仍是旧模板（citePaneByConv 命中 17 次）
+```
+
+回退前后真实数据逐项比对，**完全一致**：
+
+| 项 | 回退前 | 回退后 |
+|---|---|---|
+| 笔记 / 目录数 | 22 / 2 | 22 / 2 |
+| 会话数 | 5 | 5 |
+| model-settings revision / active | 6 · 环境默认（deepseek-v4-flash）· intfloat/multilingual-e5-small | 同左，逐字一致 |
+
+**文档同步**
+
+- `docs/architecture/frontend.md`：改写成实际落地结构——新增 §0"现行实现（Vue）"的模块职责表、
+  页面与导航说明、两条运行时约束与未保存保护的三条路径；§8 代码落点拆成"现行实现 / 回退路径 / 其余后端"；
+  §7 去掉"独立 SPA"（已经做了），并写明 Records 范围未定、本轮只做空状态。
+  §1–§6 保留原有业务行为描述（它们仍是必须保持的规格），并加了一句读法说明。
+- `docs/product/frontend-architecture.md`：状态从"尚未实施"改为"首轮已实施（2026-09-28）"，
+  指向执行计划与执行记录，并写明"五个页面不等于五项能力都已交付"。
+- `README.md`、`docs/guides/zh/local-dev.md`、`docs/guides/zh/getting-started.md`：
+  补前端构建步骤、`FRONTEND_MODE` 与 503 行为、五个页面的用法与 `frontend/` 目录。
+- `docs/plans/README.md`：本计划从"待执行"移到"已完成"，指向本文件。
+
+**完成条件评估：** 交付包含实现、测试证据、启动／构建说明与回退办法。
+脚手架之外的五个页面、F01–F16 全部有对应入口与验证；唯一未完成的是 Docker 构建的实际执行，
+已在下方如实记录，不用"Vite dev 正常"代替。
+
+---
+
 ## 4. 汇总（随任务推进更新）
 
 | 任务 | 状态 | 提交 | 通过的功能编号 | 验证命令与结果 |
@@ -407,14 +500,19 @@ $ npm --prefix frontend run build        → 214.0 kB js / 28.7 kB css
 | Task 4 Assistant 迁移 | 完成 | `66b777f` | F01–F09、F16（Assistant 部分） | `test:unit` 114；`test:e2e` 21；`type-check`；`build`；真实后端人工验证 |
 | Task 5 Library 迁移 | 完成 | `22b47d1` | F10–F13 | `test:e2e` 32；`test:unit` 114；`type-check`；`build`；真实后端人工验证 |
 | Task 6 Settings 迁移 | 完成 | `a15f39d` | F14–F16 | `test:e2e` 41；`test:unit` 114；`type-check`；`build`；真实后端人工验证 |
-| Task 7 Home／Records／美化 | 完成 | 待填 | —（Home／Records 无 F 项） | `test:e2e` 46；`type-check`；`build`；真实后端人工验证 |
-| Task 8 部署接入与总回归 | 未开始 | — | — | — |
+| Task 7 Home／Records／美化 | 完成 | `c05a625` | —（Home／Records 无 F 项） | `test:e2e` 46；`type-check`；`build`；真实后端人工验证 |
+| Task 8 部署接入与总回归 | 完成（Docker 构建除外） | 待填 | F01–F16 汇总 | `pytest` 502；`test:unit` 114；`test:e2e` 46；`type-check`；`build`；legacy 回退演练 |
 
 ### 4.1 未运行项（不得勾选）
 
+- `docker-compose build app`：本轮**未完成**。Dockerfile 的 Node 阶段已写好，
+  但 `docker compose` 插件在本机 CLI 未注册（`docker-compose` v5.1.2 可用），
+  镜像层是否真的能构建出来、容器里是否真的能打开 vue 页面，**尚未验证**。
+  产物托管本身已由"FastAPI 直接服务 dist"那条路径验证过，Docker 只差镜像这一层。
 - `npm --prefix frontend ci`：本轮用 `npm install` 生成 lockfile，未在干净目录验证 `ci`。
-- `docker compose build app`：Dockerfile 尚未加 Node 阶段（Task 8），本轮未验证。
 - 真实聊天往返（`POST /chat` 的 provider 调用）：会消耗用户额度，本轮未发起。
 - 流式增量的 e2e：`route.fulfill` 一次性下发整个 body，无法断言"token 逐个出现"。
 - 真实数据上的写操作（保存笔记、移动、删除、补建索引、改模型配置、切换向量模型）：
   会改用户数据/额度，未在真实后端执行；这些路径由 e2e + 后端测试覆盖。
+- 旧的 `home.html` / `model-settings.js` / `model-settings.css` **仍然保留**（回退要用），
+  删除旧实现另开清理任务，不在本次范围。
