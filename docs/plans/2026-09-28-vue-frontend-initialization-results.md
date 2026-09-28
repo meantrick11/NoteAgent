@@ -509,6 +509,28 @@ $ npm --prefix frontend run build
   补前端构建步骤、`FRONTEND_MODE` 与 503 行为、五个页面的用法与 `frontend/` 目录。
 - `docs/plans/README.md`：本计划从"待执行"移到"已完成"，指向本文件。
 
+**补漏（第二轮，原计划清单没列但同样属于"现行实现"文档）**
+
+第一次交付后有遗漏：`architecture.md` 是**主架构书**，却仍在写"单页、顶栏切 Chat / Documents、
+`GET /` 下发 home.html、不实现独立前端工程"。补了这些：
+
+| 文件 | 改了什么 |
+|---|---|
+| `docs/architecture/architecture.md` | §3.1 逻辑结构图、§4 数据流前言、两处 mermaid 的 page 节点、§5.1 前端整节（职责／结构／为什么／代码落点）、§5.2.1 路由表、附件索引行 |
+| `docs/architecture/README.md` | frontend.md 的描述行；核对日期与提交号 → `3b1e927` |
+| `docs/architecture/chat-tools.md` | mermaid 节点、草稿模式的代码指向（`renderDraftActions` → `DraftActions.vue`）、代码落点表 |
+| `docs/architecture/context-management.md` | 气泡与工具过程的代码落点 |
+| `docs/product/roadmap.md` | 顶部"前端演进方向"行；V2.7 状态行从"规划"改为"**首轮已实现，尚未整体验收**"，并写明未过的两条原因；§3.8 加状态段指向执行计划与记录 |
+| `src/noteagent/README.md` | `web/` 那一行的职责描述 |
+| `src/noteagent/web/README.md` | 整篇重写：产物路径、页面白名单、vue／legacy 分派 |
+| `src/noteagent/web/static/README.md` | 标明是 legacy 回退用，指向 Vue 侧等价物 |
+| `src/noteagent/web/templates/README.md` | 标明只在 legacy 下发，改界面不在这里 |
+
+改动后对以上文件跑了一遍相对链接检查：**0 条失效**。
+
+**未改动的**：`docs/plans/2026-08-*`、`2026-09-*` 等历史计划保持原样（本仓约定：历史计划不因
+后续实现而改写正文），它们里面提到 `home.html` 是当时的真实情况。
+
 **完成条件评估：** 交付包含实现、测试证据、启动／构建说明与回退办法。
 脚手架之外的五个页面、F01–F16 全部有对应入口与验证；唯一未完成的是 Docker 构建的实际执行，
 已在下方如实记录，不用"Vite dev 正常"代替。

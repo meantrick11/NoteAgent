@@ -4,6 +4,8 @@
 > 工具 hop、stub 截断、Runtime vs Persistent 见 [context-management.md §7.1](./context-management.md#71-工具循环与-stub-截断)。  
 > 切块、Chroma 点、审批后同步见 [retrieval.md](./retrieval.md)。
 
+> 关联文档：行为门与判定口径 [evals/prompt/README.md](../../evals/prompt/README.md)；生成提示词准则 [note-quality.md](../../evals/criteria/note-quality.md)；工具使用问题的取证见 [rag-v1-report.md](../../evals/reports/rag-v1-report.md) §4。
+
 | 项 | 内容 |
 |---|---|
 | 装配 | [`build_chat_tools`](../../src/noteagent/chat/tools.py) → `ChatAgent` `bind_tools` |
@@ -38,7 +40,7 @@ flowchart TD
   draft[DraftStore.put]
   reply[token 与 assistant_final]
   sse[SSE draft]
-  pane[home.html 引用面板草稿模式]
+  pane[Assistant 引用面板草稿模式]
   review[POST /chat/review]
   disk[_write_draft 写 notes/]
   user --> hop --> noTool
@@ -176,7 +178,7 @@ HTTP：`POST /chat/review`，body [`ReviewRequest`](../../src/noteagent/chat/sch
 
 成功：`{status: "written", action: target_action, file_name}`（delete 也用 `written`，不是另起 status）。
 
-前端 [`home.html`](../../src/noteagent/web/templates/home.html) 右侧面板的草稿模式（`renderDraftActions`）：
+前端 Assistant 引用面板的草稿模式（[`DraftActions.vue`](../../frontend/src/features/chat/DraftActions.vue)）：
 
 - `append` / `create`：同意追加/新建、改为追加到所选文件、改为新建文件、拒绝。
 - `replace`：同意覆盖、拒绝；无 override 按钮。
@@ -209,7 +211,7 @@ HTTP：`POST /chat/review`，body [`ReviewRequest`](../../src/noteagent/chat/sch
 | [`chat/router.py`](../../src/noteagent/chat/router.py) | `GET /conversations/{id}`、`POST /chat`、`PUT /chat/draft`、`POST /chat/review` |
 | [`chat/schemas.py`](../../src/noteagent/chat/schemas.py) | `ReviewRequest`、`DraftContentRequest`、`ConversationDetailOut` |
 | [`prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt) | 意图门与七条质量约束（现行 v9） |
-| [`web/templates/home.html`](../../src/noteagent/web/templates/home.html) | 引用面板（citation / draft 两种模式） |
+| [`frontend/src/features/chat/NotePane.vue`](../../frontend/src/features/chat/NotePane.vue) | 引用面板（citation / draft 两种模式）；`DraftActions.vue` 是草稿动作 |
 | [`notes/repository.py`](../../src/noteagent/notes/repository.py) | 真正 IO |
 | [retrieval.md](./retrieval.md) | 切块、Chroma、审批后同步（不在本文展开） |
 | [`evals/prompt/`](../../evals/prompt/README.md) | 人工意图门（含 replace/delete） |

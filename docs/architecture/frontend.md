@@ -23,6 +23,8 @@
 
 ## 0. 现行实现（Vue）
 
+> 后续设计说明：右上角设置齿轮与设置分类见 [Settings 设计](../product/settings-architecture.md) 和 [执行计划](../plans/2026-09-28-settings-navigation-and-sections.md)，目前尚未实施。下文继续描述实际五文字导航，实施后再更新。
+
 **页面与导航。** 顶部横栏顺序固定为 **Home → Assistant → Records → Library → Settings**
 （[`shared/navigation.ts`](../../frontend/src/shared/navigation.ts) 是唯一来源，路由表与它一一对应并有单测钉住）。
 原 Chat 页面成为 Assistant，原 Documents 成为 Library，模型与索引管理归 Settings。
@@ -64,7 +66,7 @@ Library 打开着同一篇且没有未保存编辑时才换上新正文。
 4. **不建笔记表。** 最近修改用文件 `mtime`；已/未索引看 Chroma 有没有该相对路径的点。
 5. **一层目录。** 树上文件夹与根目录 `.md` 同级；文件夹内笔记再缩进。根文件仍是 `notes/*.md`，不造磁盘上的「未分类/」。
 
-Python 只负责读模板。业务规则在 `home.html` 的 fetch 与后端路由，不在 `web/` 里再包一层 API client。
+Python 只负责挑页面、读产物。业务规则在 SPA 的 `store.ts`／纯函数模块与后端路由，不在 `web/` 里再包一层 API client；`web/` 里只做页面白名单与静态托管。
 
 ---
 

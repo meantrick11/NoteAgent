@@ -2,6 +2,8 @@
 
 全局职责与四层划分见 [architecture.md §5.3.3](./architecture.md#533-上下文装配与压缩)。本文是现行实现的公式、流程图、stub 截断与文件对应。
 
+> 关联文档：执行切片 [2026-08-26-context-management.md](../plans/2026-08-26-context-management.md)（原规格清单未回勾，以本文为准）；表结构 [database.md](./database.md)。
+
 | 项 | 内容 |
 |---|---|
 | 范围 | 单会话内：如何把历史、工具、草稿装进 LLM；何时压缩 |
@@ -224,7 +226,7 @@ flowchart TD
 | [`chat/context_tokens.py`](../../src/noteagent/chat/context_tokens.py) | `estimate_tokens`、`prefix_until_tokens` |
 | [`chat/drafts.py`](../../src/noteagent/chat/drafts.py) | 待审独立；装配只注入一行 |
 | [`observability/agent_trace.py`](../../src/noteagent/observability/agent_trace.py) | LLM/工具 hop 的 start/end/error 与耗时（不含 compact 数字） |
-| [`home.html`](../../src/noteagent/web/templates/home.html) | 气泡为 user / assistant；工具过程在气泡外一排 |
+| [`frontend/src/features/chat/MessageList.vue`](../../frontend/src/features/chat/MessageList.vue) | 气泡为 user / assistant；工具过程在气泡外一排（`ToolTrace.vue`） |
 
 ### 7.1 工具循环与 stub 截断
 

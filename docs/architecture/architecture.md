@@ -2,21 +2,35 @@
 
 本文描述**正在运行的** NoteAgent：它解决什么问题、系统边界在哪、模块如何划分、一次请求数据如何流动、关键决策为什么成立、代码落在哪些文件。
 
-产品远景、业务对象和目标边界见 [产品与业务架构](../product/business-architecture.md)；版本范围与验收见 [版本路线](../roadmap/versions.md)。本文继续描述当前聊天笔记实现，不把规划中的独立任务、整理方案和多模态材料当成现有能力。
+产品远景、业务对象和目标边界见 [产品与业务架构](../product/business-architecture.md)；版本范围与验收见 [版本路线](../product/roadmap.md)。本文继续描述当前聊天笔记实现，不把规划中的独立任务、整理方案和多模态材料当成现有能力。
+
+> 核对日期：2026-09-27，代码提交 `f54e7c8`。本次核对页面路由、笔记路径规则与迁移 head 是否与本文一致，**未运行测试或评测**；阶段状态与验收证据见 [版本路线](../product/roadmap.md)。未来能力留在业务/路线/有效设计中，不复制到本文的组件清单。
 
 专题附件只补充参数、公式、表列和日志步骤，不替代本文：
 
 | 附件 | 内容 |
 |------|------|
 | [chat-tools.md](./chat-tools.md) | 四工具参数、返回值、人审动作 |
-| [frontend.md](./frontend.md) | 单页布局：Chat 与 Documents 树/编辑/拖拽/芯片 |
+| [frontend.md](./frontend.md) | 现行 Vue SPA：五个页面的布局、状态归属与两条写盘路径的界面约定 |
 | [context-management.md](./context-management.md) | 上下文 pack、K=T−F、stub 截断 |
 | [database.md](./database.md) | `conversations` / `messages` 列、索引、实例行 |
 | [retrieval.md](./retrieval.md) | 切块、Chroma 点、人写盘后同步、查询路径 |
 | [observability.md](./observability.md) | 日志三层、Agent/Index 轨迹、业务 logger、输出配置 |
-| [../evaluations/README.md](../evaluations/README.md) | 评测准则（笔记正文现行 v0.2；旧题仍走 v0.1）；黄金集在 evals/ |
+| [../../evals/README.md](../../evals/README.md) | 评测入口：准则在 [criteria/](../../evals/criteria/)，报告在 [reports/](../../evals/reports/) |
 
 读者：实现与维护本仓库的开发者。范围：`src/noteagent/`、`notes/`、`scripts/index_notes.py`、PostgreSQL 会话库、Chroma 派生索引。评测不在请求路径上。
+
+## 关联文档
+
+| 关联 | 去哪 |
+|---|---|
+| 产品目标、业务边界、技术设计与决策 | [product/](../product/README.md) |
+| 阶段范围、退出标准、验收状态 | [product/roadmap.md](../product/roadmap.md) |
+| 某一版的执行过程与结果 | [plans/](../plans/README.md) |
+| 怎么跑起来、怎么配本机开发 | [guides/](../guides/README.md) |
+| 评测准则、报告与验收证据 | [evals/](../../evals/README.md) |
+
+本文件是现行系统的**唯一总览**；版本进度不在本文维护。改行为后先改这里，再更新对应计划状态。
 
 ---
 
@@ -48,7 +62,7 @@ NoteAgent 是个人学习笔记助手：在浏览器里对话，把值得保留�
 
 ### 1.5 文档目的
 
-打开本文应能回答：项目做什么、分成哪些模块、一次发消息数据怎么走、笔记为何不能由工具写盘、Documents 与聊天审批如何并列写盘、上下文为何分四层、已落地笔记如何进向量库、日志如何分层与落到哪、评测准则与生成链路如何隔离、每个模块的代码在哪。界面布局见 [frontend.md](./frontend.md)。日志细则见 [observability.md](./observability.md)。评测细则见 [docs/evaluations/](../evaluations/README.md)。
+打开本文应能回答：项目做什么、分成哪些模块、一次发消息数据怎么走、笔记为何不能由工具写盘、Documents 与聊天审批如何并列写盘、上下文为何分四层、已落地笔记如何进向量库、日志如何分层与落到哪、评测准则与生成链路如何隔离、每个模块的代码在哪。界面布局见 [frontend.md](./frontend.md)。日志细则见 [observability.md](./observability.md)。评测细则见 [evals/README.md](../../evals/README.md)。
 
 ---
 
@@ -89,12 +103,14 @@ NoteAgent 是个人学习笔记助手：在浏览器里对话，把值得保留�
 系统是「浏览器 ↔ HTTP ↔ Agent ↔ 四种存储」：
 
 ```text
-浏览器  home.html
-    │  顶栏 Chat | Documents
-    │  Chat：侧栏会话、气泡、输入、右侧引用/草稿面板、SSE
-    │  Documents：一层目录树、编辑/预览、拖拽、芯片入库
+浏览器  Vue SPA（frontend/ 构建产物，由 web/dist 承载）
+    │  顶部导航 Home | Assistant | Records | Library | Settings
+    │  Assistant：侧栏会话、气泡、输入、右侧引用/草稿面板、SSE
+    │  Library：一层目录树、编辑/预览、拖拽、芯片入库
+    │  Settings：聊天模型与向量模型（与 Assistant 输入框下方的入口共用状态）
     ▼
-HTTP  chat/router.py     会话；POST /chat；PUT /chat/draft；POST /chat/review；下发 HTML
+HTTP  web/router.py      六个页面地址下发 SPA 外壳（vue）或旧模板（legacy）
+      chat/router.py     会话；POST /chat；PUT /chat/draft；POST /chat/review
       notes/router.py    Documents 对 notes/ 的读写与入库
       model_management/router.py   /model-settings*：聊天配置与向量模型切换
     ▼
@@ -131,7 +147,7 @@ ChatAgent  chat/agent.py          仅 Chat 路径
 ```text
 src/noteagent/
   bootstrap/      Settings、AppContainer、FastAPI、运行对象装配（runtime.py）
-  web/            home.html、static/（模型入口的 css/js）
+  web/            页面路由、dist/（SPA 产物）、旧模板与 static（legacy 回退用）
   model_management/  聊天配置、向量候选、运行快照与切换（不 import bootstrap）
   chat/           路由、Agent、工具、草稿、上下文、会话写入口
   db/             ORM 与 engine（无 HTTP、无 LLM）
@@ -152,13 +168,13 @@ scripts/          按篇重建 Chroma 等
 
 两条并行写盘路径共用 `notes/` 和 Chroma，不共用 Agent。模块内部细节见第 5 章；界面显隐见 [frontend.md](./frontend.md)。
 
-同一份 [`home.html`](../../src/noteagent/web/templates/home.html)：`GET /` 与 `GET /documents` 都下发它。顶栏切换只改 `#viewChat` / `#viewDocs` 的 `.active` 和地址栏，不再要 HTML。
+`web/router.py` 按页面白名单下发同一个 SPA 外壳：`GET /`、`/assistant`、`/records`、`/library`、`/settings`、`/documents` 都返回它，页面切换完全在前端路由里完成，不再要 HTML。白名单之外的地址一律 404，不用 HTML 兜底；`/documents` 在前端跳成 `/library`。
 
 ### 4.1 聊天：对话 → 提案 → 人审 → 磁盘
 
 ```mermaid
 flowchart TD
-  page["GET / 或 GET /documents 同一 home.html"]
+  page["SPA 外壳：GET / 等六个页面地址"]
   list["GET /conversations"]
   msgs["GET /conversations/id/messages"]
   post["POST /chat"]
@@ -201,8 +217,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  page["同一 home.html"]
-  show["showView documents 显隐 不重新下发 HTML"]
+  page["同一 SPA 外壳"]
+  show["前端路由切到 Library 不重新下发 HTML"]
   tree["GET /notes"]
   openNote["GET /notes/path"]
   edit["textarea 与预览"]
@@ -243,13 +259,13 @@ flowchart TD
 
 ### 5.1 前端
 
-**职责。** 单页：顶栏切 Chat / Documents。Chat 侧栏管会话，主栏画气泡，底栏发消息，待审草稿在右侧面板的草稿模式出现。Documents 用一层目录树管已落地的 Markdown：打开即编辑+预览，保存/移动/删除/点芯片同步向量。不实现独立前端工程。工具过程在助手气泡外一排，不进主气泡正文。
+**职责。** 一个 Vue SPA，顶部五页固定为 Home → Assistant → Records → Library → Settings。Assistant 侧栏管会话，主栏画气泡，底栏发消息，待审草稿在右侧面板的草稿模式出现。Library 用一层目录树管已落地的 Markdown：打开即编辑+预览，保存/移动/删除/点芯片同步向量。Settings 管聊天模型与向量模型。工具过程在助手气泡外一排，不进主气泡正文。Records 本轮只有入口与空状态，承载来源尚未确定。
 
-**结构与协作。** `GET /` 与 `GET /documents` 下发同一 [`web/templates/home.html`](../../src/noteagent/web/templates/home.html)，默认 Chat。Chat：`GET /conversations`、点会话再取消息、`POST /chat` 读 SSE、`POST /chat/review` 审草稿；点 ① 打开出处侧栏，保存走 `PUT /notes/{path}`；会话三点走 `PATCH`/`DELETE /conversations/{id}`。输入框下侧靠右有两个模型入口（聊天 / 向量），走 `/model-settings*`，代码外置在 `web/static/`（`create_app` 挂 `/static`）。Documents：文件夹与根 `.md` 同级；拖到文件夹组确认后 `POST /notes/move`；芯片 `POST /notes/{path}/index`。树、弹窗、同步滚动、两条写盘路径的界面约定见 [frontend.md](./frontend.md)。`isStreaming` 为真时不能连发；向量维护窗口内发送与写盘按钮禁用、输入保留。
+**结构与协作。** `web/router.py` 的页面白名单下发 SPA 外壳，资源由 `create_app` 挂在 `/ui-assets/`（指向 `web/dist`）。Assistant：`GET /conversations`、点会话再取消息、`POST /chat` 读 SSE、`POST /chat/review` 审草稿；点 ① 打开引用面板，保存走 `PUT /notes/{path}`；会话三点走 `PATCH`/`DELETE /conversations/{id}`。输入框下侧靠右有两个模型入口（聊天 / 向量），走 `/model-settings*`，与 Settings 页是同一批组件与同一份状态。Library：文件夹与根 `.md` 同级；拖到文件夹组确认后 `POST /notes/move`；芯片 `POST /notes/{path}/index`。树、弹窗、同步滚动、两条写盘路径的界面约定见 [frontend.md](./frontend.md)。`isStreaming` 为真时不能连发；向量维护窗口内发送与写盘按钮禁用、输入保留。
 
-**为什么。** Chat 仍是「对话 + 对人审草稿说是或否」。Documents 让人直接管磁盘上的笔记，保存即人写盘，不另建笔记表、不经过 Agent。两套 overlay 分开，避免聊天删会话和笔记确认抢同一个 DOM。工具 hop 仍不画在气泡里。模型入口只在 Chat 输入栏，避免挤占编辑器。
+**为什么。** Assistant 仍是「对话 + 对人审草稿说是或否」。Library 让人直接管磁盘上的笔记，保存即人写盘，不另建笔记表、不经过 Agent。工具 hop 仍不画在气泡里。模型配置同时放在 Settings 与 Assistant 输入框下方，两处共用组件与状态，避免出现两份逻辑。页面切换与未保存保护都在前端路由层统一处理。
 
-**代码落点。** [`src/noteagent/web/templates/home.html`](../../src/noteagent/web/templates/home.html)、[`web/static/model-settings.js`](../../src/noteagent/web/static/model-settings.js)、[`web/__init__.py`](../../src/noteagent/web/__init__.py) `read_home_html` / `STATIC_DIR`；界面附件 [frontend.md](./frontend.md)。
+**代码落点。** SPA 工程在 [`frontend/`](../../frontend)（页面 `src/pages/`、领域状态 `src/features/`、通用件 `src/shared/`）；后端侧是 [`web/router.py`](../../src/noteagent/web/router.py)（页面白名单与两种模式）与 [`web/__init__.py`](../../src/noteagent/web/__init__.py) 的 `read_spa_html` / `read_home_html` / `DIST_DIR` / `STATIC_DIR`。`bootstrap/settings.py` 的 `frontend_mode` 决定用哪一套，默认 `vue`；`FRONTEND_MODE=legacy` 回退到旧模板。界面附件 [frontend.md](./frontend.md)。
 
 ---
 
@@ -267,8 +283,8 @@ flowchart TD
 
 | 方法 | 路径 | 谁调用谁 |
 |------|------|----------|
-| GET | `/` | 下发 home.html（Chat） |
-| GET | `/documents` | 同一模板，前端切 Documents |
+| GET | `/` | 下发 SPA 外壳（`frontend_mode=vue`）或旧模板（`legacy`） |
+| GET | `/assistant` `/records` `/library` `/settings` `/documents` | 同一个外壳；`legacy` 模式下按旧地址 307 跳转 |
 | GET | `/conversations` | `history.list_conversations`，侧栏按 `updated_at` 倒序 |
 | GET | `/conversations/{id}` | `history.get`；含 `pending_draft`；缺会话 404 |
 | GET | `/conversations/{id}/messages` | `history.list_messages`（仅 user/assistant，assistant 可带 `tool_steps`）；缺会话 404 |
@@ -326,7 +342,7 @@ flowchart TD
 | `search_relative_from_chromadb` | `retrieval.search(query, top_k=3)` | 无 |
 | `propose_note` | 校验动作与文件是否存在后 `DraftStore.put` | 不写磁盘、不写 Chroma |
 
-提案动作：`append` / `create` / `replace` / `delete`。意图门在 [`prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt)（现行 v9）：闲聊不提案；材料用意不明先问；记笔记必须先 `list_files`；覆盖必须先读全文。默认“记下来/整理成笔记”按学习型笔记（七条质量，含知识加工增益）；只有用户显式要求完全忠实翻译、逐段翻译或保持原结构时才以原结构为骨架。质量细则见 [note-quality.md](../evaluations/note-quality.md)，不在请求路径上打分。参数细则见 [chat-tools.md](./chat-tools.md)。
+提案动作：`append` / `create` / `replace` / `delete`。意图门在 [`prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt)（现行 v9）：闲聊不提案；材料用意不明先问；记笔记必须先 `list_files`；覆盖必须先读全文。默认“记下来/整理成笔记”按学习型笔记（七条质量，含知识加工增益）；只有用户显式要求完全忠实翻译、逐段翻译或保持原结构时才以原结构为骨架。质量细则见 [note-quality.md](../../evals/criteria/note-quality.md)，不在请求路径上打分。参数细则见 [chat-tools.md](./chat-tools.md)。
 
 **为什么。** 模型一旦能直接写文件，人审确认失去意义，错误草稿会立刻污染 `notes/`。四工具 schema 很小，每轮都带上，避免切错「聊天/Agent」模式后无法记笔记。意图放在提示词，与 `stream` 同一次请求完成。
 
@@ -427,14 +443,14 @@ ORM：[`db/models.py`](../../src/noteagent/db/models.py)。连接：[`db/engine.
 
 | 内容 | 位置 |
 |------|------|
-| 准则与账本划分 | [docs/evaluations/](../evaluations/README.md) |
-| 笔记正文尺子 | [docs/evaluations/note-quality.md](../evaluations/note-quality.md)（现行 v0.2；`cases.jsonl` 旧题仍按 v0.1 计 `total`） |
-| 检索尺子 | [docs/evaluations/rag-quality.md](../evaluations/rag-quality.md)（现行 v1；证据标注契约、九项指标、失败分类） |
+| 准则与账本划分 | [evals/README.md](../../evals/README.md) |
+| 笔记正文尺子 | [note-quality.md](../../evals/criteria/note-quality.md)（现行 v0.2；`cases.jsonl` 旧题仍按 v0.1 计 `total`） |
+| 检索尺子 | [rag-quality.md](../../evals/criteria/rag-quality.md)（现行 v1；证据标注契约、九项指标、失败分类） |
 | 黄金集 | 仓库根 [evals/](../../evals/README.md) |
-| 离线跑分产物 | [evals/prompt/results/](../../evals/prompt/results/README.md)、[evals/rag/results/](../../evals/rag/README.md)、[evals/agent/results/](../../evals/agent/README.md) |
-| 实测报告 | [docs/evaluations/rag-v1-report.md](../evaluations/rag-v1-report.md)（检索与 Agent 基线、失败样例、重建/回退） |
+| 离线跑分产物 | [evals/prompt/results/](../../evals/prompt/results/README.md)、[evals/rag/](../../evals/rag/README.md)、[evals/agent/](../../evals/agent/README.md) |
+| 实测报告与复盘 | [rag-v1-report.md](../../evals/reports/rag-v1-report.md)（检索与 Agent 基线、失败样例、重建/回退）、[v1-acceptance-report.md](../../evals/reports/v1-acceptance-report.md)、[rag-v1-retrospective.md](../../evals/reports/rag-v1-retrospective.md) |
 
-三本账互不合成一个 Agent 总分：笔记正文（学习型走 v0.2；旧题仍用 v0.1）、工具轨迹、检索（Recall@5 / Hit@3 / MRR、调用率、引用可追溯）。评测只服务离线迭代 [`system.txt`](../../src/noteagent/chat/prompts/system.txt)，不拦截草稿、不按分数自动再生成。现行生成提示词是 v9：在 `l01` 上硬门与复习题可通过，结构/加工未达合格线。检索侧现行配置是 `intfloat/multilingual-e5-small` + 章节感知切块（500/50，`embed_heading_prefix=True`）；dev 上 Recall@5 94.4%、Hit@3 94.4%，已跨过两项硬门槛（切块 5/18 → 9/18，换模型 9/18 → 17/18），见实测报告。
+三本账互不合成一个 Agent 总分：笔记正文（学习型走 v0.2；旧题仍用 v0.1）、工具轨迹、检索（Recall@5 / Hit@3 / MRR、调用率、引用可追溯）。评测只服务离线迭代 [`system.txt`](../../src/noteagent/chat/prompts/system.txt)，不拦截草稿、不按分数自动再生成。现行生成提示词是 **v11**（2026-09-26 只改「待审批草稿」措辞）；v9/v10 时期的评测结论见 [prompts/README.md](../../src/noteagent/chat/prompts/README.md) 与 [iterations/](../../src/noteagent/chat/prompts/iterations/README.md)：v9 在 `l01` 上硬门与复习题可通过，结构/加工未达合格线。检索侧现行配置是 `intfloat/multilingual-e5-small` + 章节感知切块（500/50，`embed_heading_prefix=True`）；dev 上 Recall@5 94.4%、Hit@3 94.4%，已跨过两项硬门槛（切块 5/18 → 9/18，换模型 9/18 → 17/18），见实测报告。
 
 **为什么。** 改提示词需要固定考题和可重复的尺子。若把打分接进 Agent，会变成「生成 → 打分 → 再生成」，与「LLM 只出提案、磁盘只走人类操作」冲突。v0.2 不得与 v0.1 直接比较总分或排名。
 

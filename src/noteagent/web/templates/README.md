@@ -1,12 +1,12 @@
 # templates
 
-FastAPI `GET /` 与 `GET /documents` 返回的 HTML。不要把笔记正文或密钥写进模板。界面布局、树交互、两条写盘路径见 [docs/architecture/frontend.md](../../../../docs/architecture/frontend.md)。
+旧版前端的 HTML，**只在 `FRONTEND_MODE=legacy` 时由 FastAPI 下发**（`vue` 模式下 `GET /` 等六个页面地址返回 SPA 外壳）。不要把笔记正文或密钥写进模板。现行界面在 [`frontend/`](../../../../frontend)，布局与两条写盘路径见 [docs/architecture/frontend.md](../../../../docs/architecture/frontend.md)。
 
 ## 包含模块
 
 | 文件 | 作用 |
 |------|------|
-| `home.html` | 顶栏 Chat \| Documents；Chat 会话与 SSE；Documents 一层目录树、编辑/预览、拖拽、芯片 |
+| `home.html` | 旧版顶栏 Chat \| Documents；Chat 会话与 SSE；Documents 一层目录树、编辑/预览、拖拽、芯片 |
 
 页面会请求：
 
@@ -36,4 +36,4 @@ SSE：先 `event: conversation`（`{id, title}`），可选 `event: sources`（�
 
 ## 基础使用
 
-本地改样式或按钮文案后保存 `home.html`，刷新 `http://127.0.0.1:8000`。`read_home_html()` 每次请求读盘，无需为 HTML 重启 uvicorn（除非你改了缓存逻辑）。
+改界面不要改这里——改 [`frontend/`](../../../../frontend) 后 `npm --prefix frontend run build`。只有在维护 legacy 回退路径时才编辑本模板：保存后刷新 `http://127.0.0.1:8000` 即可，`read_home_html()` 每次请求读盘，不必为 HTML 重启 uvicorn。
