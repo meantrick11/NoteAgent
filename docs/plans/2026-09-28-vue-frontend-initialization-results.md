@@ -48,8 +48,10 @@ $ .venv/Scripts/python.exe -m pytest tests -q
 
 | 计划原文 | 实际情况 | 处理 |
 |---|---|---|
-| §4.4「Vue 官方入门要求 24.12.0 或以上的 24.x」 | Vue 3 官方快速开始要求 Node 20.19+ / 22.12+；`@vitejs/plugin-vue` 与 Vite 7 的 `engines` 为 `^20.19.0 \|\| >=22.12.0` | 本机 node **v22.16.0** 满足已选依赖的 engines，按计划「执行时记录精确版本」执行，不为此下载新版 Node。锁定的实际版本随 Task 2 的 `package.json` 一并记录 |
-| §5 Task 1「在可运行的旧页面记录截图」 | Postgres 停止，旧页面无法以真实数据运行 | 改为 fixtures 驱动的浏览器基线（§2.2），并在 Task 8 与 Vue 版做同一 fixtures 的对照截图 |
+| §4.4「Vue 官方入门要求 24.12.0 或以上的 24.x」 | Vue 3 官方快速开始要求 Node 20.19+ / 22.12+；Vite 7.3.6 与 `@vitejs/plugin-vue` 6.0.9 的 `engines` 为 `^20.19.0 \|\| >=22.12.0` | 计划给出的理由不成立。经确认使用本机 **node v22.16.0**／npm 10.9.2，并把该约束写进 `frontend/package.json` 的 `engines`。不下载新 Node |
+| §5 Task 1「在可运行的旧页面记录截图」 | Postgres 一度为 Stopped | 用户已启动服务（`postgresql-x64-18` Running），旧页面基线截图按 §2.2 用真实数据取得 |
+| §6 `playwright install chromium` | 本机无 Playwright 浏览器缓存，但已安装 Edge | 经确认改用 `channel: 'msedge'`，零下载跑通全部交互测试；`playwright.config.ts` 里留下改用 Chromium 的说明 |
+| §4.1 列出的 `tsconfig` 三件套 | 无差异 | 按计划落地 `tsconfig.json` + `tsconfig.app.json` + `tsconfig.node.json`；未引入 `@vue/tsconfig`，编译选项显式写在文件里 |
 
 ---
 
@@ -110,14 +112,82 @@ Postgres 停止使真实页面不可达。基线改用与计划 §6 一致的隔
 **完成条件评估：** 功能基线可按 F01–F16 对照；已有失败（无）与环境限制（Postgres 停止、Node 22.16.0）已明确。
 唯一未完成项是截图，已说明替代方案与补拍时机。
 
+**后续补充：** 用户随后启动了 Postgres，旧页面已用真实数据实际打开并逐页确认（见 §3 Task 2 的「旧版基线复核」）。
+
+---
+
+### Task 2：建立可构建的 Vue 外壳及页面路由 —— 完成
+
+**新增：** `frontend/` 全部工程文件（`package.json`／`package-lock.json`／`index.html`／
+`vite.config.ts`／`tsconfig{,.app,.node}.json`／`vitest.config.ts`／`playwright.config.ts`／
+`src/{main.ts,App.vue,router.ts}`／`src/styles/{tokens,base}.css`／`src/layouts/AppShell.vue`／
+`src/shared/navigation.ts`／`src/pages/*Page.vue` ×5／`tests/unit/navigation.spec.ts`／
+`tests/e2e/navigation.spec.ts`）、`src/noteagent/web/router.py`、`tests/integration/test_frontend_routes.py`。
+**修改：** `src/noteagent/web/__init__.py`、`src/noteagent/bootstrap/app.py`、
+`src/noteagent/bootstrap/settings.py`、`src/noteagent/chat/router.py`（移出两个 HTML handler）、`.gitignore`。
+
+**锁定的实际版本**（`frontend/package-lock.json` 为准）：node v22.16.0 / npm 10.9.2；
+vue 3.5.43、vue-router 4.6.4、pinia 3.0.4、marked 15.0.12、vite 7.3.6、
+@vitejs/plugin-vue 6.0.9、typescript 5.9.3、vue-tsc 3.1.x、vitest 3.2.7、@playwright/test 1.63.0。
+
+- [x] 创建 Vue＋TS＋Router＋Pinia＋Vitest＋Playwright 工程，保留项目原 Python 配置。
+      npm scripts：`dev`、`build`（先 `vue-tsc -b` 再 `vite build`）、`type-check`、`test:unit`、`test:e2e`。
+- [x] 顶部导航与页面路由；页面先放容器，未复制演示内容（Assistant／Library／Settings 明确标注后续任务迁入，
+      Records 是空状态）。
+- [x] history fallback、`/ui-assets`、vue/legacy 两种模式、`/documents` 兼容路径。
+      集成测试用临时 index.html，不要求 Node。
+- [x] 导航测试已编写并运行通过。
+
+**命令与真实输出**
+
+```text
+$ npm --prefix frontend run type-check
+> vue-tsc -b --force          （无输出，退出码 0）
+
+$ npm --prefix frontend run test:unit
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+
+$ npm --prefix frontend run build
+../src/noteagent/web/dist/index.html                  0.42 kB │ gzip:  0.28 kB
+../src/noteagent/web/dist/assets/index-BEbfafUf.css   3.14 kB │ gzip:  1.17 kB
+../src/noteagent/web/dist/assets/index-DcYGFYzK.js   92.17 kB │ gzip: 35.92 kB
+✓ built in 501ms
+
+$ npm --prefix frontend run test:e2e
+  6 passed (7.3s)
+
+$ .venv/Scripts/python.exe -m pytest tests -q
+501 passed, 1 warning in 19.15s     （基线 490，本次新增 11，无回归）
+```
+
+**真实运行验证（不是截图代替）**
+
+| 验证项 | 方式 | 结果 |
+|---|---|---|
+| vue 模式六个页面直达 | `FRONTEND_MODE=vue python main.py` 后逐个 curl | `/`、`/assistant`、`/records`、`/library`、`/settings`、`/documents` 全部 200 |
+| 产物托管 | 取 `/` 返回里的资源地址再请求 | `/ui-assets/assets/index-*.js` 200、`*.css` 200 |
+| 未知资源不被 HTML 吞掉 | curl | `/ui-assets/assets/nope.js` 404、`/api/nope` 404 |
+| Vue 应用真的渲染 | 真实 FastAPI 托管的 `/assistant` 上取无障碍快照 | `navigation "主导航"` 下 5 个 link 顺序为 Home／Assistant／Records／Library／Settings，`main` 内出现 Assistant 标题 |
+| legacy 回退 | `FRONTEND_MODE=legacy` 重启后 curl | `/` 与 `/documents` 200 且返回旧模板（`citePaneByConv` 命中 17 次）；`/assistant`→`/`、`/records`→`/`、`/settings`→`/`、`/library`→`/documents` 均 307 |
+
+**旧版基线复核（真实数据）**：Postgres 启动后打开旧页面确认了 F01（会话列表 5 条）、
+F04（点引用 ② 打开 `Deep_Agents_Context...md` 并把匹配片段选中高亮）、F10–F13（目录树、
+已索引／未索引芯片）、F14（聊天模型弹层显示「环境默认（deepseek-v4-flash）」与已启用状态）、
+F09（打开右栏后中间区被压缩，与 `chatLayoutBounds` 的收边规则一致）。
+草稿面板（F06／F07）因现有会话没有待审草稿，未在旧版复核时取到，留待 Task 4 的 fixtures 用例覆盖。
+
+**完成条件评估：** 原页面可回退（legacy 实测）；新工程能构建、五个路由实际可用；
+尚未迁入的业务在页面上与结果文档里都标注为未完成。**F01–F16 没有任何一项在本次提交中被标为已迁移。**
+
 ---
 
 ## 4. 汇总（随任务推进更新）
 
 | 任务 | 状态 | 提交 | 通过的功能编号 | 验证命令与结果 |
 |---|---|---|---|---|
-| Task 1 基线与回归清单 | 完成 | 待填 | — | `pytest tests -q` → 490 passed |
-| Task 2 Vue 外壳与路由 | 未开始 | — | — | — |
+| Task 1 基线与回归清单 | 完成 | `4ada6e0` | — | `pytest tests -q` → 490 passed |
+| Task 2 Vue 外壳与路由 | 完成 | 待填 | —（外壳，不含 F 项） | `type-check` 通过；`test:unit` 3 passed；`test:e2e` 6 passed；`build` 成功；`pytest tests -q` → 501 passed |
 | Task 3 API／SSE／模型状态 | 未开始 | — | — | — |
 | Task 4 Assistant 迁移 | 未开始 | — | — | — |
 | Task 5 Library 迁移 | 未开始 | — | — | — |
@@ -127,6 +197,6 @@ Postgres 停止使真实页面不可达。基线改用与计划 §6 一致的隔
 
 ### 4.1 未运行项（不得勾选）
 
-- `npm ci` / `npm run build` / `npm run test:unit` / `npm run test:e2e`：前端工程尚未建立。
-- `docker compose build app`：Docker 路径本轮未验证。
-- `python main.py` 真实联调：Postgres 停止，见 §1.2。
+- `npm --prefix frontend ci`：本轮用 `npm install` 生成 lockfile，未在干净目录验证 `ci`。
+- `docker compose build app`：Dockerfile 尚未加 Node 阶段（Task 8），本轮未验证。
+- 草稿面板（F06／F07）的旧版人工复核：现有数据没有待审草稿。

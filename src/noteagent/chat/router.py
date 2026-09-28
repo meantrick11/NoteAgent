@@ -4,7 +4,6 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from noteagent.chat.history import (
@@ -29,24 +28,11 @@ from noteagent.model_management.router import (
     write_lease,
 )
 from noteagent.model_management.service import RuntimeSnapshot
-from noteagent.web import read_home_html    #返回前端初始网页
 
 _logger = logging.getLogger(__name__)
 #APIRouter 本身不会直接接收请求，必须用 app.include_router(router) 挂载到主 app 才生效。
 #方便进行模块拆分，如果直接@app.POST()直接挂载到应用上，不方便进行分模块化
 router = APIRouter()
-
-# 初始页面路由，加载主页面
-@router.get("/", response_class=HTMLResponse)
-async def home() -> str:
-    """Serve the single-page chat UI."""
-    return read_home_html()
-
-
-@router.get("/documents", response_class=HTMLResponse)
-async def documents_home() -> str:
-    """Same SPA; frontend switches to the Documents view."""
-    return read_home_html()
 
 #在初始路由之后，直接尝试加载对应的历史对话
 @router.get("/conversations")

@@ -1,0 +1,180 @@
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 统一焦点态：仅键盘导航可见，鼠标点击不留环。 */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ====== 外壳与顶部导航 ====== */
+.app-shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-nav {
+  flex-shrink: 0;
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  /* 窄屏保持入口可达：横向滚动而不是隐藏。 */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.app-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.app-nav-brand {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-size: 15px;
+  margin-right: var(--space-4);
+  white-space: nowrap;
+}
+
+.app-nav-link {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 14px;
+  padding: 6px var(--space-3);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.app-nav-link:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app-nav-link.router-link-exact-active {
+  color: var(--text);
+  background: var(--bg);
+  font-weight: 600;
+}
+
+.app-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ====== 页面容器 ====== */
+.page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.page-body {
+  padding: var(--space-5);
+}
+
+.page-title {
+  font-size: 20px;
+  font-weight: 650;
+  margin-bottom: var(--space-2);
+}
+
+.page-hint {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.page-empty {
+  margin: auto;
+  max-width: 420px;
+  padding: var(--space-5);
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.page-empty h2 {
+  font-size: 16px;
+  color: var(--text);
+  margin-bottom: var(--space-2);
+}
+
+/* ====== 通用控件 ====== */
+.btn {
+  font-size: 13px;
+  font-family: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg);
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.input {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.chip {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  color: var(--text-secondary);
+}
