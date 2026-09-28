@@ -188,15 +188,35 @@ async function stubApi(page: Page, options: StubOptions = {}) {
   return { calls, jobPolls: () => jobPolls }
 }
 
-test('设置页列出聊天配置与向量候选，显示当前生效项', async ({ page }) => {
+/** 分类面板按 section testid 定位；不依赖卡片顺序，布局再调整也不会误选。 */
+function section(page: Page, id: 'models' | 'retrieval') {
+  return page.locator(`[data-settings-section="${id}"]`)
+}
+
+test('默认分类列出聊天配置，向量候选不在这个分类里', async ({ page }) => {
   await stubApi(page)
   await page.goto('/settings')
 
+  await expect(page.getByRole('heading', { name: '模型与连接' })).toBeVisible()
   await expect(page.getByText('环境默认')).toBeVisible()
   await expect(page.getByText('本地服务')).toBeVisible()
+  // stub 里没有启用的聊天配置：每条给的是「启用」按钮，而不是「已启用」芯片。
+  const models = section(page, 'models')
+  await expect(models.getByText('DeepSeek · deepseek-v4-flash')).toBeVisible()
+  await expect(models.getByRole('button', { name: '启用' }).first()).toBeVisible()
+
+  // 向量候选在另一个分类里，裸路径不显示它。
+  await expect(page.getByRole('heading', { name: '检索与索引' })).toBeHidden()
+})
+
+test('检索分类列出向量候选与索引摘要', async ({ page }) => {
+  await stubApi(page)
+  await page.goto('/settings?section=retrieval')
+
+  await expect(page.getByRole('heading', { name: '检索与索引' })).toBeVisible()
   await expect(page.locator('.ms-row-title', { hasText: 'multilingual-e5-small' })).toBeVisible()
-  // 已启用的那条有标记，未启用的显示可用性原因。
   await expect(page.getByText('已启用').first()).toBeVisible()
+  // 未启用的显示可用性原因。
   await expect(page.getByText('本地缓存不完整')).toBeVisible()
   await expect(page.getByText('已索引 120 个片段 / 20 篇笔记')).toBeVisible()
 })
@@ -206,7 +226,7 @@ test('普通保存不启用：请求体带 expected_revision 且不带 id（新�
   await page.goto('/settings')
 
   await page.getByRole('button', { name: '＋ 新增配置' }).click()
-  const form = page.locator('.settings-card').first()
+  const form = section(page, 'models')
   await form.locator('#ms-label').fill('新配置')
   await form.locator('#ms-model').fill('deepseek-chat')
   await form.getByRole('button', { name: '保存', exact: true }).click()
@@ -224,7 +244,7 @@ test('保存并启用走 activate，而不是普通保存', async ({ page }) => 
   await page.goto('/settings')
 
   await page.getByRole('button', { name: '＋ 新增配置' }).click()
-  const form = page.locator('.settings-card').first()
+  const form = section(page, 'models')
   await form.locator('#ms-label').fill('新配置')
   await form.locator('#ms-model').fill('deepseek-chat')
   await form.getByRole('button', { name: '保存并启用' }).click()
@@ -240,7 +260,7 @@ test('revision 冲突时保留表单并提示刷新', async ({ page }) => {
   await page.goto('/settings')
 
   await page.getByRole('button', { name: '＋ 新增配置' }).click()
-  const form = page.locator('.settings-card').first()
+  const form = section(page, 'models')
   await form.locator('#ms-label').fill('新配置')
   await form.locator('#ms-model').fill('deepseek-chat')
   await form.getByRole('button', { name: '保存', exact: true }).click()
@@ -259,7 +279,7 @@ test('当前启用的配置不能普通保存，只能保存并启用', async ({
   const row = page.locator('.ms-row', { hasText: '环境默认' }).first()
   await row.getByRole('button', { name: '编辑' }).click()
 
-  const form = page.locator('.settings-card').first()
+  const form = section(page, 'models')
   await expect(form.getByRole('button', { name: '保存', exact: true })).toHaveCount(0)
   await expect(form.getByRole('button', { name: '保存并启用' })).toBeVisible()
   await expect(form.getByText('这是当前启用的配置')).toBeVisible()
@@ -274,7 +294,7 @@ test('编辑时 Key 不回显，留空表示保留', async ({ page }) => {
   const row = page.locator('.ms-row', { hasText: '环境默认' }).first()
   await row.getByRole('button', { name: '编辑' }).click()
 
-  const key = page.locator('.settings-card').first().locator('#ms-key')
+  const key = section(page, 'models').locator('#ms-key')
   await expect(key).toHaveValue('')
   await expect(key).toHaveAttribute('placeholder', '留空保留已保存的 Key')
 })
@@ -284,7 +304,7 @@ test('连接测试把流式与工具调用的结论显示出来', async ({ page 
   await page.goto('/settings')
 
   await page.getByRole('button', { name: '＋ 新增配置' }).click()
-  const form = page.locator('.settings-card').first()
+  const form = section(page, 'models')
   await form.locator('#ms-model').fill('deepseek-chat')
   await form.getByRole('button', { name: '测试连接' }).click()
 
@@ -306,7 +326,7 @@ test('重建并切换会进入维护窗口并轮询任务', async ({ page }) => 
     finished_at: null,
   }
   const stub = await stubApi(page, { switchResponse: { unchanged: false, job: runningJob } })
-  await page.goto('/settings')
+  await page.goto('/settings?section=retrieval')
 
   const row = page.locator('.ms-row', { hasText: 'bge-small-zh-v1.5' }).first()
   await row.getByRole('button', { name: '重建并切换' }).click()

@@ -100,8 +100,8 @@
 
 | 文件 | 改动 |
 |---|---|
-| `frontend/src/pages/SettingsPage.vue` | 按 `route.query.section` 选类；两个可用分类**同时挂载**、`v-show` 切换；无效／数组／reserved 值 `router.replace` 到 `models` 且保留其他 query |
-| `frontend/tests/e2e/settings.spec.ts` | 向量相关用例显式访问 `/settings?section=retrieval`；模型用例保持默认分类；`.settings-card` 定位改为带名称的 `region` |
+| `frontend/src/pages/SettingsPage.vue` | 按 `route.query.section` 选类；两个可用分类**同时挂载**、`v-show` 切换；无效／数组／reserved 值 `router.replace` 到 `models` 且保留其他 query；标题改为「设置」 |
+| `frontend/tests/e2e/settings.spec.ts` | 新增 `section(page, id)` 按 `[data-settings-section]` 定位；原来的「聊天配置与向量候选同页」用例拆成「默认分类」与「检索分类」两条；向量用例显式访问 `?section=retrieval`；`.settings-card.first()` 全部移除 |
 
 **实现要点**
 
@@ -119,8 +119,10 @@
 
 **验证**
 
-- `npm --prefix frontend run test:unit`：含 `settings-sections.spec.ts` 2 用例，全绿。
-- `npm --prefix frontend run test:e2e -- tests/e2e/settings.spec.ts`：见 Task 3 汇总。
+- `npm --prefix frontend run type-check`：通过。
+- `npm --prefix frontend run test:unit`：8 文件 / 120 用例通过，其中 `settings-sections.spec.ts` 4 条
+  （开放分类、未知/未开放/数组回默认、七个 ID 与标题、预留分类不能经 URL 进入）。
+- `npm --prefix frontend run test:e2e -- tests/e2e/settings.spec.ts`：10 用例通过。
 
 ### Task 3：状态与跨页面回归
 
