@@ -1,6 +1,6 @@
 # 提示词评测：数据集 + 一键脚本
 
-> 不改聊天人审链路，不按分数再生成。准则：[../evaluations/note-quality.md](../evaluations/note-quality.md)。
+> 不改聊天人审链路，不按分数再生成。准则：[../evaluations/note-quality.md](../../evals/criteria/note-quality.md)。
 
 **Goal:** `uv run python scripts/eval_notes.py --name v8-baseline` 在进程内跑与线上同构的 `ChatAgent`（含工具），按 v0.1 打分，结果写入 `evals/prompt/results/<阶段>/`。
 

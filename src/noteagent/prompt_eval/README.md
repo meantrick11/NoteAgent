@@ -16,7 +16,7 @@
 | `run.py` | 临时 notes + sqlite，装配与线上同构的四工具 Agent |
 | [`prompts/learning_note_judge.txt`](prompts/learning_note_judge.txt) | 学习型语义 Judge 提示词；运行时不进 `ChatAgent` |
 
-入口：[scripts/eval_notes.py](../../../scripts/eval_notes.py)、[scripts/calibrate_learning_notes.py](../../../scripts/calibrate_learning_notes.py)。准则：[docs/evaluations/note-quality.md](../../../docs/evaluations/note-quality.md)。
+入口：[scripts/eval_notes.py](../../../scripts/eval_notes.py)、[scripts/calibrate_learning_notes.py](../../../scripts/calibrate_learning_notes.py)。准则：[note-quality.md](../../../evals/criteria/note-quality.md)。
 
 ## 基础使用
 

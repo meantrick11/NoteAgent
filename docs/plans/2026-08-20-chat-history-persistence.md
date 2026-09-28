@@ -6,6 +6,8 @@
 >
 > **做完后不要自称完成。** 列出：改过的文件、每条跑过的 pytest 命令与通过/失败、Task 4/手工验收是否连上本机 Postgres。交给审查 Agent。
 
+> **执行状态（2026-09-27 补注）：已实现，规格清单未回勾。** 会话与消息落库、`pending_draft`、citations 等后续列已存在；现行表结构以 [database.md](../architecture/database.md) 为准。本文作为执行历史保留，勾选框不再逐条回勾。
+
 **Goal:** 单用户能在左侧看到历史会话、新建会话、点开会话看到完整气泡；刷新或重启后端后历史仍在。数据在本机 PostgreSQL。
 
 **Architecture:** 用户可见历史只存在 PostgreSQL。`ConversationStore` 是唯一写入口。HTTP 在 `/chat` 里先插入 user 消息、SSE 推 `conversation`、再跑现有 `ChatAgent`、流结束后插入 assistant。`ChatAgent` 继续用 `InMemorySaver`，`thread_id` = `conversation.id`。前端不把 localStorage 当主库。

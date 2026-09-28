@@ -2,11 +2,13 @@
 
 全局职责见 [architecture.md §5.6](./architecture.md#56-检索)。本文是现行切块、向量点、审批后同步与查询路径。聊天工具只读入口见 [chat-tools.md §4.3](./chat-tools.md#43-search_relative_from_chromadb)。
 
+> 关联文档：准则 [rag-quality.md](../../evals/criteria/rag-quality.md)；实测报告 [rag-v1-report.md](../../evals/reports/rag-v1-report.md)；复盘与后续触发条件 [rag-v1-retrospective.md](../../evals/reports/rag-v1-retrospective.md)；执行切片 [2026-09-25-rag-quality-improvement.md](../plans/2026-09-25-rag-quality-improvement.md)、[2026-09-02-auto-index-on-approve.md](../plans/2026-09-02-auto-index-on-approve.md)。
+
 | 项 | 内容 |
 |---|---|
 | 事实源 | 人审后的 `notes/*.md`。Chroma 是派生索引，可删光按文件重建 |
 | 触发 | 聊天 `commit_review` 写盘成功后同步该 `file_name`；Documents `/notes*` 写盘或点芯片同样走 `index_note` / `delete_note`；`reject` 不碰向量 |
-| 切块 / 模型 | `MarkdownChunker` 500/50、策略 `heading`、`embed_heading_prefix=True`（由 [rag-v1-report.md](../evaluations/rag-v1-report.md) 的任务六对照选出，可用 `CHUNK_STRATEGY` / `EMBED_HEADING_PREFIX` 覆盖）；默认 `intfloat/multilingual-e5-small`（由评测选出，可用 `EMBEDDING_MODEL` 覆盖），按其官方要求自动加 `query:` / `passage:` 前缀。换模型、换切块策略或换编码指令都必须重建 |
+| 切块 / 模型 | `MarkdownChunker` 500/50、策略 `heading`、`embed_heading_prefix=True`（由 [rag-v1-report.md](../../evals/reports/rag-v1-report.md) 的任务六对照选出，可用 `CHUNK_STRATEGY` / `EMBED_HEADING_PREFIX` 覆盖）；默认 `intfloat/multilingual-e5-small`（由评测选出，可用 `EMBEDDING_MODEL` 覆盖），按其官方要求自动加 `query:` / `passage:` 前缀。换模型、换切块策略或换编码指令都必须重建 |
 | 索引身份 | collection 里存**配置指纹**（下面字段的 canonical JSON 的 SHA-256）与产生它的可核验字段。任一字段变化都是另一个索引：collection 名也跟着变，不会把新向量写进旧身份 |
 | 配置一致性 | 与当前配置身份不符时构造 `RetrievalService` 即抛 `IndexConfigMismatch` 要求重建；加指纹之前建的旧 collection 身份无法核验，一律报「需要重建」而不冒充匹配 |
 | 运行期选择 | 界面可切换本地向量模型。启动时以持久化的 active 为准（优先于 `EMBEDDING_MODEL`），切换走 §7.1 的维护窗口 |
@@ -14,7 +16,7 @@
 
 `retrieval` 不改笔记文件、不写 PostgreSQL、不调聊天模型。`notes` / `retrieval` 不得 import `chat`。
 
-现行切块策略、嵌入模型与配置指纹是评测选型的结果，**为什么这样选、代价是什么、还剩什么**见 [rag-v1-retrospective.md](./rag-v1-retrospective.md)。
+现行切块策略、嵌入模型与配置指纹是评测选型的结果，**为什么这样选、代价是什么、还剩什么**见 [rag-v1-retrospective.md](../../evals/reports/rag-v1-retrospective.md)。
 
 ---
 
@@ -216,7 +218,7 @@ collection 自身的 metadata 另存上面两项身份记录（见 §4 的开头
 下列不是现行代码，不要按已上线实现：
 
 - 命中阈值、每篇 chunk 上限、混合检索、rerank
-- 中文 embedding 模型（已评测选型，见 [rag-v1-report.md](../evaluations/rag-v1-report.md)）
+- 中文 embedding 模型（已评测选型，见 [rag-v1-report.md](../../evals/reports/rag-v1-report.md)）
 - 气泡下额外出处芯片、NLI 引用校验
 - 笔记 YAML、`notes` 元数据表、创建时间进向量
 - PDF / OCR / URL 入库、勾选哪些文件进库
@@ -224,7 +226,7 @@ collection 自身的 metadata 另存上面两项身份记录（见 §4 的开头
 
 按 H2/H3 切块是现行配置（`strategy="heading"`）；工具是否返回 `heading_path` 属于 [chat-tools.md](./chat-tools.md) 的范围，当前**未返回**。
 
-实现切片：[docs/plans/2026-09-02-auto-index-on-approve.md](../plans/2026-09-02-auto-index-on-approve.md)、[docs/plans/2026-09-25-rag-quality-improvement.md](../plans/2026-09-25-rag-quality-improvement.md)（任务六）。更长的入库 Job 设想见 [docs/plans/draft-generation.md](../plans/draft-generation.md)，不是本文。
+实现切片：[docs/plans/2026-09-02-auto-index-on-approve.md](../plans/2026-09-02-auto-index-on-approve.md)、[docs/plans/2026-09-25-rag-quality-improvement.md](../plans/2026-09-25-rag-quality-improvement.md)（任务六）。更长的入库 Job 设想已归档到 [docs/product/archive/designs/ingestion-job-early-design.md](../product/archive/designs/ingestion-job-early-design.md)，不是本文。
 
 ---
 
