@@ -331,6 +331,41 @@ Library 打开着同一篇且没有未保存编辑时换上新正文，有未保
 
 ---
 
+### Task 6：迁移 Settings 并复用快捷操作 —— 完成
+
+**新增：** `tests/e2e/settings.spec.ts`。
+**修改：** `pages/SettingsPage.vue`、`features/models/ModelQuickControls.vue`（触发按钮补 `aria-label`）。
+
+Task 4 已经把 `ChatProfiles` / `ChatProfileForm` / `EmbeddingSettings` 做成可复用组件并共用同一个
+`models` store，所以本任务只把它们挂进设置页，**没有第二份逻辑**，也自动满足"两个入口不各自轮询"：
+`models.init()` 只在应用根部调用一次。
+
+**命令与真实输出**
+
+```text
+$ npm --prefix frontend run test:e2e
+  41 passed      （navigation 6 + assistant 7 + drafts-citations 8 + library 11 + settings 9）
+$ npm --prefix frontend run test:unit    114 passed
+$ npm --prefix frontend run type-check   无输出，退出码 0
+$ npm --prefix frontend run build        → 211.3 kB js / 26.6 kB css
+```
+
+**F14–F16 的证据**
+
+| 编号 | 证据 |
+|---|---|
+| F14 | e2e：普通保存走 `POST /chat/profiles` 且请求体带 `expected_revision: 7`、提示"（未启用）"；保存并启用走 `/chat/activate` 且**不**发 profiles；409 时保留表单内容并显示后端文案；当前启用的配置在表单里只有"保存并启用"、列表里没有"删除"；编辑时 Key 输入框为空且 placeholder 是"留空保留已保存的 Key"；连接测试显示"流式输出正常；工具调用正常" |
+| F15 | e2e：候选列表显示可用性与原因（"本地缓存不完整"）；点"重建并切换"发 `{model_id, expected_revision}`，随后显示"正在切换到 …：建立索引（3/10）"并进入维护中；`unchanged` 与失败分支由单测覆盖 |
+| F16 | 单测：`canSend` 随 busy、`modelActionsLocked` 随流式与重建；e2e：维护窗口下聊天发送被拒且内容退回输入框、审批按钮禁用；Settings↔Assistant 切换后看到同一批配置（同一份 store） |
+
+**真实后端人工验证：** `/settings` 下显示"环境默认（deepseek-v4-flash）· 已启用 · 凭据来自环境"，
+向量候选三个（all-MiniLM-L6-v2 / bge-small-zh-v1.5 / multilingual-e5-small），
+当前生效项标"已启用"，索引状态为"已索引 238 个片段 / 19 篇笔记"。
+
+**完成条件评估：** F14–F16 均有 e2e 或单测证据；模型操作没有因为入口从 Chat 改成 Settings＋快捷弹层而丢失。
+
+---
+
 ## 4. 汇总（随任务推进更新）
 
 | 任务 | 状态 | 提交 | 通过的功能编号 | 验证命令与结果 |
@@ -339,8 +374,8 @@ Library 打开着同一篇且没有未保存编辑时换上新正文，有未保
 | Task 2 Vue 外壳与路由 | 完成 | `6174f47` | —（外壳） | `type-check`；`test:unit` 3；`test:e2e` 6；`build`；`pytest` 501 |
 | Task 3 API／SSE／模型状态 | 完成 | `db954d9` | —（基础设施） | `test:unit` 59；`type-check`；开发代理同源验证 |
 | Task 4 Assistant 迁移 | 完成 | `66b777f` | F01–F09、F16（Assistant 部分） | `test:unit` 114；`test:e2e` 21；`type-check`；`build`；真实后端人工验证 |
-| Task 5 Library 迁移 | 完成 | 待填 | F10–F13 | `test:e2e` 32；`test:unit` 114；`type-check`；`build`；真实后端人工验证 |
-| Task 6 Settings 迁移 | 未开始 | — | — | — |
+| Task 5 Library 迁移 | 完成 | `22b47d1` | F10–F13 | `test:e2e` 32；`test:unit` 114；`type-check`；`build`；真实后端人工验证 |
+| Task 6 Settings 迁移 | 完成 | 待填 | F14–F16 | `test:e2e` 41；`test:unit` 114；`type-check`；`build`；真实后端人工验证 |
 | Task 7 Home／Records／美化 | 未开始 | — | — | — |
 | Task 8 部署接入与总回归 | 未开始 | — | — | — |
 
@@ -348,7 +383,7 @@ Library 打开着同一篇且没有未保存编辑时换上新正文，有未保
 
 - `npm --prefix frontend ci`：本轮用 `npm install` 生成 lockfile，未在干净目录验证 `ci`。
 - `docker compose build app`：Dockerfile 尚未加 Node 阶段（Task 8），本轮未验证。
-- 真实聊天往返（`POST /chat` 的 provider 调用）：会消耗用户额度，本轮未发起；
-  真实后端只做了读取与引用浏览（会话列表、历史消息、工具栏、引用定位）与 Library 的打开／预览。
+- 真实聊天往返（`POST /chat` 的 provider 调用）：会消耗用户额度，本轮未发起。
 - 流式增量的 e2e：`route.fulfill` 一次性下发整个 body，无法断言"token 逐个出现"。
-- 真实数据上的写操作（保存笔记、移动、删除、补建索引）：会改用户笔记，未在真实后端执行。
+- 真实数据上的写操作（保存笔记、移动、删除、补建索引、改模型配置、切换向量模型）：
+  会改用户数据/额度，未在真实后端执行；这些路径由 e2e + 后端测试覆盖。
