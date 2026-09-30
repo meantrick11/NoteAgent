@@ -1,6 +1,6 @@
 # product
 
-上层文档：**要做什么、采用什么方案、为什么**。产品要求、版本规划，以及产品与技术设计/决策都放在这里。
+上层文档：**要做什么、采用什么方案、为什么**。当前产品文档基线见 [1.5.0](versions/1.5.0/README.md)，版本管理规则见 [versions/README.md](versions/README.md)。产品要求、版本规划，以及产品与技术设计/决策都放在这里。
 
 现行系统**是什么**见 [architecture/](../architecture/README.md)；某一次具体执行见 [plans/](../plans/README.md)；怎么跑见 [guides/](../guides/README.md)；尺子与证据见 [evals/](../../evals/README.md)。
 
@@ -8,10 +8,12 @@
 
 | 文件 | 内容 | 状态 |
 |---|---|---|
-| [business-architecture.md](./business-architecture.md) | 产品目标、业务对象、共同链路、内容与权限边界 | 有效未来设计（V1 起点已在跑） |
-| [roadmap.md](./roadmap.md) | V1–V3 的范围、退出标准、验收状态与证据缺口 | 现行说明；判断“完成”的唯一依据 |
-| [frontend-architecture.md](./frontend-architecture.md) | Vue 页面结构、功能归属及入口演进 | 首轮已实施；顶部四工作入口＋设置齿轮已实施 |
-| [settings-architecture.md](./settings-architecture.md) | 齿轮入口、设置分类、预留能力与未来个人中心／平台管理边界 | 已实施（2026-09-28）；仅 models／retrieval 开放，其余只预留 ID |
+| [versions/1.5.0/](versions/1.5.0/README.md) | 当前产品文档版本线：业务、需求、功能、交付与变更记录 | 现行正文；文档版本独立于软件发布 |
+| [backlog.md](backlog.md) | 尚未纳入确认范围的新想法 | 需求池草案 |
+| [business-architecture.md](versions/1.5.0/business-architecture.md) | 产品目标、业务对象、共同链路、内容与权限边界 | 有效未来设计（V1 起点已在跑） |
+| [roadmap.md](versions/1.5.0/roadmap.md) | V1–V3 的范围、退出标准、验收状态与证据缺口 | 现行说明；判断“完成”的唯一依据 |
+| [frontend-architecture.md](versions/1.5.0/frontend-architecture.md) | Vue 页面结构、功能归属及入口演进 | 首轮已实施；顶部四工作入口＋设置齿轮已实施 |
+| [settings-architecture.md](versions/1.5.0/settings-architecture.md) | 齿轮入口、设置分类、预留能力与未来个人中心／平台管理边界 | 已实施（2026-09-28）；仅 models／retrieval 开放，其余只预留 ID |
 | [README.md](./README.md) | 本索引：上层文档职责、状态口径、设计文档结构约定 | 现行说明 |
 | [archive/](./archive/README.md) | 被替代、废弃的设计与画布 | 历史记录；不当作有效要求 |
 

@@ -7,7 +7,7 @@
 三条阅读路径：
 
 1. **理解当前系统** → [现行架构](architecture/architecture.md) → [架构附件](architecture/README.md) → [操作指南](guides/README.md)。先看现在是什么，再看怎么跑。
-2. **了解产品与规划** → [产品与业务架构](product/business-architecture.md) → [版本路线](product/roadmap.md)。做什么、边界在哪、每版做到什么程度、还缺什么证据。
+2. **了解产品与规划** → [产品文档 1.5.0](product/versions/1.5.0/README.md) → [产品与业务架构](product/versions/1.5.0/business-architecture.md) → [版本路线](product/versions/1.5.0/roadmap.md)。做什么、边界在哪、每版做到什么程度、还缺什么证据。
 3. **继续开发** → [产品与技术设计](product/README.md) → [执行计划](plans/README.md) → [评测标准与报告](../evals/README.md)。先确认方案与依据，再看执行记录与尺子。
 
 只想把项目跑起来：见 [guides/](guides/README.md)，不要从架构附件开始读。
