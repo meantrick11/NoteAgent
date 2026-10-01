@@ -26,7 +26,7 @@
 
 | 文件 | 状态 | 说明 |
 |---|---|---|
-| [2026-10-01-docs-v1.5.1-finalization.md](./2026-10-01-docs-v1.5.1-finalization.md) | 部分完成（文档已核对，基线待建） | 执行记录见 [results](./2026-10-01-docs-v1.5.1-finalization-results.md)：入口、链接与保护核对通过；本地 `docs-v1.5.1` 基线提交与标签待创建 |
+| [2026-10-01-docs-v1.5.1-finalization.md](./2026-10-01-docs-v1.5.1-finalization.md) | 已完成 | 执行记录见 [results](./2026-10-01-docs-v1.5.1-finalization-results.md)：入口、链接与保护核对通过；本地基线提交 `dd23d88` 与标签 `docs-v1.5.1` 已建立，未推送远程 |
 | [2026-09-10-learning-note-quality.md](./2026-09-10-learning-note-quality.md) | 部分完成（持续） | 学习型笔记 v0.2 准则、语义 Judge、Prompt 迭代留痕已交付；l01 的加工维度仍未达合格线（现行 prompt 见 [note-quality.md](../../evals/criteria/note-quality.md)） |
 
 V2.7 前端初始化计划的实现部分已完成（见下方"已完成"表），Tasks 1–8 逐项有验证证据。
