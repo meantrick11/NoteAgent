@@ -3,8 +3,8 @@
 > **历史设计，已被替代（2026-09-27 归档核对）。** 本文是 NoteAgent 早期「屏幕截图 + 系统音频转写」的方案。仓库中没有 `capture/screen.py`，也没有 Whisper 主循环，它不是现行系统，不作为新开发规格；自动写笔记等旧实现顺序同样失效。
 >
 > - **失效假设：** ① 屏幕截图与系统音频转写作为主要输入；② 采集过程中由 Agent 自动写笔记并插入截图引用；③ 用 `detect_topic_change` 决定章节、按日期成文；④ DeepSeek 只做文本理解，多模态留给后续版本。
-> - **仍然成立的部分：** pHash 而非像素差的理由、事件驱动而非定时轮询的判断、LLM 抽象层的做法。讨论屏幕采集时可以重读，但要按 [版本路线](../../roadmap.md) V3.4 的要求重新设计。
-> - **有效替代入口：** 现行系统 [architecture.md](../../../architecture/architecture.md)；对话上下文 [context-management.md](../../../architecture/context-management.md)；入库 Job 旧设想 [ingestion-job-early-design.md](./ingestion-job-early-design.md)；业务目标 [business-architecture.md](../../business-architecture.md)。
+> - **仍然成立的部分：** pHash 而非像素差的理由、事件驱动而非定时轮询的判断、LLM 抽象层的做法。讨论屏幕采集时可以重读，但要按 [版本路线](../../versions/1.5.0/roadmap.md) V3.4 的要求重新设计。
+> - **有效替代入口：** 现行系统 [architecture.md](../../../architecture/architecture.md)；对话上下文 [context-management.md](../../../architecture/context-management.md)；入库 Job 旧设想 [ingestion-job-early-design.md](./ingestion-job-early-design.md)；业务目标 [business-architecture.md](../../versions/1.5.0/business-architecture.md)。
 > - **相关画布：** [noteagent-architecture.canvas.tsx](./noteagent-architecture.canvas.tsx)、[noteagent-system-workflow.canvas.tsx](./noteagent-system-workflow.canvas.tsx)，同属入库设想，不是运行时。
 
 > 写给当时实现阶段的自己看。这里记的是**为什么这样设计**、**各模块的职责边界**、**关键权衡**，不是现行任务清单。

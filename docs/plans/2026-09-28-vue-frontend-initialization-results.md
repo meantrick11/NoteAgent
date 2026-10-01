@@ -2,7 +2,7 @@
 
 本文件是 [2026-09-28 Vue 引入与前端页面初始化执行计划](./2026-09-28-vue-frontend-initialization.md) 的执行记录。
 每个任务完成后回填：改动文件、通过的功能编号、测试命令与真实输出、未做项与偏差。它不是产品状态表——阶段状态仍以
-[product/roadmap.md](../product/roadmap.md) 为准。
+[product/roadmap.md](../product/versions/1.5.0/roadmap.md) 为准。
 
 **证据分级**（全文统一，不得混用）：自动测试通过 / 人工在运行页面验证通过 / 环境阻塞 / 已知旧问题 / 本次新增问题。
 

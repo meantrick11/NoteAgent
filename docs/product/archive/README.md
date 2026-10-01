@@ -13,8 +13,8 @@
 
 | 文件 | 内容 | 历史状态 | 有效替代入口 |
 |---|---|---|---|
-| [screen-audio-early-design.md](./designs/screen-audio-early-design.md) | 屏幕截图 + 系统音频转写方案（MVP 分层、pHash 变化检测、VAD 分段、三 Tool 拆分、滑动上下文） | 已被替代；仓库无 `capture/screen.py`、无 Whisper 主循环 | 现行系统 [architecture.md](../../architecture/architecture.md)；多模态范围 [versions.md](../roadmap.md) V3.4 |
-| [ingestion-job-early-design.md](./designs/ingestion-job-early-design.md) | IngestionJob 状态机、URL/搜索来源、自动索引、Reviewer 设想 | 已被替代；从未写入代码，其中旧假设已失效 | 业务目标 [business-architecture.md](../business-architecture.md)；阶段要求 [versions.md](../roadmap.md) |
+| [screen-audio-early-design.md](./designs/screen-audio-early-design.md) | 屏幕截图 + 系统音频转写方案（MVP 分层、pHash 变化检测、VAD 分段、三 Tool 拆分、滑动上下文） | 已被替代；仓库无 `capture/screen.py`、无 Whisper 主循环 | 现行系统 [architecture.md](../../architecture/architecture.md)；多模态范围 [versions.md](../versions/1.5.0/roadmap.md) V3.4 |
+| [ingestion-job-early-design.md](./designs/ingestion-job-early-design.md) | IngestionJob 状态机、URL/搜索来源、自动索引、Reviewer 设想 | 已被替代；从未写入代码，其中旧假设已失效 | 业务目标 [business-architecture.md](../versions/1.5.0/business-architecture.md)；阶段要求 [versions.md](../versions/1.5.0/roadmap.md) |
 | [noteagent-architecture.canvas.tsx](./designs/noteagent-architecture.canvas.tsx) | 入库设想画布（Cursor 画布，非运行时） | 已被替代；仅 import `cursor/canvas`，仓库内无渲染器、无代码引用 | 同上 |
 | [noteagent-system-workflow.canvas.tsx](./designs/noteagent-system-workflow.canvas.tsx) | 整体系统工作流程画布（含 Index Job、LangGraph checkpoint 设想） | 已被替代；同上 | 同上 |
 

@@ -26,6 +26,7 @@
 
 | 文件 | 状态 | 说明 |
 |---|---|---|
+| [2026-10-01-docs-v1.5.1-finalization.md](./2026-10-01-docs-v1.5.1-finalization.md) | 部分完成（文档已核对，基线待建） | 执行记录见 [results](./2026-10-01-docs-v1.5.1-finalization-results.md)：入口、链接与保护核对通过；本地 `docs-v1.5.1` 基线提交与标签待创建 |
 | [2026-09-10-learning-note-quality.md](./2026-09-10-learning-note-quality.md) | 部分完成（持续） | 学习型笔记 v0.2 准则、语义 Judge、Prompt 迭代留痕已交付；l01 的加工维度仍未达合格线（现行 prompt 见 [note-quality.md](../../evals/criteria/note-quality.md)） |
 
 V2.7 前端初始化计划的实现部分已完成（见下方"已完成"表），Tasks 1–8 逐项有验证证据。
@@ -68,5 +69,5 @@ V2.2／V2.3 仍按当前可用处理，其余 V2 迭代在前端扩容后继续�
 ## 维护动作
 
 - 行为变更后同步 [architecture/](../architecture/README.md)；执行后同步本索引状态与验证入口。
-- 达到退出标准才改 [versions.md](../product/roadmap.md)；替代旧设计必须两端加替代关系。
+- 达到退出标准才改 [当前版本路线](../product/versions/1.5.0/roadmap.md)；替代旧设计必须两端加替代关系。
 - 单个事实只保留一个主要维护位置，其他文档链接过去，不复制。

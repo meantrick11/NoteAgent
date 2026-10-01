@@ -1,7 +1,7 @@
 # Settings 入口调整与分类预留执行记录（2026-09-28）
 
 本文件是 [2026-09-28 Settings 入口调整与分类预留执行计划](./2026-09-28-settings-navigation-and-sections.md) 的执行记录：
-基线、逐任务证据、未执行项。产品语义以 [Settings 分类与未来个人中心边界](../product/settings-architecture.md) 为准；
+基线、逐任务证据、未执行项。产品语义以 [Settings 分类与未来个人中心边界](../product/versions/1.5.0/settings-architecture.md) 为准；
 现行界面结构见 [frontend.md](../architecture/frontend.md)。
 
 **范围：** 只改前端 Vue 应用（`frontend/`）与相关文档。未改后端、接口、数据库、模型配置、Agent、

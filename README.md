@@ -2,7 +2,7 @@
 
 个人学习笔记助手。本机 Web · Docker 或 uv · 人审后写 Markdown。
 
-产品远景是把对话、网页、视频与会议等内容整理为可复用材料；当前交付以聊天笔记闭环为起点。业务边界见 [产品与业务架构](docs/product/business-architecture.md)，未来能力与验收见 [版本路线](docs/product/roadmap.md)。
+产品远景是把对话、网页、视频与会议等内容整理为可复用材料；当前交付以聊天笔记闭环为起点。业务边界见 [产品与业务架构](docs/product/versions/1.5.0/business-architecture.md)，未来能力与验收见 [版本路线](docs/product/versions/1.5.0/roadmap.md)。
 
 在浏览器里对话，把值得保留的内容整理成 Markdown 草稿，**你点同意之后**才写入本地 `notes/`，并按该文件重建检索索引。单用户、单进程；聊天模型走外网（默认 DeepSeek）；笔记是普通 `.md`，可以自己打开、搬家。
 
@@ -184,8 +184,8 @@ npm --prefix frontend run test:e2e
 | [零基础（Docker）](docs/guides/zh/getting-started.md) | 从零打开浏览器 |
 | [本机开发](docs/guides/zh/local-dev.md) | uv、Postgres、测试、环境变量 |
 | [架构说明书](docs/architecture/architecture.md) | **现行系统的阅读主线**：模块、数据流、关键决策与代码落点 |
-| [产品与业务架构](docs/product/business-architecture.md) | 记录与复用场景、业务对象、整理方案及目标边界 |
-| [版本路线](docs/product/roadmap.md) | 分阶段交付、当前证据缺口与验收要求 |
+| [产品与业务架构](docs/product/versions/1.5.0/business-architecture.md) | 记录与复用场景、业务对象、整理方案及目标边界 |
+| [版本路线](docs/product/versions/1.5.0/roadmap.md) | 分阶段交付、当前证据缺口与验收要求 |
 | [产品与技术设计](docs/product/README.md) | 上层设计、技术决策与状态口径 |
 | [实现计划与执行记录](docs/plans/README.md) | 某一版怎么做、做到哪一步；计划里的“待实现”不是现状 |
 | [评测准则与报告](evals/README.md) | 准则在 `evals/criteria/`，报告与复盘在 `evals/reports/`，黄金集与运行结果在同目录 |

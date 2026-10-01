@@ -1,6 +1,6 @@
 # product
 
-上层文档：**要做什么、采用什么方案、为什么**。当前产品文档基线见 [1.5.0](versions/1.5.0/README.md)，版本管理规则见 [versions/README.md](versions/README.md)。产品要求、版本规划，以及产品与技术设计/决策都放在这里。
+上层文档：**要做什么、采用什么方案、为什么**。当前产品文档见 [1.5.0 版本线（1.5.1 已核对确认）](versions/1.5.0/README.md)，版本管理规则见 [versions/README.md](versions/README.md)。产品要求、版本规划，以及产品与技术设计/决策都放在版本目录中。
 
 现行系统**是什么**见 [architecture/](../architecture/README.md)；某一次具体执行见 [plans/](../plans/README.md)；怎么跑见 [guides/](../guides/README.md)；尺子与证据见 [evals/](../../evals/README.md)。
 
@@ -19,9 +19,9 @@
 
 ## 设计和决策写在这里
 
-产品与技术设计、重要取舍的长期主要位置是 `product/`，不是 `plans/`。`plans/` 只放某一次 Agent 执行任务；设计获批不等于功能已完成，现行行为一律读 [architecture/](../architecture/README.md)。
+产品与技术设计、重要取舍的长期主要位置是当前版本目录 `product/versions/1.5.0/`。`plans/` 只放某一次 Agent 执行任务；设计获批不等于功能已完成，现行行为一律读 [architecture/](../architecture/README.md)。
 
-`product/` 下的设计与决策按主题维护：共同业务边界见业务正文，前端方向见 [frontend-architecture.md](./frontend-architecture.md)。不另开 `design/`、`decisions/` 子目录。上两轮的 `docs/design/README.md`、`docs/decisions/README.md` 只有索引职责，其职责已并入本文件。
+`product/versions/1.5.0/` 下的设计与决策按主题维护：共同业务边界见业务正文，前端方向见 [frontend-architecture.md](versions/1.5.0/frontend-architecture.md)。不另开 `design/`、`decisions/` 子目录。上两轮的 `docs/design/README.md`、`docs/decisions/README.md` 只有索引职责，其职责已并入本文件。
 
 已有的取舍记录在正文里，不单独抽 ADR：运行时原则见 [architecture.md](../architecture/architecture.md) §1.4；检索选型与代价见 [rag-v1-retrospective.md](../../evals/reports/rag-v1-retrospective.md) 与 [rag-v1-report.md](../../evals/reports/rag-v1-report.md) §6。
 
@@ -46,8 +46,8 @@
 3. 替代方案与代价；
 4. 边界（不做什么、依赖什么）；
 5. 验收要求（可执行的判断条件）；
-6. 实施计划链接（`../plans/`）；
-7. 落地后的架构链接（`../architecture/`）。
+6. 实施计划链接（从当前版本目录指向 `../../../plans/`）；
+7. 落地后的架构链接（从当前版本目录指向 `../../../architecture/`）。
 
 设计一旦被计划采用，改方案要先回来更新本文档，再同步计划——不在执行计划里悄悄改变技术决策。
 

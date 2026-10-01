@@ -41,7 +41,7 @@
 
 ## 冲突怎么判
 
-- **当前行为**由代码与验证说明（[architecture/](architecture/README.md) + 测试/报告）；**目标**由有效需求说明（[product/](product/README.md) + [product/roadmap.md](product/roadmap.md)）；**历史成绩**保持原 run 身份（[evals/reports/](../evals/reports/)）。
+- **当前行为**由代码与验证说明（[architecture/](architecture/README.md) + 测试/报告）；**目标**由有效需求说明（[product/](product/README.md) + [当前版本路线](product/versions/1.5.0/roadmap.md)）；**历史成绩**保持原 run 身份（[evals/reports/](../evals/reports/)）。
 - 差异不能靠静默改需求或改历史结果来掩盖。发现实现与有效要求不一致：记录缺口与依据，改需求要走验收流程。
 - 实现存在 ≠ 已验证。实现、测试存在、执行通过是三种证据。
 - 报告里的数字要能定位到 run 与配置；勘误只改被证明写错的值，保留原运行日期与成绩归属。
@@ -62,7 +62,7 @@
 ## 维护动作
 
 - 行为变更后同步 [architecture/](architecture/README.md)；执行计划后同步 [plans/](plans/README.md) 状态。
-- 达到退出标准才改 [product/roadmap.md](product/roadmap.md)；替代旧设计必须两端加替代关系。
+- 达到退出标准才改 [当前版本路线](product/versions/1.5.0/roadmap.md)；替代旧设计必须两端加替代关系。
 - 事实优先链接而非复制；同一事实出现第二处时，改成指向主要维护位置。
 
 目录规则与评测归属的调整记录见 [plans/2026-09-27-docs-four-directory-consolidation-results.md](plans/2026-09-27-docs-four-directory-consolidation-results.md)。

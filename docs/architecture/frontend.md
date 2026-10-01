@@ -24,7 +24,7 @@
 ## 0. 现行实现（Vue）
 
 > 设置入口与分类（2026-09-28 已实施）：右上角齿轮进入 `/settings`，页面用 `?section=` 表达分类。
-> 产品语义见 [Settings 设计](../product/settings-architecture.md)，执行记录见
+> 产品语义见 [Settings 设计](../product/versions/1.5.0/settings-architecture.md)，执行记录见
 > [结果文档](../plans/2026-09-28-settings-navigation-and-sections-results.md)。
 
 **页面与导航。** 顶部横栏由主导航和工具区组成：主导航固定为 **Home → Assistant → Records → Library**

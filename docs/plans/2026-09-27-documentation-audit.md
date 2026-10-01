@@ -1,6 +1,6 @@
 # 文档整理记录（2026-09-27）
 
-本文件是 [2026-09-27 文档组织与过时内容治理计划](./2026-09-27-documentation-reorganization.md) 的执行记录：检查基线、逐份文档清单、冲突矩阵、证据与验证结果。它不建立第二份产品状态表；阶段状态仍以 [版本路线](../product/roadmap.md) 为准。
+本文件是 [2026-09-27 文档组织与过时内容治理计划](./2026-09-27-documentation-reorganization.md) 的执行记录：检查基线、逐份文档清单、冲突矩阵、证据与验证结果。它不建立第二份产品状态表；阶段状态仍以 [版本路线](../product/versions/1.5.0/roadmap.md) 为准。
 
 **范围：** 只动文档与为迁移必需的历史画布引用。未改应用代码、接口、数据库、测试、构建配置或依赖；未执行评测、未运行真实模型、未提交或推送。
 
@@ -159,10 +159,10 @@
 
 **C5｜V1.1 路径措辞与实际支持边界**
 
-- 声明：[versions.md](../product/roadmap.md) §2.3 功能要求写“路径校验拒绝绝对路径、`..` 和嵌套目录”。
+- 声明：[versions.md](../product/versions/1.5.0/roadmap.md) §2.3 功能要求写“路径校验拒绝绝对路径、`..` 和嵌套目录”。
 - 依据：`src/noteagent/notes/repository.py` `_normalize_note` 只接受 1–2 段（`Note.md` 或 `Folder/Note.md`），多于两段报 `nested paths are not allowed`；`_normalize_folder` 只接受单段。`tests/unit/test_note_repository.py` 有 `test_rejects_two_level_path`、`test_one_level_create_read_list`、`test_create_folder_rejects_nested`。[architecture.md](../architecture/architecture.md) §5.5 记为“拒绝空名、绝对路径、`..`、两层以上目录；允许 `Folder/Note.md`”。一层目录是 [2026-09-05-documents-panel.md](./2026-09-05-documents-panel.md) 的显式决定。
 - 判定：准确边界是“**允许一层文件夹、拒绝两层及以上**”。路线图 V1.1 的“拒绝嵌套目录”是产品要求变更后未同步的表述，不是代码缺陷。
-- 动作：**只记录差异**，不改退出标准；在 [versions.md](../product/roadmap.md) §2.3 加一行边界说明指向 [retrieval.md](../architecture/retrieval.md)/架构书，是否改 V1.1 措辞留用户决定。
+- 动作：**只记录差异**，不改退出标准；在 [versions.md](../product/versions/1.5.0/roadmap.md) §2.3 加一行边界说明指向 [retrieval.md](../architecture/retrieval.md)/架构书，是否改 V1.1 措辞留用户决定。
 
 **C6｜前端“五个页面 / Vue”方向未进入任何现行说明**
 
@@ -277,7 +277,7 @@
 **仍需用户决策：**
 
 1. RAG 报告 §1.1 更正后，「引用可定位到章节与原文 100%」门槛实际为 19/24 = 79.2%（D1）：是接受 `read_file` 整篇引用，还是要求引用一律来自检索片段。
-2. [versions.md](../product/roadmap.md) §2.3 的“拒绝嵌套目录”措辞是否随“允许一层目录”一并修订（C5）；本轮只记录差异。
+2. [versions.md](../product/versions/1.5.0/roadmap.md) §2.3 的“拒绝嵌套目录”措辞是否随“允许一层目录”一并修订（C5）；本轮只记录差异。
 3. 是否把 `docs/roadmap/版本1.1代码解析.md` 收进正式教程（推荐路径 `docs/tutorials/zh/code-walkthrough.md`）并按现行代码修订其中过时表述（E1/D5）。
 4. 是否清理两个画布遗留的 `cursor/canvas` 宿主依赖（当前无需处理，仓库内无渲染器）。
 

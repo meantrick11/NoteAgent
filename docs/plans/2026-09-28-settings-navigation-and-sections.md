@@ -11,7 +11,7 @@
 
 **Tech Stack：** 仓库已安装的 Vue、TypeScript、Vue Router、Pinia、Vitest、Playwright；无需升级依赖。
 
-**Spec：** [Settings 分类与未来个人中心边界](../product/settings-architecture.md)。本计划是 Vue 初始化后的增量，不重新执行 [原初始化计划](2026-09-28-vue-frontend-initialization.md)。
+**Spec：** [Settings 分类与未来个人中心边界](../product/versions/1.5.0/settings-architecture.md)。本计划是 Vue 初始化后的增量，不重新执行 [原初始化计划](2026-09-28-vue-frontend-initialization.md)。
 
 ## 1. 已核查的代码与约束
 

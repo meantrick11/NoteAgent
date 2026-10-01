@@ -3,7 +3,7 @@
 > **历史设计，已被替代（2026-09-27 归档核对）。** 本文是「IngestionJob / URL 源 / 自动索引」的产品设想，从未写入代码，不作为实施规格。以下旧假设不再作为约束：① 一篇来源一篇 Markdown；② 成功后丢弃全部网页正文；③ 强制独立 Reviewer；④ Collector 不能写任何文件。
 >
 > - **已部分落地：** 审批后同步索引、草稿与人审链路已在现行系统实现。目标允许多来源关联、保留必要核对依据；Reviewer 须经评测证明收益；Collector 可在授权范围内保存来源，但不提交正式材料。
-> - **有效替代入口：** 业务目标 [business-architecture.md](../../business-architecture.md)；阶段范围与验收 [versions.md](../../roadmap.md)；现行系统 [architecture.md](../../../architecture/architecture.md)、[chat-tools.md](../../../architecture/chat-tools.md)；屏幕采集旧稿 [screen-audio-early-design.md](./screen-audio-early-design.md)；画布 [noteagent-architecture.canvas.tsx](./noteagent-architecture.canvas.tsx)、[noteagent-system-workflow.canvas.tsx](./noteagent-system-workflow.canvas.tsx)。
+> - **有效替代入口：** 业务目标 [business-architecture.md](../../versions/1.5.0/business-architecture.md)；阶段范围与验收 [versions.md](../../versions/1.5.0/roadmap.md)；现行系统 [architecture.md](../../../architecture/architecture.md)、[chat-tools.md](../../../architecture/chat-tools.md)；屏幕采集旧稿 [screen-audio-early-design.md](./screen-audio-early-design.md)；画布 [noteagent-architecture.canvas.tsx](./noteagent-architecture.canvas.tsx)、[noteagent-system-workflow.canvas.tsx](./noteagent-system-workflow.canvas.tsx)。
 
 > 下文保留归档时的原设想正文，其中「一篇来源一篇 Markdown」「成功后丢弃网页正文」「强制 Reviewer」「Collector 不能写任何文件」等表述已被上面的说明取代。
 

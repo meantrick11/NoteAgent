@@ -10,7 +10,7 @@
 
 **技术方案：** Vue 3、TypeScript、Vite、Vue Router、Pinia；原生 fetch；保留 Markdown 编辑与预览方式，首轮不引入富文本编辑器或大型 UI 组件库。Vitest 与 Playwright 分别覆盖状态逻辑与用户交互。以上为本计划的实施选型，不是当前仓库已安装依赖。
 
-**依据：** [前端产品结构与架构决策](../product/frontend-architecture.md)、[现行前端](../architecture/frontend.md)、[路线图](../product/roadmap.md)，以及 2026-09-28 本次用户约束。发生冲突时，以本次用户约束为准。
+**依据：** [前端产品结构与架构决策](../product/versions/1.5.0/frontend-architecture.md)、[现行前端](../architecture/frontend.md)、[路线图](../product/versions/1.5.0/roadmap.md)，以及 2026-09-28 本次用户约束。发生冲突时，以本次用户约束为准。
 
 ## 1. 用户已确定的范围
 

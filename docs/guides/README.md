@@ -16,7 +16,7 @@
 | 想了解 | 去哪 |
 |---|---|
 | 现在是什么、模块怎么分 | [architecture/](../architecture/README.md) |
-| 接下来做什么、验收标准 | [product/roadmap.md](../product/roadmap.md) |
+| 接下来做什么、验收标准 | [product/roadmap.md](../product/versions/1.5.0/roadmap.md) |
 | 某一版的执行过程 | [plans/](../plans/README.md) |
 | 评测准则与报告 | [evals/](../../evals/README.md) |
 
