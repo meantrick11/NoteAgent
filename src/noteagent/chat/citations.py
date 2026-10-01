@@ -72,6 +72,27 @@ class CitationRegistry:
         """Lookup a registered source, or None if the model invented the id."""
         return self._by_index.get(index)
 
+    def as_list(self) -> list[dict[str, object]]:
+        """Serializable snapshot, so a registry can travel inside a checkpoint."""
+        return [cite.as_dict() for cite in self._by_index.values()]
+
+    @classmethod
+    def from_list(cls, items: list[dict] | None) -> "CitationRegistry":
+        """Rebuild a registry restored from a checkpoint."""
+        registry = cls()
+        for item in items or []:
+            index = int(item.get("index") or 0)
+            cite = Citation(
+                index=index,
+                file_name=str(item.get("file_name") or ""),
+                chunk_index=item.get("chunk_index"),
+                quote=item.get("quote"),
+            )
+            registry._by_key[(cite.file_name, cite.chunk_index, cite.quote or "")] = cite
+            registry._by_index[index] = cite
+            registry._next = max(registry._next, index + 1)
+        return registry
+
 
 current_citations: ContextVar[CitationRegistry | None] = ContextVar(
     "noteagent_citations",

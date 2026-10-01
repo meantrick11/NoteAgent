@@ -33,6 +33,8 @@ class GraphState(TypedDict, total=False):
     runtime_messages: list[Any]
     citation_registry: list[dict[str, Any]]
     tool_steps: list[dict[str, Any]]
+    # Tool-call ids already announced this turn, so a re-run cannot double-report one hop.
+    announced_tool_ids: list[str]
     current_turn_id: str | None
     current_user_id: str | None
     current_question: str | None
@@ -60,6 +62,7 @@ def initial_state(*, branch_id: str | None = None, generation: int = 0) -> Graph
         runtime_messages=[],
         citation_registry=[],
         tool_steps=[],
+        announced_tool_ids=[],
         current_turn_id=None,
         current_user_id=None,
         current_question=None,
@@ -112,8 +115,8 @@ class MessageRecord:
     tool_steps: list | None = None
 
 
-def ui_message_from_record(record: MessageRecord) -> dict[str, Any]:
-    """Project a stored row into the checkpointed display record."""
+def message_dict_from_record(record: MessageRecord) -> dict[str, Any]:
+    """Full serializable form: display fields plus the tool-stub fields."""
     return {
         "id": record.id,
         "role": record.role,
@@ -122,7 +125,17 @@ def ui_message_from_record(record: MessageRecord) -> dict[str, Any]:
         "turn_id": record.turn_id,
         "citations": list(record.citations or []),
         "tool_steps": list(record.tool_steps or []),
+        "tool_name": record.tool_name,
+        "tool_arguments": record.tool_arguments,
+        "output_preview": record.output_preview,
+        "truncated": record.truncated,
+        "status": record.status,
     }
+
+
+def ui_message_from_record(record: MessageRecord) -> dict[str, Any]:
+    """Project a stored row into the checkpointed display record."""
+    return message_dict_from_record(record)
 
 
 def record_from_ui(item: Mapping[str, Any]) -> MessageRecord:

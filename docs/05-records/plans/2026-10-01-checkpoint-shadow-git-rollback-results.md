@@ -160,3 +160,47 @@ PostgreSQL 测试真实执行了关闭/重连（`reopen()`），验证 state 与
 - 无失败项。
 - 未在开发库 `noteagent` 的 `public` schema 上执行 migration（避免改动共享状态）；迁移正确性已在一次性 schema 上验证 upgrade + downgrade。
 - `chat/graph.py` 尚未存在，故「真实图 update_state fork」夹具（Task 0 约定）延后到 Task 2；本任务用 `write_state(publish=False)` 表达同一「未发布候选」语义。
+
+---
+
+## Task 2（A）：将 Agent 循环改为可持久化图执行（进行中）
+
+本任务按计划允许的方式拆成两个提交，先落地**图核心**（可独立验证），再切换 `ChatAgent.stream` 的运行路径。
+
+### 已完成：图核心（提交 1）
+
+| 文件 | 内容 |
+|---|---|
+| `src/noteagent/chat/graph.py` | `build_chat_graph`：`START→compact→model→(tools→compact→model)*→finalize→END`；`stream_graph` 以 `stream_mode=["custom","updates"]` 转发节点事件，并保证 run 结束时 saver 已落盘 |
+| `src/noteagent/chat/nodes.py` | `GraphRuntime` 与四个节点；节点只依赖 checkpoint 状态，不读旧表；tools 节点在执行期间才设置 `current_thread_id/current_turn_id/current_citations` 局部上下文 |
+| `src/noteagent/chat/events.py` | 既有 SSE 合同的唯一映射处（thinking/generating/token/think/tool/tool_done/sources/assistant_final/draft/error） |
+| `conversations/service.py` | 新增 `prepare_turn`（在会话 CAS 下写 user 消息 + 登记 boundary + 占位 ConversationRun 防重复）与 `mark_run` |
+| `conversations/checkpoints.py` | `state_to_checkpoint` + `next_versions`（版本必须由 saver 生成） |
+| `conversations/records.py` | `GraphState` 增加 `announced_tool_ids`；新增 `message_dict_from_record` |
+| `chat/citations.py` | `CitationRegistry.as_list/from_list`，使引用注册表随 checkpoint 往返 |
+| `tests/unit/test_chat_graph.py` | 6 例 |
+
+### 已运行检查
+
+```text
+pytest tests/unit/test_chat_graph.py -q
+=> 6 passed in 0.53s
+
+pytest tests/unit tests/integration -q        # 全量回归
+=> 529 passed, 1 warning in 23.13s
+```
+
+覆盖：单跳轮次写入 user+assistant、多次工具跳的调用/结果配对与「工具跳 prose 只进 trace」、hop 上限触发失败收尾（不伪造成功）、压缩保留展示历史、`propose_note` 草稿随状态保存且不写盘、同一 `request_id` 只允许一次 prepare。
+
+### 本任务踩到的实现约束（已验证）
+
+1. **checkpoint 的 `channel_versions` 必须由 saver 的 `get_next_version` 生成**：自己填 UUID 或整数会让下一个 superstep 在 `get_new_channel_versions` 里抛错（类型/格式不匹配）。`next_versions()` 集中处理。
+2. **LangGraph 会向声明了第二个参数的节点注入自己的 `Runtime`**：最初用 `functools.partial(node, runtime=...)` 直接报 `'Runtime' object has no attribute ...`。改为单参数闭包绑定。
+3. **工具结果不能被当成最终回答**：`ToolMessage` 有 content 且没有 `tool_calls`，`_final_answer` 必须显式排除它，否则 hop 上限会用工具输出冒充回答、把失败标成成功。
+4. **计划里的压缩代表用例需要 ≥2 个已完成的历史轮次**：`select_turns_to_drop` 永远保留最新的完整轮次，因此「第 2 轮触发压缩」时没有可丢弃轮次，`running_summary` 不会产生。测试改为 3 轮（第 3 轮 force_compact），语义与计划一致；未修改压缩算法本身。
+
+### 尚未完成（提交 2）
+
+- `ChatAgent.stream` 尚未切换到图；HTTP/SSE 与旧 `ConversationStore` 运行路径仍按现状工作，`test_chat_agent_context.py` 未被改动。
+- 原因是该切换的爆炸半径包含 `prompt_eval/run.py`、`rag_eval/agent_run.py` 与 `bootstrap/runtime.py` 的装配，而评测运行器按计划归属 Task 3。计划本身也要求 A 阶段整体验收前不得把编辑入口开放给半迁移后端。
+- 因此本提交只交付「真实图 + 真实 checkpoint 可运行且行为有测试锁定」，**不声称 Task 2 完成**。

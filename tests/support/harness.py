@@ -6,13 +6,22 @@ so a test can be moved between them without changing anything but the fixture.
 
 from __future__ import annotations
 
+import uuid
+from dataclasses import replace
+
 from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy import Engine
 
+from noteagent.chat.context_budget import ContextBudget
+from noteagent.chat.drafts import DraftStore
+from noteagent.chat.graph import build_chat_graph, stream_graph
 from noteagent.chat.history import ConversationStore
+from noteagent.chat.nodes import GraphRuntime
+from noteagent.chat.tools import build_chat_tools
 from noteagent.conversations.checkpoints import (
     CheckpointRuntime,
     checkpoint_id_of,
+    thread_config,
 )
 from noteagent.conversations.records import (
     ConversationRecord,
@@ -27,6 +36,7 @@ from noteagent.db import (
     create_session_factory,
     load_all_models,
 )
+from support.fakes import FakeChatModel, FakeRetrieval
 
 
 def sqlalchemy_schema_url(database_url: str, schema: str) -> str:
@@ -35,16 +45,39 @@ def sqlalchemy_schema_url(database_url: str, schema: str) -> str:
     return f"{database_url}{sep}options=-csearch_path%3D{schema}"
 
 
+# Test budget: small enough that compaction thresholds can be forced from a case.
+TEST_BUDGET = ContextBudget(
+    window=100000,
+    trigger_ratio=0.8,
+    target_ratio=0.6,
+    stub_preview_tokens=8,
+    args_preview_chars=120,
+    output_reserve=10,
+    safety_buffer=10,
+    max_tool_hops=3,
+)
+
+
 class ConversationHarness:
     """Real service + real saver, over either SQLite/InMemory or PostgreSQL."""
 
-    def __init__(self, *, sqlalchemy_url: str, libpq_dsn: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        sqlalchemy_url: str,
+        libpq_dsn: str | None = None,
+        notes=None,
+        model: FakeChatModel | None = None,
+    ) -> None:
         self._sqlalchemy_url = sqlalchemy_url
         self._libpq_dsn = libpq_dsn
         self._engine: Engine | None = None
         self.runtime: CheckpointRuntime | None = None
         self.service: ConversationService | None = None
         self.history: ConversationStore | None = None
+        self.notes = notes
+        self.model = model
+        self.summaries: list[str] = []
 
     @property
     def is_persistent(self) -> bool:
@@ -122,6 +155,49 @@ class ConversationHarness:
             parent_checkpoint_id=checkpoint_id_of(parent_config),
             publish=False,
         )
+
+    # -- graph turns --------------------------------------------------------
+
+    def graph_runtime(self, *, budget: ContextBudget | None = None) -> GraphRuntime:
+        """A real GraphRuntime over the harness's notes, tools, and scripted model."""
+        if self.notes is None or self.model is None:
+            raise RuntimeError("harness needs notes and a model to run the graph")
+        drafts = DraftStore(self.history)
+        return GraphRuntime(
+            model=self.model,
+            tools=build_chat_tools(self.notes, FakeRetrieval(), drafts),
+            drafts=drafts,
+            budget=budget or TEST_BUDGET,
+            system_prompt="SYSTEM",
+            summarize_dropped=self._summarize,
+        )
+
+    def _summarize(self, old: str | None, dropped: str) -> str:
+        """Deterministic summarizer; records that it ran so a case can assert it."""
+        self.summaries.append(dropped)
+        return f"SUMMARY({len(dropped)})"
+
+    async def complete_turn(
+        self, conversation_id: str, question: str, *, force_compact: bool = False
+    ) -> list[dict]:
+        """Prepare and run one real graph turn; returns the emitted SSE events."""
+        assert self.service is not None and self.runtime is not None
+        budget = (
+            replace(TEST_BUDGET, window=1) if force_compact else TEST_BUDGET
+        )
+        prepared = await self.service.prepare_turn(
+            conversation_id, question, request_id=str(uuid.uuid4())
+        )
+        graph = build_chat_graph(self.graph_runtime(budget=budget), self.runtime.saver)
+        events: list[dict] = []
+        async for event in stream_graph(graph, {}, thread_config(conversation_id)):
+            events.append(event)
+        latest = await self.runtime.saver.aget_tuple(thread_config(conversation_id))
+        self.service.publish_head(
+            conversation_id, prepared.branch_id, checkpoint_id_of(latest.config) or ""
+        )
+        self.service.mark_run(prepared.run_id, "completed")
+        return events
 
 
 def _now():

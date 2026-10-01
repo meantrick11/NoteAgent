@@ -18,7 +18,7 @@ import pytest
 from noteagent.bootstrap.settings import Settings
 from noteagent.conversations.checkpoints import postgres_uri
 from noteagent.notes.repository import FileNoteRepository
-from support.fakes import FailInjector, FakeEmbedder
+from support.fakes import FailInjector, FakeChatModel, FakeEmbedder
 from support.harness import ConversationHarness, sqlalchemy_schema_url
 
 # psycopg's async driver refuses Windows' default ProactorEventLoop; the production
@@ -116,21 +116,28 @@ async def _run_harness(harness: ConversationHarness):
 
 
 @pytest.fixture
-async def conversation_harness():
-    """In-memory checkpointer over SQLite: fast, but nothing survives reopen."""
-    async for harness in _run_harness(
-        ConversationHarness(sqlalchemy_url="sqlite:///:memory:")
-    ):
-        yield harness
+async def conversation_harness(tmp_notes):
+    """In-memory checkpointer over SQLite, with a scripted model and real tools.
+
+    Nothing survives reopen, so persistence is exercised by ``postgres_harness``.
+    """
+    harness = ConversationHarness(
+        sqlalchemy_url="sqlite:///:memory:",
+        notes=tmp_notes,
+        model=FakeChatModel([]),
+    )
+    async for started in _run_harness(harness):
+        yield started
 
 
 @pytest.fixture
-async def postgres_harness(pg_target: PgTarget):
+async def postgres_harness(pg_target: PgTarget, tmp_notes):
     """Real PostgreSQL schema and real AsyncPostgresSaver; survives reopen."""
-    async for harness in _run_harness(
-        ConversationHarness(
-            sqlalchemy_url=pg_target.sqlalchemy_url,
-            libpq_dsn=pg_target.libpq_dsn,
-        )
-    ):
-        yield harness
+    harness = ConversationHarness(
+        sqlalchemy_url=pg_target.sqlalchemy_url,
+        libpq_dsn=pg_target.libpq_dsn,
+        notes=tmp_notes,
+        model=FakeChatModel([]),
+    )
+    async for started in _run_harness(harness):
+        yield started

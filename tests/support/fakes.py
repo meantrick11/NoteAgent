@@ -95,3 +95,37 @@ class FakeRetrieval:
 
     def verify_index(self) -> bool:
         return True
+
+
+class FakeChatModel:
+    """Scripted chat model: one queued reply per hop, streamed like a real one.
+
+    ``bind_tools`` returns self because the graph calls it on every hop; the replies
+    queue is consumed in order so a tool hop and its follow-up are explicit.
+    """
+
+    def __init__(self, replies: list, *, summary: str = "SUM") -> None:
+        from langchain_core.messages import AIMessage
+
+        self.replies = [r if isinstance(r, AIMessage) else AIMessage(content=str(r)) for r in replies]
+        self.summary = summary
+        self.calls: list[list] = []
+        self.bound_tools: list = []
+
+    def bind_tools(self, tools):
+        self.bound_tools = list(tools)
+        return self
+
+    async def astream(self, messages, config=None):
+        self.calls.append(list(messages))
+        if not self.replies:
+            raise AssertionError("FakeChatModel ran out of scripted replies")
+        yield self.replies.pop(0)
+
+    def invoke(self, messages, config=None):
+        from langchain_core.messages import AIMessage
+
+        return AIMessage(content=self.summary)
+
+    async def ainvoke(self, messages, config=None):
+        return self.invoke(messages, config)

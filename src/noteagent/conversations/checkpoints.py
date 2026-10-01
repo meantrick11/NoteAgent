@@ -61,15 +61,25 @@ def pinned(config: Mapping[str, Any], checkpoint_id: str) -> dict[str, Any]:
 
 
 def state_to_checkpoint(
-    values: Mapping[str, Any],
-) -> tuple[Checkpoint, dict[str, Any]]:
-    """Wrap plain state values as a checkpoint whose channels all carry its own version."""
+    values: Mapping[str, Any], versions: Mapping[str, Any]
+) -> Checkpoint:
+    """Wrap plain state values as a terminal checkpoint a graph can continue from.
+
+    ``versions`` must come from the active saver's own ``get_next_version``: each
+    backend formats channel versions differently, and a fabricated value breaks the
+    next superstep's version comparison.
+    """
     checkpoint = empty_checkpoint()
     data = dict(values)
     checkpoint["channel_values"] = data
-    checkpoint["channel_versions"] = {key: checkpoint["id"] for key in data}
+    checkpoint["channel_versions"] = dict(versions)
     checkpoint["updated_channels"] = list(data)
-    return checkpoint, {key: checkpoint["id"] for key in data}
+    return checkpoint
+
+
+def next_versions(saver: BaseCheckpointSaver, values: Mapping[str, Any]) -> dict[str, Any]:
+    """Ask the saver for a fresh version per channel, so types always match."""
+    return {key: saver.get_next_version(None, None) for key in values}
 
 
 class CheckpointRuntime:

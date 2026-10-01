@@ -9,23 +9,27 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Mapping
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from noteagent.conversations.checkpoints import (
     CHECKPOINT_NS,
     CheckpointRuntime,
     checkpoint_id_of,
-    thread_config,
+    next_versions,
     state_to_checkpoint,
+    thread_config,
 )
-from noteagent.conversations.models import ConversationBranch
+from noteagent.conversations.models import ConversationBranch, ConversationRun, UserMessageBoundary
 from noteagent.conversations.records import (
     ConversationRecord,
     GraphState,
     MessageRecord,
     initial_state,
+    message_dict_from_record,
     record_from_ui,
     validate_state,
 )
@@ -38,12 +42,29 @@ class ConversationNotFound(KeyError):
     """Raised when a conversation id is unknown or malformed."""
 
 
+class TurnAlreadyClaimed(RuntimeError):
+    """Raised when a request id has already prepared a turn."""
+
+
 @dataclass(slots=True)
 class StateView:
     """One checkpoint's state plus the exact config it was read with."""
 
     values: GraphState
     config: dict[str, Any]
+
+
+@dataclass(slots=True)
+class PreparedTurn:
+    """Everything a run needs to execute one user turn exactly once."""
+
+    conversation_id: str
+    branch_id: str
+    turn_id: str
+    user_message_id: str
+    generation: int
+    run_id: str
+    before_config: dict[str, Any]
 
 
 class ConversationService:
@@ -147,14 +168,19 @@ class ConversationService:
         With ``publish=False`` the checkpoint exists but the application head does not
         move, which is how a candidate fork stays invisible until it is committed.
         """
-        checkpoint, new_versions = state_to_checkpoint(values)
+        checkpoint = state_to_checkpoint(
+            values, next_versions(self._runtime.saver, values)
+        )
         metadata = {
             "source": "update",
             "step": int(values.get("generation", 0) or 0),
             "parents": {CHECKPOINT_NS: parent_checkpoint_id} if parent_checkpoint_id else {},
         }
         saved = await self._runtime.saver.aput(
-            thread_config(conversation_id), checkpoint, metadata, new_versions
+            thread_config(conversation_id),
+            checkpoint,
+            metadata,
+            checkpoint["channel_versions"],
         )
         new_id = checkpoint_id_of(saved)
         if publish:
@@ -193,6 +219,131 @@ class ConversationService:
         except ConversationNotFound:
             return None
         return [record_from_ui(item) for item in view.values.get("ui_messages", [])]
+
+    # ---- turns ------------------------------------------------------------
+
+    async def prepare_turn(
+        self, conversation_id: str, question: str, request_id: str
+    ) -> PreparedTurn:
+        """Claim the run and write the user message before any model call.
+
+        The boundary records the head as it was *before* this message, which is the
+        safe point a later edit of this message must fork from.
+        """
+        turn_id = uuid.uuid4()
+        user_message_id = uuid.uuid4()
+        with self._session_factory() as session:
+            conversation = self._load(session, conversation_id)
+            branch = self._branch(session, conversation)
+            before_checkpoint_id = branch.head_checkpoint_id
+            if before_checkpoint_id is None:
+                raise ConversationNotFound(conversation_id)
+            claimed = session.scalar(
+                select(ConversationRun).where(ConversationRun.request_id == request_id)
+            )
+            if claimed is not None:
+                raise TurnAlreadyClaimed(request_id)
+            run = ConversationRun(
+                conversation_id=conversation.id,
+                branch_id=branch.id,
+                turn_id=turn_id,
+                user_message_id=user_message_id,
+                generation=int(conversation.generation or 0),
+                checkpoint_id=before_checkpoint_id,
+                status="prepared",
+                request_id=request_id,
+            )
+            session.add(run)
+            session.commit()
+            branch_id = str(branch.id)
+            generation = int(conversation.generation or 0)
+            run_id = str(run.id)
+
+        before_config = thread_config(conversation_id, before_checkpoint_id)
+        values = dict((await self.read_state(before_config)).values)
+        user_record = MessageRecord(
+            id=str(user_message_id),
+            conversation_id=conversation_id,
+            role="user",
+            content=question,
+            created_at=datetime.now(timezone.utc),
+            turn_id=str(turn_id),
+            tool_name=None,
+            tool_arguments=None,
+            output_preview=None,
+            truncated=False,
+            status=None,
+        )
+        entry = message_dict_from_record(user_record)
+        values.update(
+            ui_messages=list(values.get("ui_messages") or []) + [entry],
+            working_records=list(values.get("working_records") or []) + [entry],
+            current_turn_id=str(turn_id),
+            current_user_id=str(user_message_id),
+            current_question=question,
+            tool_rounds=0,
+            runtime_messages=[],
+            citation_registry=[],
+            tool_steps=[],
+            announced_tool_ids=[],
+            branch_id=branch_id,
+            generation=generation,
+            run_status="running",
+        )
+        await self.write_state(
+            conversation_id,
+            values,
+            branch_id=branch_id,
+            parent_checkpoint_id=before_checkpoint_id,
+            publish=True,
+        )
+        with self._session_factory() as session:
+            session.add(
+                UserMessageBoundary(
+                    conversation_id=uuid.UUID(conversation_id),
+                    branch_id=uuid.UUID(branch_id),
+                    message_id=user_message_id,
+                    turn_id=turn_id,
+                    before_checkpoint_ns=CHECKPOINT_NS,
+                    before_checkpoint_id=before_checkpoint_id,
+                    workspace_seq=0,
+                    recoverable=False,
+                    reason="阶段 A：尚未建立正文版本，暂不可整体回退",
+                )
+            )
+            session.commit()
+        logger.info(
+            "prepared turn conversation=%s turn=%s run=%s request=%s",
+            conversation_id,
+            turn_id,
+            run_id,
+            request_id,
+        )
+        return PreparedTurn(
+            conversation_id=conversation_id,
+            branch_id=branch_id,
+            turn_id=str(turn_id),
+            user_message_id=str(user_message_id),
+            generation=generation,
+            run_id=run_id,
+            before_config=before_config,
+        )
+
+    def mark_run(
+        self, run_id: str, status: str, *, checkpoint_id: str | None = None
+    ) -> None:
+        """Record the run's terminal status; failure must not look like success."""
+        if status not in ("prepared", "running", "completed", "failed", "interrupted"):
+            raise ValueError(f"invalid run status: {status!r}")
+        with self._session_factory() as session:
+            run = session.get(ConversationRun, uuid.UUID(run_id))
+            if run is None:
+                raise ConversationNotFound(run_id)
+            run.status = status
+            if checkpoint_id is not None:
+                run.checkpoint_id = checkpoint_id
+            session.commit()
+            logger.info("run %s -> %s", run_id, status)
 
     # ---- internals --------------------------------------------------------
 
