@@ -7,15 +7,24 @@ doubles. Nothing here skips silently — a missing PostgreSQL fails the test.
 
 from __future__ import annotations
 
+import asyncio
+import sys
 import uuid
+from dataclasses import dataclass
 
 import psycopg
 import pytest
-from sqlalchemy.engine import make_url
 
 from noteagent.bootstrap.settings import Settings
+from noteagent.conversations.checkpoints import postgres_uri
 from noteagent.notes.repository import FileNoteRepository
 from support.fakes import FailInjector, FakeEmbedder
+from support.harness import ConversationHarness, sqlalchemy_schema_url
+
+# psycopg's async driver refuses Windows' default ProactorEventLoop; the production
+# image runs on Linux, so this only affects the local test process.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 class _MaskedDsn(str):
@@ -25,44 +34,60 @@ class _MaskedDsn(str):
         return "'<dsn>'"
 
 
+@dataclass
+class PgTarget:
+    """A throwaway schema plus both URL forms needed to reach it."""
+
+    name: str
+    sqlalchemy_url: str
+    libpq_dsn: str
+
+    def __repr__(self) -> str:  # never leak the credential into failure output
+        return f"PgTarget(name={self.name!r})"
+
+
 def psycopg_dsn(sqlalchemy_url: str) -> _MaskedDsn:
     """Convert the app's SQLAlchemy URL into a libpq URI that psycopg accepts."""
-    return _MaskedDsn(
-        make_url(sqlalchemy_url)
-        .set(drivername="postgresql")
-        .render_as_string(hide_password=False)
-    )
+    return _MaskedDsn(postgres_uri(sqlalchemy_url))
 
 
-def schema_dsn(dsn: str, schema: str) -> _MaskedDsn:
-    """Pin one connection URI to a schema through ``search_path``."""
-    sep = "&" if "?" in dsn else "?"
-    return _MaskedDsn(f"{dsn}{sep}options=-csearch_path%3D{schema}")
-
-
-@pytest.fixture(scope="session")
-def postgres_dsn() -> str:
-    """libpq URI for the configured PostgreSQL; raises when unreachable."""
+def _settings() -> Settings:
     settings = Settings()
     if not settings.database_url.strip():
         raise RuntimeError("DATABASE_URL is required for PostgreSQL-backed tests")
-    dsn = psycopg_dsn(settings.database_url)
+    return settings
+
+
+@pytest.fixture(scope="session")
+def postgres_dsn() -> _MaskedDsn:
+    """libpq URI for the configured PostgreSQL; raises when unreachable."""
+    dsn = psycopg_dsn(_settings().database_url)
     with psycopg.connect(dsn) as conn:
         conn.execute("select 1")
     return dsn
 
 
 @pytest.fixture
-def pg_schema(postgres_dsn: str):
-    """Yield ``(name, dsn)`` for a throwaway schema, dropped afterwards."""
+def pg_target(postgres_dsn: str) -> PgTarget:
+    """Yield a throwaway schema, dropped after the test."""
     name = f"t_{uuid.uuid4().hex[:12]}"
     admin = psycopg.connect(postgres_dsn, autocommit=True)
     admin.execute(f'create schema "{name}"')
     try:
-        yield name, schema_dsn(postgres_dsn, name)
+        yield PgTarget(
+            name=name,
+            sqlalchemy_url=sqlalchemy_schema_url(_settings().database_url, name),
+            libpq_dsn=schema_dsn(postgres_dsn, name),
+        )
     finally:
         admin.execute(f'drop schema "{name}" cascade')
         admin.close()
+
+
+def schema_dsn(dsn: str, schema: str) -> _MaskedDsn:
+    """Pin one libpq URI to a schema through ``search_path``."""
+    sep = "&" if "?" in dsn else "?"
+    return _MaskedDsn(f"{dsn}{sep}options=-csearch_path%3D{schema}")
 
 
 @pytest.fixture
@@ -79,3 +104,33 @@ def fake_embedder() -> FakeEmbedder:
 @pytest.fixture
 def fail_stage() -> FailInjector:
     return FailInjector()
+
+
+async def _run_harness(harness: ConversationHarness):
+    """Start a harness, hand it to the test, and always release it."""
+    await harness.start()
+    try:
+        yield harness
+    finally:
+        await harness.close()
+
+
+@pytest.fixture
+async def conversation_harness():
+    """In-memory checkpointer over SQLite: fast, but nothing survives reopen."""
+    async for harness in _run_harness(
+        ConversationHarness(sqlalchemy_url="sqlite:///:memory:")
+    ):
+        yield harness
+
+
+@pytest.fixture
+async def postgres_harness(pg_target: PgTarget):
+    """Real PostgreSQL schema and real AsyncPostgresSaver; survives reopen."""
+    async for harness in _run_harness(
+        ConversationHarness(
+            sqlalchemy_url=pg_target.sqlalchemy_url,
+            libpq_dsn=pg_target.libpq_dsn,
+        )
+    ):
+        yield harness

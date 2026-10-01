@@ -100,3 +100,63 @@ pytest tests/unit/test_test_support.py tests/integration/test_postgres_schema.py
 
 - 无失败项。
 - `conversation_harness`、`postgres_harness`、`recovery_harness`、`rollbackApp` 尚未实现（依赖生产模块），未运行。
+
+---
+
+## Task 1（A）：会话记录拆分、元数据与 PostgreSQL saver（已完成）
+
+### 交付物
+
+| 文件 | 内容 |
+|---|---|
+| `src/noteagent/conversations/records.py` | 迁出 `MessageRecord`/`ConversationRecord`；新增持久化 `GraphState` schema（`STATE_SCHEMA_VERSION=1`）、`initial_state`、`validate_state`、显示记录转换 |
+| `src/noteagent/conversations/models.py` | `conversation_branches`/`conversation_runs`/`user_message_boundaries` ORM，`Base` 来自 `db` |
+| `src/noteagent/conversations/checkpoints.py` | `CheckpointRuntime`（open/close、`from_conn_string`/`attached`）、`thread_config`（固定 ns + 显式 checkpoint_id）、`postgres_uri`、`state_to_checkpoint` |
+| `src/noteagent/conversations/service.py` | `ConversationService`：创建会话（元数据 + 根分支 + 首个安全 checkpoint）、活动 head 查询、状态读写、head 发布 |
+| `src/noteagent/conversations/{__init__.py,README.md}` | 公共导出与模块说明 |
+| `alembic/versions/b1e7c4a90d23_conversation_branches_runs_boundaries.py` | 扩展 conversations 四列 + 三张新表；可 upgrade/downgrade |
+| `tests/support/harness.py` | `ConversationHarness`：同一接口支持 SQLite+InMemorySaver 与真实 PostgreSQL+AsyncPostgresSaver，可 `reopen()` |
+| `tests/unit/test_conversation_state.py` | 9 例 |
+| `tests/integration/test_postgres_checkpoints.py` | 4 例 |
+
+修改：`chat/history.py`（DTO 改为从 `conversations.records` 导入并保留再导出）、`chat/context_pack.py`、`chat/context_compact.py`（类型依赖迁出 history）、`db/models.py`（Conversation 新增 `active_branch_id`/`generation`/`state_backend`/`migration_batch_id`）、`db/__init__.py`（`load_all_models()` 惰性导入）、`alembic/env.py`、`bootstrap/app.py`（容器新增 `conversations`/`checkpoints`，lifespan 打开/关闭 saver）、`tests/conftest.py`、`tests/integration/test_postgres_schema.py`。
+
+### 已运行检查
+
+```text
+pytest tests/unit/test_conversation_state.py -q
+=> 9 passed in 0.29s
+
+pytest tests/integration/test_postgres_checkpoints.py tests/integration/test_postgres_schema.py -q
+=> 7 passed in 2.17s
+
+pytest tests/unit tests/integration -q          # 全量回归
+=> 523 passed, 1 warning in 25.30s
+```
+
+迁移（隔离 schema，未触碰开发库 public）：
+
+```text
+DATABASE_URL=<...>?options=-csearch_path%3Dt_mig_... alembic upgrade head
+=> 5 个 revision 全链路成功；新表 conversation_branches/conversation_runs/
+   user_message_boundaries 与 conversations 新列均存在
+alembic downgrade -1
+=> 仅剩 alembic_version/conversations/messages；随后 drop schema
+```
+
+PostgreSQL 测试真实执行了关闭/重连（`reopen()`），验证 state 与 head 跨连接持久；内存 saver 走同一 `ConversationService` 接口。
+
+### 与计划的偏差（已核实，非静默改动）
+
+1. **`GraphState` 落在 `conversations/records.py`**，而非计划 §3 的 `chat/graph.py`。原因：Task 1 在任何图存在之前就需要该 schema，且避免 `chat → conversations` 反向依赖。Task 2 的 `chat/graph.py` 将导入它。
+2. **`active_branch_id` 不加数据库外键**：`conversations` 与 `conversation_branches` 互指会形成 DDL 循环依赖，改为应用层维护（§4.2 也只要求字段本身）。
+3. **`db/models.py` 在本任务修改**（计划把该文件列在 Task 3）：扩展列是该任务的 migration 必需的，否则 revision 与应用模型不一致。
+4. **`alembic/env.py` 修复了一个既有缺陷**：`config.set_main_option` 遇到 URL 中的 `%` 会因 configparser 插值报错；现对 `%` 转义。这影响任何含百分号编码的 URL。
+5. **§4.3 的 `prepare_turn`/`fork_for_edit`/`publish_recovery` 未在本任务实现**：它们分别依赖图（Task 2）与恢复模块（Task 8）。本任务只交付可在无图条件下验证的元数据/状态读写。
+6. **Windows 事件循环约束**：psycopg 异步驱动拒绝默认 `ProactorEventLoop`，测试在 `conftest.py` 设置 `WindowsSelectorEventLoopPolicy`；生产镜像为 Linux，不受影响。已记录，未改动生产代码。
+
+### 失败 / 未运行项
+
+- 无失败项。
+- 未在开发库 `noteagent` 的 `public` schema 上执行 migration（避免改动共享状态）；迁移正确性已在一次性 schema 上验证 upgrade + downgrade。
+- `chat/graph.py` 尚未存在，故「真实图 update_state fork」夹具（Task 0 约定）延后到 Task 2；本任务用 `write_state(publish=False)` 表达同一「未发布候选」语义。

@@ -13,6 +13,8 @@ from noteagent.chat.agent import ChatAgent  #聊天Agent
 from noteagent.chat.drafts import DraftStore    #
 from noteagent.chat.history import ConversationStore
 from noteagent.chat.router import router as chat_router
+from noteagent.conversations.checkpoints import CheckpointRuntime, postgres_uri
+from noteagent.conversations.service import ConversationService
 from noteagent.notes.router import router as notes_router
 from noteagent.db import create_engine_from_url, create_session_factory
 from noteagent.model_management.router import (
@@ -43,6 +45,9 @@ class AppContainer:
     history: ConversationStore  #历史消息存储/PostgreSQL连接
     # 唯一持有运行对象（模型/Agent/检索）的管理器；生产请求必须通过它取快照。
     model_runtime: ModelRuntimeService
+    # 会话元数据与 checkpoint：lifespan 负责 open/close，构造时还未连接。
+    conversations: ConversationService | None = None
+    checkpoints: CheckpointRuntime | None = None
 
     @property
     def retrieval(self) -> RetrievalService | None:
@@ -79,21 +84,36 @@ def build_container(settings: Settings) -> AppContainer:
     # 持久化的 active 选择决定本次启动用哪个聊天模型与向量 collection。
     model_runtime.initialize()
 
+    # 只构造，不连接：异步 saver 必须由 lifespan 打开，否则没有地方关闭它。
+    checkpoints = CheckpointRuntime.from_conn_string(postgres_uri(settings.database_url))
+    conversations = ConversationService(
+        create_session_factory(engine), checkpoints
+    )
+
     return AppContainer(
         settings=settings,
         notes=notes,
         engine=engine,
         history=history,
         model_runtime=model_runtime,
+        conversations=conversations,
+        checkpoints=checkpoints,
     )   ##返回一个AppContainer对象，包含所有初始化好的组件
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Stop model work, then dispose the SQLAlchemy engine, when the app shuts down."""
-    yield
-    app.state.container.model_runtime.shutdown()
-    app.state.container.engine.dispose()
+    """Open the checkpointer on startup; release every connection on shutdown."""
+    container = app.state.container
+    if container.checkpoints is not None:
+        await container.checkpoints.open()
+    try:
+        yield
+    finally:
+        if container.checkpoints is not None:
+            await container.checkpoints.close()
+        container.model_runtime.shutdown()
+        container.engine.dispose()
 
 
 def create_app(container: AppContainer) -> FastAPI:
