@@ -1,6 +1,6 @@
 # v1 生成验收样例集（g01–g25）
 
-本文件是 [`v1_acceptance.jsonl`](./v1_acceptance.jsonl) 的逐条验收口径。JSONL 是考题，本文件写清每条要保留什么、禁止添什么、怎么算失败。**本文件里的语义断言目前由人工/执行代理逐条对照审查，不由脚本自动校验**；JSONL 的 `must_anchors`、`must_headings` 会由 `scripts/eval_notes.py` 的 L1 打分器自动检查，`must_substrings` 与 `must_preserve` 仅供审查时对照。
+本文件是 [`v1_acceptance.jsonl`](v1_acceptance.jsonl) 的逐条验收口径。JSONL 是考题，本文件写清每条要保留什么、禁止添什么、怎么算失败。**本文件里的语义断言目前由人工/执行代理逐条对照审查，不由脚本自动校验**；JSONL 的 `must_anchors`、`must_headings` 会由 `scripts/eval_notes.py` 的 L1 打分器自动检查，`must_substrings` 与 `must_preserve` 仅供审查时对照。
 
 ## 定位与账本
 

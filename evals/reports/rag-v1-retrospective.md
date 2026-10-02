@@ -1,8 +1,8 @@
 # RAG v1 复盘：问题、做法与结果
 
 本文记录 2026-09-25 这一轮「检索质量」工作**遇到什么问题、用什么方式解决、效果如何、还剩什么**。它是复盘，不是规格：
-现行实现看 [architecture.md](../../docs/architecture/architecture.md) 与 [retrieval.md](../../docs/architecture/retrieval.md)，度量契约看
-[rag-quality.md](../criteria/rag-quality.md)，逐次实验与失败样例看 [rag-v1-report.md](rag-v1-report.md)，执行计划看 [2026-09-25-rag-quality-improvement.md](../../docs/plans/2026-09-25-rag-quality-improvement.md)。
+现行实现看 [architecture.md](../../docs/01-architecture/architecture.md) 与 [retrieval.md](../../docs/03-modules/retrieval/retrieval.md)，度量契约看
+[rag-quality.md](../criteria/rag-quality.md)，逐次实验与失败样例看 [rag-v1-report.md](rag-v1-report.md)，执行计划看 [2026-09-25-rag-quality-improvement.md](../../docs/05-records/plans/2026-09-25-rag-quality-improvement.md)。
 
 ## 0. 主干
 
@@ -74,7 +74,7 @@ holdout（此前从未运行过）：检索 **6/12 → 11/12**，Agent 任务成
 
 选定的配置：`intfloat/multilingual-e5-small` + 章节感知切块（500/50，`embed_heading_prefix=True`）+ 提示词 v10。
 
-复现入口（数据与命令见 [evals/rag/README.md](../../evals/rag/README.md)、[evals/agent/README.md](../../evals/agent/README.md)）：
+复现入口（数据与命令见 [evals/rag/README.md](../rag/README.md)、[evals/agent/README.md](../agent/README.md)）：
 
 ```bash
 python scripts/eval_rag.py --split holdout --variant selected --model intfloat/multilingual-e5-small --run-id rag-v1-selected-holdout

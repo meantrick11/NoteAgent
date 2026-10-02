@@ -27,7 +27,7 @@ print(repo.exists("Go.md"))
 repo.delete("Go.md")
 ```
 
-`write` 默认追加；`append=False` 为覆盖。文件必须已存在。相对路径可以是 `Go.md` 或一层 `Python/GIL.md`。`read("../x.md")` 与 `read("a/b/x.md")` 会抛 `NotePathError`。Documents 页面的 HTTP 契约见 [frontend.md](../../../docs/architecture/frontend.md) §5。
+`write` 默认追加；`append=False` 为覆盖。文件必须已存在。相对路径可以是 `Go.md` 或一层 `Python/GIL.md`。`read("../x.md")` 与 `read("a/b/x.md")` 会抛 `NotePathError`。Documents 页面的 HTTP 契约见 [frontend.md](../../../docs/03-modules/frontend/frontend.md) §5。
 
 ```bash
 uv run pytest tests/unit/test_note_repository.py -q

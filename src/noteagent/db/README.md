@@ -1,6 +1,6 @@
 # db
 
-只放 `Base`、`Conversation` / `Message` 两张表、engine 与会话工厂。**不写 HTTP、不调 LLM。** 架构说明见 [`docs/architecture/database.md`](../../../docs/architecture/database.md)。
+只放 `Base`、`Conversation` / `Message` 两张表、engine 与会话工厂。**不写 HTTP、不调 LLM。** 架构说明见 [`docs/architecture/database.md`](../../../docs/01-architecture/database.md)。
 
 ## 包含模块
 

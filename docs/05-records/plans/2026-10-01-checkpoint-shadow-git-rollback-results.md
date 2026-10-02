@@ -204,3 +204,9 @@ pytest tests/unit tests/integration -q        # 全量回归
 - `ChatAgent.stream` 尚未切换到图；HTTP/SSE 与旧 `ConversationStore` 运行路径仍按现状工作，`test_chat_agent_context.py` 未被改动。
 - 原因是该切换的爆炸半径包含 `prompt_eval/run.py`、`rag_eval/agent_run.py` 与 `bootstrap/runtime.py` 的装配，而评测运行器按计划归属 Task 3。计划本身也要求 A 阶段整体验收前不得把编辑入口开放给半迁移后端。
 - 因此本提交只交付「真实图 + 真实 checkpoint 可运行且行为有测试锁定」，**不声称 Task 2 完成**。
+
+## 2026-10-02 验收问题修复补充
+
+Codex 根据验收记录修复了并发认领／head CAS、准备失败重试、checkpoint 草稿来源、运行终态、明确节点位置及中断续跑；补充数据库租约、旧执行者 fencing 和异步流清理，并修复回归发现的模型重建门禁竞争。完整后端回归：**552 passed，1 warning**。
+
+具体改动、迁移约束及仍未完成的原计划范围见：[修复记录](2026-10-02-checkpoint-shadow-git-rollback-fixes.md)。本补充不改变 Task 2“进行中”的整体状态，不把正式 HTTP 切换或阶段 B 计为已完成。

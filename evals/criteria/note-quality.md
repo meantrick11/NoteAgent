@@ -4,7 +4,7 @@
 
 `rubric_version`：**v0.2**。v0.2 改变了质量定义和合格判定，**不得与 v0.1 直接比较总分或排名**。
 
-数据集见 [evals/prompt/](../../evals/prompt/README.md)。旧 case 保持 v0.1 的 `total` / `parents` 行为；`learning_note` case 使用确定性检查加可选语义 Judge，并以三道硬门和配置维度阈值决定 `qualified`。
+数据集见 [evals/prompt/](../prompt/README.md)。旧 case 保持 v0.1 的 `total` / `parents` 行为；`learning_note` case 使用确定性检查加可选语义 Judge，并以三道硬门和配置维度阈值决定 `qualified`。
 
 ## 1. 任务边界
 
@@ -122,7 +122,7 @@ python scripts/eval_notes.py --judge --cases evals/prompt/learning_notes.jsonl -
 
 ## 6. 校准集契约
 
-第一期学习型校准集为 [`learning_notes.jsonl`](../../evals/prompt/learning_notes.jsonl)，固定材料是 Python 官方教程第 1 章 “Whetting Your Appetite”。四个候选位于 [`fixtures/learning_notes/`](../../evals/prompt/fixtures/learning_notes/)：
+第一期学习型校准集为 [`learning_notes.jsonl`](../prompt/learning_notes.jsonl)，固定材料是 Python 官方教程第 1 章 “Whetting Your Appetite”。四个候选位于 [`fixtures/learning_notes/`](../prompt/fixtures/learning_notes)：
 
 1. `good.md`：忠实、完整并有语义重组；
 2. `literal.md`：忠实且完整，但接近逐段译文；

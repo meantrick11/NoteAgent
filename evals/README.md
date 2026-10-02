@@ -4,14 +4,14 @@
 
 | 放什么 | 路径 |
 |--------|------|
-| 准则、指标、计分规则、报告契约 | [criteria/](criteria/) |
-| 汇总报告、复盘、阶段验收 | [reports/](reports/) |
+| 准则、指标、计分规则、报告契约 | [criteria/](criteria) |
+| 汇总报告、复盘、阶段验收 | [reports/](reports) |
 | 黄金集（考题）、语料与 fixture | [prompt/](prompt/README.md)、[rag/](rag/README.md)、[agent/](agent/README.md) |
 | 离线跑分结果 | 各数据目录下的 `results/` |
 
 评测**不是**运行时模块：不在 `POST /chat` 上拦截草稿，不按分数自动再生成，不把分数写入 `notes/`。产品路径仍是提案 → 人审 → 落盘。尺子是给以后**离线迭代** [`system.txt`](../src/noteagent/chat/prompts/system.txt) 用的。
 
-架构书里的索引：[architecture.md 第 6 节](../docs/architecture/architecture.md#6-评测)。
+架构书里的索引：[architecture.md 第 6 节](../docs/01-architecture/architecture.md#6-评测)。
 
 ## criteria（现行准则）
 
@@ -79,7 +79,7 @@ python scripts/eval_rag_agent.py --split dev --variant baseline --run-id agent-v
 
 语义 Judge 缺失或解析失败会标为未完成；生成模型与 Judge 模型相同时必须记 `judge_independent=false`，不构成独立校准。契约细节见 [criteria/note-quality.md](criteria/note-quality.md) §5–§6。
 
-2026-09-10 同模型四候选校准（`deepseek-v4-flash`，[`calibration_l01_20260910-135238-835257`](prompt/results/learning_notes/calibration_l01_20260910-135238-835257/)，`judge_independent=false`）暴露：Judge 给 `good` / `literal` 的 `fluent` 均为 4，仅旧的「优秀 fluent 严格高于机械译文」契约失败。标准据此修正为**双方 fluent 均须达阈值**，结构与加工增益仍要求优秀领先；Judge 与 fixtures 未为通过契约而改动。同日 v9 生成 + Judge（[`v9-learning_l01_20260910-215727`](prompt/results/learning_notes/v9-learning_l01_20260910-215727/)）硬门与复习题通过，structure 2/4、processing 1/4，不合格。生成提示词此后于 2026-09-25 升到 v10（用户要更正时先指出冲突再问）、2026-09-26 升到 v11（草稿面板措辞），现行版本见 [prompts/README.md](../src/noteagent/chat/prompts/README.md) 与 [iterations/](../src/noteagent/chat/prompts/iterations/README.md)。
+2026-09-10 同模型四候选校准（`deepseek-v4-flash`，[`calibration_l01_20260910-135238-835257`](prompt/results/learning_notes/calibration_l01_20260910-135238-835257)，`judge_independent=false`）暴露：Judge 给 `good` / `literal` 的 `fluent` 均为 4，仅旧的「优秀 fluent 严格高于机械译文」契约失败。标准据此修正为**双方 fluent 均须达阈值**，结构与加工增益仍要求优秀领先；Judge 与 fixtures 未为通过契约而改动。同日 v9 生成 + Judge（[`v9-learning_l01_20260910-215727`](prompt/results/learning_notes/v9-learning_l01_20260910-215727)）硬门与复习题通过，structure 2/4、processing 1/4，不合格。生成提示词此后于 2026-09-25 升到 v10（用户要更正时先指出冲突再问）、2026-09-26 升到 v11（草稿面板措辞），现行版本见 [prompts/README.md](../src/noteagent/chat/prompts/README.md) 与 [iterations/](../src/noteagent/chat/prompts/iterations/README.md)。
 
 字符比、句子边界重合度和标题数量均不能用作语义质量代理。单个 Python 教程样本只用于第一阶段校准，不表示对所有教程的泛化能力。
 

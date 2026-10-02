@@ -10,7 +10,7 @@
 | [`v1_acceptance.jsonl`](v1_acceptance.jsonl) | V1 生成覆盖验收；25 条（g01–g25），五类各 5 条，全部要求产生非空正文 |
 | [`v1_acceptance.md`](v1_acceptance.md) | g01–g25 的逐条断言、运行方式、判据与已知 L1 偏差 |
 | [`learning_notes.jsonl`](learning_notes.jsonl) | v0.2 学习型笔记校准集；首条为 Python 教程第 1 章 |
-| [`fixtures/learning_notes/`](fixtures/learning_notes/) | 四个固定候选，只作评测输入，不写入用户 notes |
+| [`fixtures/learning_notes/`](fixtures/learning_notes) | 四个固定候选，只作评测输入，不写入用户 notes |
 | [`results/`](results/README.md) | `python scripts/eval_notes.py` 写出的报告（按 jsonl 主文件名分子目录） |
 
 | id | kind | 测什么 |
@@ -88,6 +88,6 @@ python scripts/calibrate_learning_notes.py
 
 通过后，再用 `python scripts/eval_notes.py --judge --cases evals/prompt/learning_notes.jsonl --ids l01` 评估生成结果。两条命令都优先使用 `JUDGE_MODEL`；未配置时会明确警告并回退到 `CHAT_MODEL`，同时归档 `judge_independent=false`。同模型结果只用于初步自检，正式版本比较应固定一个与生成模型不同的独立 Judge 模型。
 
-已通过的四候选校准：[`results/learning_notes/calibration_l01_20260910-135238-835257/`](results/learning_notes/calibration_l01_20260910-135238-835257/)。v9 在 `l01` 上的 Judge 实跑（[`v9-learning_l01_20260910-215727`](results/learning_notes/v9-learning_l01_20260910-215727/)）硬门通过、`qualified=false`（structure 2、processing 1）。
+已通过的四候选校准：[`results/learning_notes/calibration_l01_20260910-135238-835257/`](results/learning_notes/calibration_l01_20260910-135238-835257)。v9 在 `l01` 上的 Judge 实跑（[`v9-learning_l01_20260910-215727`](results/learning_notes/v9-learning_l01_20260910-215727)）硬门通过、`qualified=false`（structure 2、processing 1）。
 
 边界：该数据集只校准“长篇教程 / 技术文章 → 中文学习型笔记”，不替代行为题，不进入用户私人笔记，也不证明对所有教程已经泛化。不得用字符比、句子边界或标题数量代替上述语义契约。
