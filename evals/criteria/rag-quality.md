@@ -1,15 +1,15 @@
 # 检索（RAG）质量准则与指标（v1）
 
-本文是离线评价 **历史笔记检索** 的契约：数据集形状、证据标注规则、指标定义与报告要求。它与 [note-quality.md](./note-quality.md) 分工不同，**不得互相替代**：
+本文是离线评价 **历史笔记检索** 的契约：数据集形状、证据标注规则、指标定义与报告要求。它与 [note-quality.md](note-quality.md) 分工不同，**不得互相替代**：
 
 | 准则 | 评什么 | 不评什么 |
 |------|--------|----------|
-| [note-quality.md](./note-quality.md)（v0.2） | `propose_note` 生成的 Markdown 正文质量 | 检索、工具、索引 |
+| [note-quality.md](note-quality.md)（v0.2） | `propose_note` 生成的 Markdown 正文质量 | 检索、工具、索引 |
 | 本文（v1） | 检索是否召回正确证据、Agent 是否正确调用与使用检索、引用能否追溯 | 正文写得好不好 |
 
 两者共用的只有语料事实源。**检索指标不能用来给正文质量打分**；反过来，正文质量分也不能证明召回效果。
 
-架构见 [architecture/retrieval.md](../../docs/architecture/retrieval.md)，Agent 工具边界见 [architecture/chat-tools.md](../../docs/architecture/chat-tools.md)。
+架构见 [architecture/retrieval.md](../../docs/03-modules/retrieval/retrieval.md)，Agent 工具边界见 [architecture/chat-tools.md](../../docs/02-api/chat-tools.md)。
 
 ---
 

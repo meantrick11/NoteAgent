@@ -2,7 +2,7 @@
 
 > 复盘（问题、做法、不足与未来方向）：[architecture/rag-v1-retrospective.md](rag-v1-retrospective.md)。
 > 状态：**已交付（2026-09-25）**。批次 1–3 完成：任务 1–4、6–9 交付；任务 5（语料 v2）按用户选择未做；任务 8 的 8.4–8.6 按停止条件跳过（理由见计划）。本文件即最终报告。
-> 准则与字段契约见 [rag-quality.md](../criteria/rag-quality.md)；执行计划见 [../plans/2026-09-25-rag-quality-improvement.md](../../docs/plans/2026-09-25-rag-quality-improvement.md)。
+> 准则与字段契约见 [rag-quality.md](../criteria/rag-quality.md)；执行计划见 [../plans/2026-09-25-rag-quality-improvement.md](../../docs/05-records/plans/2026-09-25-rag-quality-improvement.md)。
 
 ## 1. 本批范围与结论摘要
 

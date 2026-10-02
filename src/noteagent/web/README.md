@@ -26,7 +26,7 @@ read_home_html()  # 旧模板，legacy 模式用
 ```
 
 改界面请改 [`frontend/`](../../../frontend)，不要改 `home.html`。页面白名单与 vue／legacy 的
-分派在 [`router.py`](router.py)，布局说明见 [docs/architecture/frontend.md](../../../docs/architecture/frontend.md)。
+分派在 [`router.py`](router.py)，布局说明见 [docs/architecture/frontend.md](../../../docs/03-modules/frontend/frontend.md)。
 
 ```bash
 uv run pytest tests/integration/test_frontend_routes.py -q

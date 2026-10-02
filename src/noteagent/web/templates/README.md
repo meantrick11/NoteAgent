@@ -1,6 +1,6 @@
 # templates
 
-旧版前端的 HTML，**只在 `FRONTEND_MODE=legacy` 时由 FastAPI 下发**（`vue` 模式下 `GET /` 等六个页面地址返回 SPA 外壳）。不要把笔记正文或密钥写进模板。现行界面在 [`frontend/`](../../../../frontend)，布局与两条写盘路径见 [docs/architecture/frontend.md](../../../../docs/architecture/frontend.md)。
+旧版前端的 HTML，**只在 `FRONTEND_MODE=legacy` 时由 FastAPI 下发**（`vue` 模式下 `GET /` 等六个页面地址返回 SPA 外壳）。不要把笔记正文或密钥写进模板。现行界面在 [`frontend/`](../../../../frontend)，布局与两条写盘路径见 [docs/architecture/frontend.md](../../../../docs/03-modules/frontend/frontend.md)。
 
 ## 包含模块
 

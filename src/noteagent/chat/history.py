@@ -6,7 +6,6 @@ This is the only write path for user-visible history. HTTP handlers call
 
 import logging
 import uuid
-from dataclasses import dataclass   #进行类的初始化，不过不像BaseModel进行参数校验
 from datetime import datetime, timezone #时间记录，对应的消息记录创建的时间等等
 
 
@@ -14,6 +13,7 @@ from sqlalchemy import select   #ORM的select语句的方法
 from sqlalchemy.orm import Session, sessionmaker    #高级封装，直接操作数据库
 
 from noteagent.chat.context_tokens import prefix_until_tokens
+from noteagent.conversations.records import ConversationRecord, MessageRecord
 from noteagent.db.models import Conversation, Message   #
 
 _logger = logging.getLogger(__name__)
@@ -47,34 +47,6 @@ def start_turn() -> str:
 def _uuid(turn_id: str) -> uuid.UUID:
     """Parse a turn_id string into a UUID; raises ValueError if malformed."""
     return uuid.UUID(turn_id)
-
-
-@dataclass(slots=True)
-class ConversationRecord:   #对话的记录，记录id\title（对话名称),创建和更新时间
-    id: str
-    title: str
-    created_at: datetime
-    updated_at: datetime
-    running_summary: str | None
-    summary_watermark_turn_id: str | None
-    pending_draft: dict | None = None
-
-
-@dataclass(slots=True)  #对于每一条消息，进行数据库记录：
-class MessageRecord:
-    id: str
-    conversation_id: str
-    role: str
-    content: str
-    created_at: datetime
-    turn_id: str | None
-    tool_name: str | None
-    tool_arguments: str | None
-    output_preview: str | None
-    truncated: bool
-    status: str | None
-    citations: list | None = None
-    tool_steps: list | None = None
 
 
 class ConversationStore:

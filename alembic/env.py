@@ -6,7 +6,11 @@ from sqlalchemy import pool
 from alembic import context
 
 from noteagent.bootstrap.settings import Settings
+from noteagent.db import load_all_models
 from noteagent.db.models import Base
+
+# 新表注册在同一个 Base.metadata 上；不导入则 autogenerate 看不到它们。
+load_all_models()
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -16,7 +20,8 @@ config = context.config
 url = Settings().database_url.strip()
 if not url:
     raise RuntimeError("DATABASE_URL is required for alembic")
-config.set_main_option("sqlalchemy.url", url)
+# configparser treats '%' as interpolation, so a percent-encoded URL must be escaped.
+config.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

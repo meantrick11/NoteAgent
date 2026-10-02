@@ -47,4 +47,4 @@ uv run pytest tests/unit/test_model_settings_store.py tests/unit/test_model_cata
   tests/unit/test_model_management.py tests/integration/test_model_settings_api.py -q
 ```
 
-HTTP 契约、错误结构与浏览器验收项见 [docs/plans/2026-09-25-model-switching-ui.md](../../../docs/plans/2026-09-25-model-switching-ui.md)；前端交互见 [docs/architecture/frontend.md](../../../docs/architecture/frontend.md) §3.1；向量重建语义见 [docs/architecture/retrieval.md](../../../docs/architecture/retrieval.md) §7.1。
+HTTP 契约、错误结构与浏览器验收项见 [docs/plans/2026-09-25-model-switching-ui.md](../../../docs/05-records/plans/2026-09-25-model-switching-ui.md)；前端交互见 [docs/architecture/frontend.md](../../../docs/03-modules/frontend/frontend.md) §3.1；向量重建语义见 [docs/architecture/retrieval.md](../../../docs/03-modules/retrieval/retrieval.md) §7.1。

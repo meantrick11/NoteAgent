@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from noteagent.chat.citations import strip_cite_markers
 from noteagent.chat.context_budget import ContextBudget
 from noteagent.chat.context_tokens import estimate_tokens
-from noteagent.chat.history import MessageRecord
+from noteagent.conversations.records import MessageRecord
 
 
 @dataclass(slots=True)

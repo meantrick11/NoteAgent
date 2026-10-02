@@ -6,7 +6,7 @@ Only ``Base`` and the two tables live here. No HTTP, no LLM calls.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Text, Uuid
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, Text, Uuid
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -42,6 +42,14 @@ class Conversation(Base):
         Uuid(as_uuid=True), nullable=True
     )   #最近摘要的水位线
     pending_draft: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # 待审 NoteDraft JSON，无稿为 NULL
+    # 活动分支与写入隔离代数：由 conversations 服务维护，不由 saver 的“最新 checkpoint”推断。
+    active_branch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # legacy：消息权威源仍在旧表；checkpoint：权威源已切到 LangGraph checkpoint。
+    state_backend: Mapped[str] = mapped_column(Text, nullable=False, default="legacy")
+    migration_batch_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation", cascade="all, delete-orphan"
     )   #具体的message表的映射

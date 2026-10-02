@@ -16,7 +16,7 @@ from noteagent.chat.context_budget import ContextBudget
 from noteagent.chat.context_compact import compute_f
 from noteagent.chat.context_tokens import estimate_tokens
 from noteagent.chat.drafts import NoteDraft
-from noteagent.chat.history import MessageRecord
+from noteagent.conversations.records import MessageRecord
 
 _logger = logging.getLogger(__name__)
 

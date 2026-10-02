@@ -1,6 +1,6 @@
 # V1 收尾修复与生成验收报告
 
-本报告对应计划 [`docs/plans/2026-09-26-v1-acceptance.md`](../../docs/plans/2026-09-26-v1-acceptance.md)，记录写入异常修复、25 条生成验收样例集、自动测试与真实模型评测的实际结果。**手动功能验收由用户执行，本报告不代其判定。**
+本报告对应计划 [`docs/plans/2026-09-26-v1-acceptance.md`](../../docs/05-records/plans/2026-09-26-v1-acceptance.md)，记录写入异常修复、25 条生成验收样例集、自动测试与真实模型评测的实际结果。**手动功能验收由用户执行，本报告不代其判定。**
 
 ## 1. 范围与身份
 
@@ -80,7 +80,7 @@ CLI 使用 `Settings` 的模型配置（`.env`），**不保证等于界面已�
 - 长文类材料长度（字符数，仅覆盖检查，不是质量分）：g06 2433、g07 2362、g08 2041、g09 2250、g10 2156。
 - modify 类提供完整 `seed_files`；三条 replace 的 `expect_tools_prefix` 是 `["list_files", "read_file"]`（对应系统提示词"先 list_files 再 read_file 读全文"的契约），两条 append 是 `["list_files"]`，避免给每条设同一工具顺序。
 - 完整性由 `tests/unit/test_v1_acceptance_cases.py` 自动检查：条数、ID 集合、分类计数、`user` 互不相同、字段取值、长文长度、modify 必须有 seeds、`load_cases()` 可加载 25 条（无需改加载器或 CLI）。
-- 逐条语义断言写在 [`evals/prompt/v1_acceptance.md`](../../evals/prompt/v1_acceptance.md)。其中只有 `must_anchors` 与 `must_headings` 会被 L1 打分器自动检查，其余（禁止添加事实、代码/路径约束、合理改写边界）由内容审查对照执行，报告不伪称它们已被脚本校验。
+- 逐条语义断言写在 [`evals/prompt/v1_acceptance.md`](../prompt/v1_acceptance.md)。其中只有 `must_anchors` 与 `must_headings` 会被 L1 打分器自动检查，其余（禁止添加事实、代码/路径约束、合理改写边界）由内容审查对照执行，报告不伪称它们已被脚本校验。
 
 ## 5. 25 条明细
 
@@ -88,31 +88,31 @@ CLI 使用 `Settings` 的模型配置（`.env`），**不保证等于界面已�
 
 | ID | 分类 | 动作（预期/实际） | 目标文件 | 正文 | 审查依据与结论 |
 |----|------|-------------------|----------|------|----------------|
-| [g01](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g01.md) | dialogue | create / create | 项目周会记录.md | 320 | 四项分工与两个日期齐全；"登录改版收尾"如实标为「由王磊布置、会上未明确执行人」，未编造负责人。通过 |
-| [g02](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g02.md) | dialogue | create / create | 数据库索引.md | 273 | 定义、例子（一千万行订单表按用户号建索引）、限制（写入维护成本、低选择性字段）齐全。通过；锚点 `小林` 未命中（见 §6.2） |
-| [g03](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g03.md) | dialogue | create / create | 缓存层选型-Redis与本地内存.md | 352 | 「讨论中提出的方案」与「最终决定」分节，理由（会话需跨实例读）与回退条件都在。通过；锚点 `周航`、`许晨` 未命中 |
-| [g04](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g04.md) | dialogue | create / create | 502故障排查记录.md | 314 | 六步按顺序保留，`upstream timed out`、30 秒→5 秒都在；「重启 Nginx 没用」单独成节，未被写成解决方案。通过 |
-| [g05](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g05.md) | dialogue | create / create | 上线时间安排.md | 197 | 最终结论为 10 月 12 日凌晨两点；9 月 28 日、10 月 8 日标为不采用并给出原因；10 月 11 日预发布与负责人苏晴保留。通过；锚点 `唐维` 未命中 |
-| [g06](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g06.md) | long_text | create / create | SQLite WAL.md | 2580 | 11 节齐全；`PRAGMA journal_mode=WAL;`、`wal_checkpoint(TRUNCATE)` 在围栏内原文保留；"WAL 改变并发行为而非查询速度"的限定保留。通过 |
-| [g07](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g07.md) | long_text | create / create | API服务部署手册.md | 2613 | 13 节齐全；第 5 节恢复的适用条件（配置结构未变才可只回退软链接，否则连配置一起还原）完整保留。通过 |
-| [g08](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g08.md) | long_text | create / create | 幂等性.md | 2071 | 13 节齐全；幂等与重试的前提关系、不解决并发覆盖、不可逆副作用边界都在，无来源外结论。通过 |
-| [g09](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g09.md) | long_text | create / create | 定时任务方案对比.md | 2288 | 三种方案与五个比较维度齐全，选择建议保留"按规模选型"的原意而非单一正解。通过 |
-| [g10](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g10.md) | long_text | create / create | DatabaseMigration.md | 2168 | 三条备注与三处例外全部以 `>` 引用保留；`通常/一般/建议/默认` 未被改成绝对说法。通过 |
-| [g11](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g11.md) | english | create / create | 服务账号与网关调用约定.md | 296 | may / must / usually 强度差别保留（"可以随时读取"/"必须在每个请求的 Authorization 头发送"/"通常在五分钟后过期"）；三个标识符原样。通过（L1 命中 `faithful.hedge`，见 §6.1） |
-| [g12](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g12.md) | english | create / create | PythonHTTP服务器.md | 428 | `python -m http.server 8000`、`--directory ./site`、`netstat -ano \| findstr :8000`、`Ctrl+C` 原样且在围栏内。通过 |
-| [g13](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g13.md) | english | create / create | CSP-nonce.md | 387 | `nonce`、`Content-Security-Policy`、`strict-dynamic`、`unsafe-inline` 未翻译改名；"每个响应重新生成"与"两者并存时退回允许内联"两条限制保留。通过 |
-| [g14](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g14.md) | english | create / create | gzip-zstd-brotli 对比.md | 317 | 12 MB→2.4 MB/1.1 s、zstd 2.1 MB/0.4 s、brotli 2.2 MB/0.7 s、100 MB 9.5 s/2.8 s、"不到 8%" 全部与输入一致。通过 |
-| [g15](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g15.md) | english | create / create | SearchIndexIncident.md | 312 | 现象、根因、临时处置、后续修复四节分开；`503`、`alias`、`Retry-After`、40% 保留。通过 |
-| [g16](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g16.md) | code | create / create | ExponentialBackoff.md | 528 | 函数体与 `>>>` 三段返回值 `0.5 / 4.0 / 30` 正确，围栏语言标注与缩进正确。通过 |
-| [g17](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g17.md) | code | create / create | SQL订单查询.md | 842 | 六个字段、`WHERE` 三条件、`ORDER BY created_at DESC`、`LIMIT 20` 全在；占位符与"排序不要用 id"的注意事项保留。通过 |
-| [g18](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g18.md) | code | create / create | PowerShell清理旧日志.md | 744 | 三条命令的参数、单引号路径 `'D:\backup'`、`-WhatIf` 原样；`-WhatIf` 版保留为预演步骤，未被写成直接删除的生产命令。通过 |
-| [g19](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g19.md) | code | create / create | APIClientConfig.md | 579 | 六个键与取值齐全（含占位符 `REPLACE-WITH-YOUR-KEY`）；`max_retries=3` 表示最多 4 次请求的说明保留；未编造真实密钥。通过 |
-| [g20](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g20.md) | code | create / create | Python可变默认参数.md | 551 | 错误版被显式标注"不要使用"并说明共享列表的错因，修正版正确；未把错误写法当作推荐实现。通过 |
-| [g21](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g21.md) | modify | append / append | Go.md | 192 | 只追加「切片」一节；原「控制流」一节未改动；备注以 `>` 呈现；未改用 replace。通过 |
-| [g22](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g22.md) | modify | replace / replace | Python虚拟环境.md | 272 | 路径不变；「适用版本」更新为 3.10 及以上；「创建」「常见问题」原文保留；含一级标题。通过 |
-| [g23](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g23.md) | modify | append / append | Kafka.md | 100 | 目标文件是 `Kafka.md`，**没有**写进 `RabbitMQ.md`；「分区」一节原文保留。通过 |
-| [g24](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g24.md) | modify | replace / replace | 网络/HTTP缓存.md | 230 | 路径不变；「协商缓存」补全为 `ETag`/`If-None-Match`/304 与 `Last-Modified` 版本；「强缓存」一句原文保留。通过 |
-| [g25](../../evals/prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g25.md) | modify | replace / replace | Python/工具函数.md | 243 | 路径不变；签名改为含 `max_delay=None`；「缓存」一节与 `@lru_cache(maxsize=32)` 原样保留。通过 |
+| [g01](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g01.md) | dialogue | create / create | 项目周会记录.md | 320 | 四项分工与两个日期齐全；"登录改版收尾"如实标为「由王磊布置、会上未明确执行人」，未编造负责人。通过 |
+| [g02](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g02.md) | dialogue | create / create | 数据库索引.md | 273 | 定义、例子（一千万行订单表按用户号建索引）、限制（写入维护成本、低选择性字段）齐全。通过；锚点 `小林` 未命中（见 §6.2） |
+| [g03](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g03.md) | dialogue | create / create | 缓存层选型-Redis与本地内存.md | 352 | 「讨论中提出的方案」与「最终决定」分节，理由（会话需跨实例读）与回退条件都在。通过；锚点 `周航`、`许晨` 未命中 |
+| [g04](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g04.md) | dialogue | create / create | 502故障排查记录.md | 314 | 六步按顺序保留，`upstream timed out`、30 秒→5 秒都在；「重启 Nginx 没用」单独成节，未被写成解决方案。通过 |
+| [g05](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g05.md) | dialogue | create / create | 上线时间安排.md | 197 | 最终结论为 10 月 12 日凌晨两点；9 月 28 日、10 月 8 日标为不采用并给出原因；10 月 11 日预发布与负责人苏晴保留。通过；锚点 `唐维` 未命中 |
+| [g06](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g06.md) | long_text | create / create | SQLite WAL.md | 2580 | 11 节齐全；`PRAGMA journal_mode=WAL;`、`wal_checkpoint(TRUNCATE)` 在围栏内原文保留；"WAL 改变并发行为而非查询速度"的限定保留。通过 |
+| [g07](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g07.md) | long_text | create / create | API服务部署手册.md | 2613 | 13 节齐全；第 5 节恢复的适用条件（配置结构未变才可只回退软链接，否则连配置一起还原）完整保留。通过 |
+| [g08](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g08.md) | long_text | create / create | 幂等性.md | 2071 | 13 节齐全；幂等与重试的前提关系、不解决并发覆盖、不可逆副作用边界都在，无来源外结论。通过 |
+| [g09](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g09.md) | long_text | create / create | 定时任务方案对比.md | 2288 | 三种方案与五个比较维度齐全，选择建议保留"按规模选型"的原意而非单一正解。通过 |
+| [g10](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g10.md) | long_text | create / create | DatabaseMigration.md | 2168 | 三条备注与三处例外全部以 `>` 引用保留；`通常/一般/建议/默认` 未被改成绝对说法。通过 |
+| [g11](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g11.md) | english | create / create | 服务账号与网关调用约定.md | 296 | may / must / usually 强度差别保留（"可以随时读取"/"必须在每个请求的 Authorization 头发送"/"通常在五分钟后过期"）；三个标识符原样。通过（L1 命中 `faithful.hedge`，见 §6.1） |
+| [g12](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g12.md) | english | create / create | PythonHTTP服务器.md | 428 | `python -m http.server 8000`、`--directory ./site`、`netstat -ano \| findstr :8000`、`Ctrl+C` 原样且在围栏内。通过 |
+| [g13](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g13.md) | english | create / create | CSP-nonce.md | 387 | `nonce`、`Content-Security-Policy`、`strict-dynamic`、`unsafe-inline` 未翻译改名；"每个响应重新生成"与"两者并存时退回允许内联"两条限制保留。通过 |
+| [g14](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g14.md) | english | create / create | gzip-zstd-brotli 对比.md | 317 | 12 MB→2.4 MB/1.1 s、zstd 2.1 MB/0.4 s、brotli 2.2 MB/0.7 s、100 MB 9.5 s/2.8 s、"不到 8%" 全部与输入一致。通过 |
+| [g15](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g15.md) | english | create / create | SearchIndexIncident.md | 312 | 现象、根因、临时处置、后续修复四节分开；`503`、`alias`、`Retry-After`、40% 保留。通过 |
+| [g16](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g16.md) | code | create / create | ExponentialBackoff.md | 528 | 函数体与 `>>>` 三段返回值 `0.5 / 4.0 / 30` 正确，围栏语言标注与缩进正确。通过 |
+| [g17](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g17.md) | code | create / create | SQL订单查询.md | 842 | 六个字段、`WHERE` 三条件、`ORDER BY created_at DESC`、`LIMIT 20` 全在；占位符与"排序不要用 id"的注意事项保留。通过 |
+| [g18](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g18.md) | code | create / create | PowerShell清理旧日志.md | 744 | 三条命令的参数、单引号路径 `'D:\backup'`、`-WhatIf` 原样；`-WhatIf` 版保留为预演步骤，未被写成直接删除的生产命令。通过 |
+| [g19](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g19.md) | code | create / create | APIClientConfig.md | 579 | 六个键与取值齐全（含占位符 `REPLACE-WITH-YOUR-KEY`）；`max_retries=3` 表示最多 4 次请求的说明保留；未编造真实密钥。通过 |
+| [g20](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g20.md) | code | create / create | Python可变默认参数.md | 551 | 错误版被显式标注"不要使用"并说明共享列表的错因，修正版正确；未把错误写法当作推荐实现。通过 |
+| [g21](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g21.md) | modify | append / append | Go.md | 192 | 只追加「切片」一节；原「控制流」一节未改动；备注以 `>` 呈现；未改用 replace。通过 |
+| [g22](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g22.md) | modify | replace / replace | Python虚拟环境.md | 272 | 路径不变；「适用版本」更新为 3.10 及以上；「创建」「常见问题」原文保留；含一级标题。通过 |
+| [g23](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g23.md) | modify | append / append | Kafka.md | 100 | 目标文件是 `Kafka.md`，**没有**写进 `RabbitMQ.md`；「分区」一节原文保留。通过 |
+| [g24](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g24.md) | modify | replace / replace | 网络/HTTP缓存.md | 230 | 路径不变；「协商缓存」补全为 `ETag`/`If-None-Match`/304 与 `Last-Modified` 版本；「强缓存」一句原文保留。通过 |
+| [g25](../prompt/results/v1_acceptance/v1-acceptance-full_all_20260926-095957/g25.md) | modify | replace / replace | Python/工具函数.md | 243 | 路径不变；签名改为含 `max_delay=None`；「缓存」一节与 `@lru_cache(maxsize=32)` 原样保留。通过 |
 
 代码类与命令类的围栏检查：g12、g16、g17、g18、g19、g20、g25 的草稿都包含围栏且语言标注正确（材料含代码态时才要求围栏）。
 
@@ -202,5 +202,5 @@ L1 总分（**仅作辅助**，不代替内容审查）：最低 62.25、最高 
 - **自动测试**：三组命令退出码均为 0，全量 478 passed，无失败与跳过，未发现本次改动引入的回归。
 - **生成验收**：25 条行为门与内容审查均通过，运行错误 0，分母 25 未被剔除；3 条锚点未命中已如实记录（§6.2）。**生成验收集本身的通过结论成立**，但不代表生成质量已优化——L1 偏差与单次采样波动见 §6.1、§7。
 - **手动功能验收**：用户执行并反馈通过（§9，未逐项留证）。
-- **V1 结论**：V1 退出标准已满足——核心闭环有可重复自动测试、生成样例 25 条覆盖五类、RAG 查询集 40 条（[rag-v1-report.md](./rag-v1-report.md)）、输入到审批到后续检索经用户手动确认。据此 **V1 验收通过，发布里程碑 tag `v1.0.0`**（路线图同步为已验收）。
+- **V1 结论**：V1 退出标准已满足——核心闭环有可重复自动测试、生成样例 25 条覆盖五类、RAG 查询集 40 条（[rag-v1-report.md](rag-v1-report.md)）、输入到审批到后续检索经用户手动确认。据此 **V1 验收通过，发布里程碑 tag `v1.0.0`**（路线图同步为已验收）。
 - **遗留项（不阻塞 V1，进入 V2 或后续任务）**：① 旧集 `b05` 为不稳定样例，模型在冲突分支下可能"只说明不提案"并宣称已提案；② L1 的 `structure.heading_precision`、`faithful.hedge`、`form.list`、`file_name_topic` 偏差未修（计划未授权改打分器）；③ 对话类锚点设计过严，下一轮需调整输入或只放进审查清单；④ 手动验收无逐项证据留档。

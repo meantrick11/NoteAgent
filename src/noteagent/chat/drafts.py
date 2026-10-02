@@ -15,6 +15,19 @@ _logger = logging.getLogger(__name__)
 current_thread_id: ContextVar[str] = ContextVar("noteagent_thread_id", default="")
 current_turn_id: ContextVar[str] = ContextVar("noteagent_turn_id", default="")
 
+
+@dataclass
+class DraftWorkspace:
+    """A graph node's private draft; returned as state before the node completes."""
+
+    thread_id: str
+    payload: dict | None
+
+
+current_draft_workspace: ContextVar[DraftWorkspace | None] = ContextVar(
+    "noteagent_draft_workspace", default=None,
+)
+
 WRITE_ACTIONS = ("append", "create", "replace", "delete")
 
 
@@ -99,6 +112,10 @@ class DraftStore:
         self._history = history
 
     def put(self, thread_id: str, draft: NoteDraft) -> None:
+        workspace = current_draft_workspace.get()
+        if workspace is not None and workspace.thread_id == thread_id:
+            workspace.payload = draft.as_dict()
+            return
         _logger.info(
             "draft pending thread=%s action=%s file=%s",
             thread_id,
@@ -108,7 +125,9 @@ class DraftStore:
         self._history.set_pending_draft(thread_id, draft.as_dict())
 
     def get(self, thread_id: str) -> NoteDraft | None:
-        payload = self._history.get_pending_draft(thread_id)
+        workspace = current_draft_workspace.get()
+        payload = (workspace.payload if workspace is not None and workspace.thread_id == thread_id
+                   else self._history.get_pending_draft(thread_id))
         if not payload:
             return None
         return NoteDraft.from_dict(payload)
@@ -117,7 +136,11 @@ class DraftStore:
         draft = self.get(thread_id)
         if draft is None:
             return None
-        self._history.clear_pending_draft(thread_id)
+        workspace = current_draft_workspace.get()
+        if workspace is not None and workspace.thread_id == thread_id:
+            workspace.payload = None
+        else:
+            self._history.clear_pending_draft(thread_id)
         return draft
 
     def update_content(self, thread_id: str, content: str) -> NoteDraft | None:

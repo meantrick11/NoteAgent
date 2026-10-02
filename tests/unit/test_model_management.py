@@ -9,6 +9,7 @@ import pytest
 from chromadb.config import Settings as ChromaSettings
 from pydantic import SecretStr
 
+
 from noteagent.bootstrap.runtime import api_key_for_profile
 from noteagent.bootstrap.settings import Settings
 from noteagent.model_management.catalog import repo_dir_name
@@ -513,11 +514,87 @@ def test_switch_refuses_an_incomplete_cache(tmp_path):
         service.switch_embedding(model_id=E5, expected_revision=service.status().revision)
 
 
+@pytest.mark.parametrize("fail", [False, True])
+def test_terminal_rebuild_releases_gate_before_worker_returns(tmp_path, monkeypatch, fail):
+    """A visible terminal job must allow writes even if its worker is still exiting."""
+    write_cached_model(tmp_path / "models", E5)
+    service, _, assembler, _ = build_service(tmp_path)
+    if fail:
+        assembler.fail_models.add(E5)
+    reached, release = threading.Event(), threading.Event()
+    name = "_finish_job" if fail else "_run_rebuild"
+    original = getattr(service, name)
+
+    def pause_after_terminal(*args, **kwargs):
+        result = original(*args, **kwargs)
+        reached.set()
+        release.wait(timeout=5)
+        return result
+
+    monkeypatch.setattr(service, name, pause_after_terminal)
+    _, job = service.switch_embedding(model_id=E5, expected_revision=service.status().revision)
+    try:
+        assert reached.wait(timeout=5)
+        assert service.get_job(job.id).status == ("failed" if fail else "succeeded")
+        assert service.status().busy is False
+        with service.write():
+            pass
+    finally:
+        release.set()
+        service.shutdown()
+
+
+def test_old_worker_cleanup_does_not_release_new_rebuild_gate(tmp_path, monkeypatch):
+    write_cached_model(tmp_path / "models", E5)
+    write_cached_model(tmp_path / "models", MINILM)
+    service, _, assembler, _ = build_service(tmp_path)
+    first_done, release_first = threading.Event(), threading.Event()
+    second_entered, release_second = threading.Event(), threading.Event()
+    old_worker = []
+    original_run, original_build = service._run_rebuild, assembler.build_retrieval
+
+    def delayed_return(*args):
+        original_run(*args)
+        if args[0] == E5:
+            old_worker.append(threading.current_thread())
+            first_done.set()
+            release_first.wait(timeout=5)
+
+    def blocked_build(**kwargs):
+        if kwargs["model_id"] == MINILM:
+            second_entered.set()
+            release_second.wait(timeout=5)
+        return original_build(**kwargs)
+
+    monkeypatch.setattr(service, "_run_rebuild", delayed_return)
+    monkeypatch.setattr(assembler, "build_retrieval", blocked_build)
+    service.switch_embedding(model_id=E5, expected_revision=service.status().revision)
+    try:
+        assert first_done.wait(timeout=5)
+        _, second_job = service.switch_embedding(model_id=MINILM, expected_revision=service.status().revision)
+        assert second_entered.wait(timeout=5)
+        release_first.set()
+        old_worker[0].join(timeout=5)
+        assert not old_worker[0].is_alive()
+        assert service.status().busy is True
+        with pytest.raises(BusyError):
+            with service.write():
+                pass
+        release_second.set()
+        assert wait_for_job(service, second_job.id).status == "succeeded"
+    finally:
+        release_first.set()
+        release_second.set()
+        service.shutdown()
+
+
 def test_maintenance_window_blocks_chat_and_writes_but_allows_reads(tmp_path):
     """The rebuild gate is enforced in the service, not only in the UI."""
     write_cached_model(tmp_path / "models", E5)
     block = threading.Event()
-    service, _, _, _ = build_service(tmp_path, block=block)
+    service, notes, _, _ = build_service(tmp_path, block=block)
+    # FakeRetrieval waits during index_note; an empty corpus never reaches it.
+    notes.create("A.md", "A note to keep indexing in progress")
 
     _, job = service.switch_embedding(model_id=E5, expected_revision=service.status().revision)
     try:
@@ -900,7 +977,8 @@ def test_a_second_switch_for_the_same_identity_is_refused_while_one_runs(tmp_pat
     """同一个身份只能有一个重建任务，不允许并发写同一个目标 collection。"""
     write_cached_model(tmp_path / "models", E5)
     block = threading.Event()
-    service, _, _, _ = build_service(tmp_path, block=block)
+    service, notes, _, _ = build_service(tmp_path, block=block)
+    notes.create("A.md", "A note to keep indexing in progress")
 
     _, job = service.switch_embedding(model_id=E5, expected_revision=service.status().revision)
     try:
