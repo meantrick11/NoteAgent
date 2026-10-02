@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import sys
 from pathlib import Path
 
 import uvicorn
@@ -10,6 +12,11 @@ from noteagent.bootstrap.settings import Settings   #设置文件
 from noteagent.observability.logging import setup_logging
 
 _logger = logging.getLogger(__name__)
+
+# psycopg 的异步驱动无法运行在 Windows 默认的 ProactorEventLoop 上，而 uvicorn 恰好会装它；
+# checkpointer 的连接因此必须在 selector loop 上运行。生产镜像为 Linux，不受影响。
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 def main() -> None:
@@ -36,7 +43,15 @@ def main() -> None:
 
     _logger.info("NoteAgent starting on %s:%s", settings.host, settings.port)
     
-    uvicorn.run(app, host=settings.host, port=settings.port, log_config=None)
+    uvicorn.run(
+        app,
+        host=settings.host,
+        port=settings.port,
+        log_config=None,
+        # Windows 上 uvicorn 默认会装载 ProactorEventLoop，覆盖上面的 selector policy；
+        # loop="none" 让它沿用当前 policy。Linux 保持 auto（可用 uvloop）。
+        loop="none" if sys.platform == "win32" else "auto",
+    )
 
 
 if __name__ == "__main__":

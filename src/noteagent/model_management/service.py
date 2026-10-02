@@ -1047,8 +1047,13 @@ class ModelRuntimeService:
             self._finish_job("failed", _public_error(exc))
         finally:
             with self._lock:
-                self._maintenance = False
-                self._job_thread = None
+                self._release_rebuild_locked()
+
+    def _release_rebuild_locked(self) -> None:
+        """Only this worker can release its gate; a newer job may already own it."""
+        if self._job_thread is threading.current_thread():
+            self._maintenance = False
+            self._job_thread = None
 
     def _run_rebuild(
         self,
@@ -1136,6 +1141,7 @@ class ModelRuntimeService:
             self._retrieval_problem = None
             self._retrieval_state = "empty" if chunks == 0 else "ok"
             self._live_job = None
+            self._release_rebuild_locked()
         _logger.info(
             "embedding rebuild published job=%s model=%s collection=%s chunks=%d notes=%d",
             job.id,
@@ -1175,3 +1181,5 @@ class ModelRuntimeService:
                 self._save_locked(document.model_copy(update={"embedding_job": record}))
             except Exception:
                 _logger.exception("记录重建结果失败 job=%s", record.id)
+            finally:
+                self._release_rebuild_locked()

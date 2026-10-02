@@ -1,6 +1,7 @@
 """The chat graph persists per-node state and keeps display history intact."""
 
 from langchain_core.messages import AIMessage
+import pytest
 
 
 def script(harness, *replies) -> None:
@@ -87,6 +88,11 @@ async def test_hop_limit_stops_the_loop_and_never_fakes_success(conversation_har
     assert events_of(events, "assistant_final") == []
     # the user bubble is still there; the failure did not erase history
     assert state.values["ui_messages"][0]["content"] == "无限工具"
+    from sqlalchemy import select
+    from noteagent.conversations.models import ConversationRun
+    with h.service._session_factory() as session:
+        run = session.scalar(select(ConversationRun))
+        assert run.status == "failed"
 
 
 async def test_compaction_keeps_display_history(conversation_harness):
@@ -153,3 +159,48 @@ async def test_prepare_turn_is_single_claim_per_request(conversation_harness):
         pass
     else:  # pragma: no cover - the duplicate must be rejected
         raise AssertionError("duplicate request_id must not prepare a second turn")
+
+
+async def test_checkpoint_draft_survives_without_legacy_row(conversation_harness):
+    h = conversation_harness
+    c = await h.create_conversation()
+    values = dict((await h.service.get_state(c.id)).values)
+    draft = {"action": "create", "file_name": "historical.md", "content": "historical draft"}
+    values["pending_draft"] = draft
+    await h.service.write_state(c.id, values, branch_id=h.service.active_branch_id(c.id), publish=True)
+    script(h, "ordinary answer")
+    events = await h.complete_turn(c.id, "ordinary question")
+    state = await h.service.get_state(c.id)
+    assert state.values["pending_draft"] == draft
+    assert events_of(events, "draft")[0]["data"]["content"] == "historical draft"
+
+
+async def test_proposal_is_checkpointed_before_followup_model(conversation_harness):
+    from noteagent.chat.graph import build_chat_graph, stream_graph
+    h = conversation_harness
+    c = await h.create_conversation()
+    script(h, AIMessage(content="", tool_calls=[{"name": "propose_note", "id": "p1", "args": {"action": "create", "file_name": "A.md", "content": "proposal"}}]))
+    await h.service.prepare_turn(c.id, "propose", "proposal-request")
+    graph = build_chat_graph(h.graph_runtime(), h.runtime.saver)
+    with pytest.raises(AssertionError, match="ran out of scripted replies"):
+        async for _ in stream_graph(graph, {}, h.active_head(c.id)):
+            pass
+    snapshots = [item async for item in graph.aget_state_history({"configurable": {"thread_id": c.id}})]
+    assert any(item.values.get("pending_draft", {}).get("content") == "proposal" for item in snapshots if item.values.get("pending_draft"))
+    assert h.history.get_pending_draft(c.id) is None
+
+
+async def test_compaction_accepts_async_summary_without_losing_history(conversation_harness, monkeypatch):
+    h = conversation_harness
+    c = await h.create_conversation()
+    script(h, "answer one")
+    await h.complete_turn(c.id, "first")
+    script(h, "answer two")
+    await h.complete_turn(c.id, "second")
+    async def summarize(old, dropped):
+        return "async summary"
+    monkeypatch.setattr(h, "_summarize", summarize)
+    script(h, "answer three")
+    await h.complete_turn(c.id, "third", force_compact=True)
+    assert (await h.service.get_state(c.id)).values["running_summary"] == "async summary"
+    assert [m.content for m in await h.service.list_messages(c.id)] == ["first", "answer one", "second", "answer two", "third", "answer three"]

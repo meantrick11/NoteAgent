@@ -7,7 +7,9 @@ restart resumes from the last saved version and no node re-adds the user message
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+import asyncio
+import inspect
+from collections.abc import Callable, Awaitable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -32,6 +34,8 @@ from noteagent.chat.context_tokens import prefix_until_tokens
 from noteagent.chat.drafts import (
     DraftStore,
     NoteDraft,
+    DraftWorkspace,
+    current_draft_workspace,
     current_thread_id as draft_thread_var,
     current_turn_id as draft_turn_var,
 )
@@ -60,7 +64,7 @@ class GraphRuntime:
     drafts: DraftStore
     budget: ContextBudget
     system_prompt: str
-    summarize_dropped: Callable[[str | None, str], str]
+    summarize_dropped: Callable[[str | None, str], str | Awaitable[str]]
     retrieval: object | None = None
 
     @property
@@ -170,9 +174,15 @@ async def compact_node(state: GraphState, runtime: GraphRuntime) -> dict[str, An
     if last == current_turn_id:
         logger.error("compact refused: watermark would be the current turn")
         return {}
-    chunk = runtime.summarize_dropped(
-        state.get("running_summary"), format_turns_for_summary(drop)
-    )
+    args = (state.get("running_summary"), format_turns_for_summary(drop))
+    if inspect.iscoroutinefunction(runtime.summarize_dropped):
+        chunk = await runtime.summarize_dropped(*args)
+    else:
+        # Compatibility for existing deterministic/sync summarizers; network
+        # model.invoke must never block the application's event loop.
+        chunk = await asyncio.to_thread(runtime.summarize_dropped, *args)
+        if inspect.isawaitable(chunk):
+            chunk = await chunk
     summary = concat_summary(state.get("running_summary"), chunk)
     remaining = after_watermark(records_from_state(state), last)
     logger.info(
@@ -235,6 +245,8 @@ async def tools_node(state: GraphState, runtime: GraphRuntime) -> dict[str, Any]
     # state stays the source of truth, so they are set only for this call.
     token_thread = draft_thread_var.set(graph_thread_id())
     token_turn = draft_turn_var.set(str(state.get("current_turn_id") or ""))
+    workspace = DraftWorkspace(graph_thread_id(), state.get("pending_draft"))
+    token_draft = current_draft_workspace.set(workspace)
     steps = list(state.get("tool_steps") or [])
     tool_map = runtime.tool_map
     produced: list[ToolMessage] = []
@@ -261,11 +273,13 @@ async def tools_node(state: GraphState, runtime: GraphRuntime) -> dict[str, Any]
         current_citations.reset(token)
         draft_thread_var.reset(token_thread)
         draft_turn_var.reset(token_turn)
+        current_draft_workspace.reset(token_draft)
     return {
         "runtime_messages": runtime_messages + produced,
         "tool_steps": steps,
         "citation_registry": registry.as_list(),
         "tool_rounds": int(state.get("tool_rounds") or 0) + 1,
+        "pending_draft": workspace.payload,
     }
 
 
@@ -282,9 +296,9 @@ async def finalize_node(state: GraphState, runtime: GraphRuntime) -> dict[str, A
     answer, used = _final_answer(runtime_messages, registry)
     writer(events.sources_event(used))
 
-    draft = runtime.drafts.get(graph_thread_id())
+    draft = state.get("pending_draft")
     if draft is not None:
-        writer(events.draft_event(draft.as_dict()))
+        writer(events.draft_event(draft))
 
     ui_messages = list(state.get("ui_messages") or [])
     turn_id = state.get("current_turn_id")
@@ -315,7 +329,7 @@ async def finalize_node(state: GraphState, runtime: GraphRuntime) -> dict[str, A
         "ui_messages": ui_messages,
         "working_records": [message_dict_from_record(r) for r in remaining],
         "citation_registry": registry.as_list(),
-        "pending_draft": draft.as_dict() if draft is not None else None,
+        "pending_draft": draft,
         "runtime_messages": [],
         "tool_steps": [],
         "announced_tool_ids": [],

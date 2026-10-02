@@ -15,6 +15,7 @@ from sqlalchemy import Engine
 from noteagent.chat.context_budget import ContextBudget
 from noteagent.chat.drafts import DraftStore
 from noteagent.chat.graph import build_chat_graph, stream_graph
+from noteagent.chat.execution import execute_turn
 from noteagent.chat.history import ConversationStore
 from noteagent.chat.nodes import GraphRuntime
 from noteagent.chat.tools import build_chat_tools
@@ -190,13 +191,8 @@ class ConversationHarness:
         )
         graph = build_chat_graph(self.graph_runtime(budget=budget), self.runtime.saver)
         events: list[dict] = []
-        async for event in stream_graph(graph, {}, thread_config(conversation_id)):
+        async for event in execute_turn(graph, self.service, prepared):
             events.append(event)
-        latest = await self.runtime.saver.aget_tuple(thread_config(conversation_id))
-        self.service.publish_head(
-            conversation_id, prepared.branch_id, checkpoint_id_of(latest.config) or ""
-        )
-        self.service.mark_run(prepared.run_id, "completed")
         return events
 
 

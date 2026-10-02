@@ -16,6 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -60,6 +61,11 @@ class ConversationRun(Base):
     __table_args__ = (
         UniqueConstraint("request_id", name="uq_conversation_runs_request"),
         Index("ix_conversation_runs_conversation", "conversation_id"),
+        Index(
+            "uq_conversation_runs_active", "conversation_id", unique=True,
+            postgresql_where=text("status IN ('prepared', 'running', 'interrupted')"),
+            sqlite_where=text("status IN ('prepared', 'running', 'interrupted')"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -77,6 +83,9 @@ class ConversationRun(Base):
     )
     generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     checkpoint_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    accepted_checkpoint_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lease_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="prepared")
     request_id: Mapped[str] = mapped_column(Text, nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

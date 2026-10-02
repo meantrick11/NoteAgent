@@ -108,6 +108,8 @@ async def lifespan(app: FastAPI):
     if container.checkpoints is not None:
         await container.checkpoints.open()
     try:
+        if container.conversations is not None:
+            container.conversations.reconcile_expired_runs()
         yield
     finally:
         if container.checkpoints is not None:

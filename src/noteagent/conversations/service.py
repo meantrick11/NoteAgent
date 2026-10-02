@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
-from sqlalchemy import select
+from sqlalchemy import select, update, delete
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from noteagent.conversations.checkpoints import (
@@ -24,6 +24,11 @@ from noteagent.conversations.checkpoints import (
     thread_config,
 )
 from noteagent.conversations.models import ConversationBranch, ConversationRun, UserMessageBoundary
+from noteagent.conversations.contracts import (
+    ConversationNotFound, TurnAlreadyClaimed, ConversationBusy,
+    StaleConversation, StateView, PreparedTurn,
+)
+from noteagent.conversations.leases import expires_at, reconcile_expired_runs, refresh_lease
 from noteagent.conversations.records import (
     ConversationRecord,
     GraphState,
@@ -36,35 +41,6 @@ from noteagent.conversations.records import (
 from noteagent.db.models import Conversation
 
 logger = logging.getLogger(__name__)
-
-
-class ConversationNotFound(KeyError):
-    """Raised when a conversation id is unknown or malformed."""
-
-
-class TurnAlreadyClaimed(RuntimeError):
-    """Raised when a request id has already prepared a turn."""
-
-
-@dataclass(slots=True)
-class StateView:
-    """One checkpoint's state plus the exact config it was read with."""
-
-    values: GraphState
-    config: dict[str, Any]
-
-
-@dataclass(slots=True)
-class PreparedTurn:
-    """Everything a run needs to execute one user turn exactly once."""
-
-    conversation_id: str
-    branch_id: str
-    turn_id: str
-    user_message_id: str
-    generation: int
-    run_id: str
-    before_config: dict[str, Any]
 
 
 class ConversationService:
@@ -171,6 +147,12 @@ class ConversationService:
         checkpoint = state_to_checkpoint(
             values, next_versions(self._runtime.saver, values)
         )
+        if publish:
+            with self._session_factory() as session:
+                conversation = self._load(session, conversation_id)
+                branch = self._branch(session, conversation)
+                expected_head = branch.head_checkpoint_id
+                expected_generation = conversation.generation
         metadata = {
             "source": "update",
             "step": int(values.get("generation", 0) or 0),
@@ -186,11 +168,16 @@ class ConversationService:
         if publish:
             if branch_id is None:
                 raise ValueError("publish requires a branch_id")
-            self.publish_head(conversation_id, branch_id, new_id or "")
+            self.publish_head(
+                conversation_id, branch_id, new_id or "",
+                expected_checkpoint_id=expected_head,
+                expected_generation=expected_generation,
+            )
         return saved
 
     def publish_head(
-        self, conversation_id: str, branch_id: str, checkpoint_id: str
+        self, conversation_id: str, branch_id: str, checkpoint_id: str, *,
+        expected_checkpoint_id: str | None, expected_generation: int,
     ) -> None:
         """Point one branch's head at a checkpoint and make it the active branch.
 
@@ -198,12 +185,8 @@ class ConversationService:
         beforehand, which is the compensating protocol, not one atomic transaction.
         """
         with self._session_factory() as session:
-            conversation = self._load(session, conversation_id)
-            branch = session.get(ConversationBranch, uuid.UUID(branch_id))
-            if branch is None or str(branch.conversation_id) != str(conversation.id):
-                raise ConversationNotFound(branch_id)
-            branch.head_checkpoint_id = checkpoint_id
-            conversation.active_branch_id = branch.id
+            self._publish(session, conversation_id, branch_id, checkpoint_id,
+                          expected_checkpoint_id, expected_generation)
             session.commit()
             logger.info(
                 "published conversation=%s branch=%s head=%s",
@@ -211,6 +194,24 @@ class ConversationService:
                 branch_id,
                 checkpoint_id,
             )
+
+    def _publish(self, session, conversation_id, branch_id, checkpoint_id,
+                 expected_checkpoint_id, expected_generation):
+        """CAS both rows in the caller's transaction; rollback on either mismatch."""
+        moved = session.execute(update(Conversation).where(
+            Conversation.id == uuid.UUID(conversation_id),
+            Conversation.active_branch_id == uuid.UUID(branch_id),
+            Conversation.generation == expected_generation,
+        ).values(updated_at=datetime.now(timezone.utc)))
+        if moved.rowcount != 1:
+            raise StaleConversation(conversation_id)
+        moved = session.execute(update(ConversationBranch).where(
+            ConversationBranch.id == uuid.UUID(branch_id),
+            ConversationBranch.conversation_id == uuid.UUID(conversation_id),
+            ConversationBranch.head_checkpoint_id == expected_checkpoint_id,
+        ).values(head_checkpoint_id=checkpoint_id))
+        if moved.rowcount != 1:
+            raise StaleConversation(conversation_id)
 
     async def list_messages(self, conversation_id: str) -> list[MessageRecord] | None:
         """Project the active checkpoint's display history; None when unknown."""
@@ -232,8 +233,15 @@ class ConversationService:
         """
         turn_id = uuid.uuid4()
         user_message_id = uuid.uuid4()
+        lease_token = str(uuid.uuid4())
+        self.reconcile_expired_runs()
         with self._session_factory() as session:
             conversation = self._load(session, conversation_id)
+            # Serialize claimers on PostgreSQL; the partial unique index also
+            # excludes other workers and supports SQLite test/evaluation mode.
+            session.execute(select(Conversation.id).where(
+                Conversation.id == conversation.id).with_for_update())
+            session.refresh(conversation)
             branch = self._branch(session, conversation)
             before_checkpoint_id = branch.head_checkpoint_id
             if before_checkpoint_id is None:
@@ -243,6 +251,11 @@ class ConversationService:
             )
             if claimed is not None:
                 raise TurnAlreadyClaimed(request_id)
+            if session.scalar(select(ConversationRun.id).where(
+                ConversationRun.conversation_id == conversation.id,
+                ConversationRun.status.in_(("prepared", "running", "interrupted")),
+            )) is not None:
+                raise ConversationBusy(conversation_id)
             run = ConversationRun(
                 conversation_id=conversation.id,
                 branch_id=branch.id,
@@ -252,13 +265,44 @@ class ConversationService:
                 checkpoint_id=before_checkpoint_id,
                 status="prepared",
                 request_id=request_id,
+                lease_token=lease_token,
+                lease_expires_at=expires_at(),
             )
             session.add(run)
-            session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                if session.scalar(select(ConversationRun.id).where(
+                    ConversationRun.request_id == request_id,
+                )) is not None:
+                    raise TurnAlreadyClaimed(request_id) from None
+                raise ConversationBusy(conversation_id) from None
             branch_id = str(branch.id)
             generation = int(conversation.generation or 0)
             run_id = str(run.id)
 
+        try:
+            return await self._accept_turn(
+                conversation_id, question, branch_id, generation, run_id,
+                turn_id, user_message_id, before_checkpoint_id,
+                lease_token,
+            )
+        except BaseException:
+            # An unpublished candidate is harmless history. Only remove a claim
+            # that never atomically accepted its user and boundary; cancellation
+            # must release it too. Published/running claims are never removed.
+            with self._session_factory() as session:
+                session.execute(delete(ConversationRun).where(
+                    ConversationRun.id == uuid.UUID(run_id),
+                    ConversationRun.status == "prepared",
+                    ConversationRun.lease_token == lease_token,
+                ))
+                session.commit()
+            raise
+
+    async def _accept_turn(self, conversation_id, question, branch_id, generation,
+                           run_id, turn_id, user_message_id, before_checkpoint_id, lease_token):
         before_config = thread_config(conversation_id, before_checkpoint_id)
         values = dict((await self.read_state(before_config)).values)
         user_record = MessageRecord(
@@ -290,14 +334,23 @@ class ConversationService:
             generation=generation,
             run_status="running",
         )
-        await self.write_state(
+        saved = await self.write_state(
             conversation_id,
             values,
             branch_id=branch_id,
             parent_checkpoint_id=before_checkpoint_id,
-            publish=True,
+            publish=False,
         )
         with self._session_factory() as session:
+            self._publish(session, conversation_id, branch_id,
+                          checkpoint_id_of(saved), before_checkpoint_id, generation)
+            run = session.get(ConversationRun, uuid.UUID(run_id))
+            if run is None or run.status != "prepared" or run.lease_token != lease_token:
+                raise StaleConversation(conversation_id)
+            run.status = "running"
+            run.checkpoint_id = checkpoint_id_of(saved)
+            run.accepted_checkpoint_id = checkpoint_id_of(saved)
+            run.lease_expires_at = expires_at()
             session.add(
                 UserMessageBoundary(
                     conversation_id=uuid.UUID(conversation_id),
@@ -313,11 +366,10 @@ class ConversationService:
             )
             session.commit()
         logger.info(
-            "prepared turn conversation=%s turn=%s run=%s request=%s",
+            "prepared turn conversation=%s turn=%s run=%s",
             conversation_id,
             turn_id,
             run_id,
-            request_id,
         )
         return PreparedTurn(
             conversation_id=conversation_id,
@@ -327,23 +379,109 @@ class ConversationService:
             generation=generation,
             run_id=run_id,
             before_config=before_config,
+            config=saved,
+            head_config=saved,
+            lease_token=lease_token,
         )
 
-    def mark_run(
-        self, run_id: str, status: str, *, checkpoint_id: str | None = None
-    ) -> None:
-        """Record the run's terminal status; failure must not look like success."""
-        if status not in ("prepared", "running", "completed", "failed", "interrupted"):
-            raise ValueError(f"invalid run status: {status!r}")
+    def resume_turn(self, run_id: str) -> PreparedTurn:
+        """Explicitly claim an interrupted run; never automatically call the model."""
+        self.reconcile_expired_runs()
         with self._session_factory() as session:
-            run = session.get(ConversationRun, uuid.UUID(run_id))
+            run = session.scalar(select(ConversationRun).where(
+                ConversationRun.id == uuid.UUID(run_id)).with_for_update())
             if run is None:
                 raise ConversationNotFound(run_id)
-            run.status = status
-            if checkpoint_id is not None:
-                run.checkpoint_id = checkpoint_id
+            conversation = self._load(session, str(run.conversation_id))
+            branch = self._branch(session, conversation)
+            if run.branch_id != branch.id or run.generation != conversation.generation:
+                raise StaleConversation(str(run.conversation_id))
+            if run.accepted_checkpoint_id != branch.head_checkpoint_id:
+                raise StaleConversation(str(run.conversation_id))
+            if run.status != "interrupted":
+                raise TurnAlreadyClaimed(run.request_id)
+            boundary = session.scalar(select(UserMessageBoundary).where(
+                UserMessageBoundary.conversation_id == run.conversation_id,
+                UserMessageBoundary.message_id == run.user_message_id,
+                UserMessageBoundary.branch_id == run.branch_id,
+            ))
+            if boundary is None or run.checkpoint_id is None:
+                raise StaleConversation(str(run.conversation_id))
+            lease_token = str(uuid.uuid4())
+            changed = session.execute(update(ConversationRun).where(
+                ConversationRun.id == run.id, ConversationRun.status == "interrupted",
+            ).values(status="running", lease_token=lease_token, lease_expires_at=expires_at()))
+            if changed.rowcount != 1:
+                raise TurnAlreadyClaimed(run.request_id)
+            prepared = PreparedTurn(
+                conversation_id=str(run.conversation_id), branch_id=str(run.branch_id),
+                turn_id=str(run.turn_id), user_message_id=str(run.user_message_id),
+                generation=run.generation, run_id=run_id,
+                before_config=thread_config(str(run.conversation_id), boundary.before_checkpoint_id),
+                config=thread_config(str(run.conversation_id), run.checkpoint_id),
+                head_config=thread_config(str(run.conversation_id), branch.head_checkpoint_id),
+                lease_token=lease_token,
+            )
             session.commit()
-            logger.info("run %s -> %s", run_id, status)
+            return prepared
+
+    def finish_run(self, prepared: PreparedTurn, checkpoint_id: str, status: str):
+        """Commit terminal state and active head together, or publish neither."""
+        if status not in ("completed", "failed"):
+            raise ValueError("graph did not reach a terminal state")
+        with self._session_factory() as session:
+            self._publish(session, prepared.conversation_id, prepared.branch_id,
+                          checkpoint_id, checkpoint_id_of(prepared.head_config),
+                          prepared.generation)
+            changed = session.execute(update(ConversationRun).where(
+                ConversationRun.id == uuid.UUID(prepared.run_id),
+                ConversationRun.status == "running",
+                ConversationRun.lease_token == prepared.lease_token,
+            ).values(status=status, checkpoint_id=checkpoint_id,
+                     lease_token=None, lease_expires_at=None))
+            if changed.rowcount != 1:
+                raise StaleConversation(prepared.conversation_id)
+            session.commit()
+
+    async def record_run_checkpoint(self, prepared: PreparedTurn, config: Mapping[str, Any]):
+        """Record only a durable snapshot from this run while it still owns the head."""
+        values = (await self.read_state(config)).values
+        if (values.get("branch_id") != prepared.branch_id
+                or values.get("generation") != prepared.generation
+                or values.get("current_turn_id") != prepared.turn_id):
+            raise StaleConversation(prepared.conversation_id)
+        with self._session_factory() as session:
+            conversation = self._load(session, prepared.conversation_id)
+            branch = self._branch(session, conversation)
+            if (str(branch.id) != prepared.branch_id
+                    or conversation.generation != prepared.generation
+                    or branch.head_checkpoint_id != checkpoint_id_of(prepared.head_config)):
+                raise StaleConversation(prepared.conversation_id)
+            changed = session.execute(update(ConversationRun).where(
+                ConversationRun.id == uuid.UUID(prepared.run_id),
+                ConversationRun.status == "running",
+                ConversationRun.lease_token == prepared.lease_token,
+            ).values(checkpoint_id=checkpoint_id_of(config)))
+            if changed.rowcount != 1:
+                raise StaleConversation(prepared.conversation_id)
+            session.commit()
+
+    def reconcile_expired_runs(self):
+        reconcile_expired_runs(self._session_factory)
+
+    def refresh_run_lease(self, prepared: PreparedTurn):
+        if not refresh_lease(self._session_factory, prepared.run_id, prepared.lease_token):
+            raise StaleConversation(prepared.conversation_id)
+
+    def interrupt_run(self, prepared: PreparedTurn):
+        """An old executor must never mutate a newer resume attempt's claim."""
+        with self._session_factory() as session:
+            session.execute(update(ConversationRun).where(
+                ConversationRun.id == uuid.UUID(prepared.run_id),
+                ConversationRun.status == "running",
+                ConversationRun.lease_token == prepared.lease_token,
+            ).values(status="interrupted", lease_token=None, lease_expires_at=None))
+            session.commit()
 
     # ---- internals --------------------------------------------------------
 

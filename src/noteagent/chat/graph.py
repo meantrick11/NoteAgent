@@ -8,8 +8,10 @@ and the user message is written by the turn preparation, never by a node.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from collections.abc import Awaitable, Callable
 
 from typing import Any
+from contextlib import aclosing
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
@@ -60,15 +62,21 @@ def build_chat_graph(runtime: GraphRuntime, checkpointer: BaseCheckpointSaver):
 
 
 async def stream_graph(
-    graph, inputs: dict[str, Any], config: dict[str, Any]
+    graph, inputs: dict[str, Any] | None, config: dict[str, Any], *,
+    on_checkpoint: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield the SSE events the nodes emit while the graph runs to completion.
 
     ``updates`` are consumed as well so the caller's run completes only after the
     checkpointer has actually persisted the node's state.
     """
-    async for mode, payload in graph.astream(
-        inputs, config=config, stream_mode=["custom", "updates"]
-    ):
-        if mode == "custom":
-            yield payload
+    stream = graph.astream(
+        inputs, config=config, stream_mode=["custom", "updates", "checkpoints"],
+        durability="sync",
+    )
+    async with aclosing(stream):
+        async for mode, payload in stream:
+            if mode == "custom":
+                yield payload
+            elif mode == "checkpoints" and on_checkpoint is not None:
+                await on_checkpoint(payload["config"])
