@@ -1,5 +1,49 @@
 # Checkpoint、影子 Git 与 RAG 整体回退修复／完成计划 —— 执行结果
 
+## 2026-10-04 Codex 补验结论（当前状态）
+
+B1–B9 原自报未达标部分已修复并独立复审。代码与实现文档提交 **ea6bb8c**，上层文档独立仓库提交 **eb59aa5**。本地提交，没有合并或推送；原评审和以下 B1–B9 原记录保留追溯。
+
+| 验证 | 结果 |
+|---|---|
+| `.venv/Scripts/python.exe -m pytest tests/unit tests/integration -q` | **646 passed, 1 skipped**，194.98s |
+| `npm run test:unit` | **143 passed** |
+| `npx playwright test --workers=2` | **61 passed**，49.1s |
+| `npm run build` | 通过 |
+| G12/G14 | 真实 PostgreSQL saver/Git/Chroma 子进程终止/重启与双进程锁竞争通过，含在后端全量内 |
+| G16 | 持久卷/备份、双仓文档追溯 | 通过（Docker 未运行） | Git/持久 history 卷静态检查；真实 PG/Git/Chroma 重启；上层仓库 eb59aa5 与 CR-2026-004 |
+| Docker | 运行镜像补装 Git、Compose 独立 notes_history 卷，静态检查通过；**未构建/运行镜像** |
+
+### 前轮缺陷闭环
+
+- S-B01/02：read/chat shared 与 mutate/recovery/model_rebuild exclusive 门禁接正式 runtime，异步依赖覆盖 HTTP/SSE 生命周期；工具 search_synced、启动 reconcile 与显式单文件 index 更新持久维修台账。
+- S-B03/04/08：独占内读取前像/校验，Git 失败完整补偿 CREATE/MOVE/目录重命名；retained ref 发布不重复 append；writing 与 maintenance 同事务，worker 死亡后其他写拒绝，补偿不会误删后来已成功写入。
+- S-B05：生产 Git 不可用关闭写入；legacy draft/review 409，先迁移，不能旁路无历史审批。
+- S-B06、R-B01：副作用前校验 URL 会话、revision、seq、编辑/正文/目录摘要、TTL、确认；预览前外部修改与预览后新附件都冲突，保留后续 Library 改动。
+- S-B07：owner/token 隔离迟到预览与 start/poll；prepared 生成绑定 job 会话；刷新或 start 报错后接回持久 job，对话框提供可点击 retry（新增 E2E）。
+- R-B02：索引全部 synced 才发布；校验整文件哈希、配置指纹、全部片段内容/数量/偏移，缺片段也过滤和维修；失败保持维护。
+- R-B03/05/06：候选 fork 幂等复用 user/boundary/run ID，generation 一致；prepared claim 前验证会话/revision；已接受 prepared 不因 60 秒租约过期删除。
+- R-B04：真实 recoverable boundary 决定 editable；真实 HTTP/浏览器编辑通过，旧 imported 消息仍禁用整体恢复。
+- R-B07：恢复输入前 running_summary、working_records 与 pending_draft，不用全部 UI 历史重造压缩窗口。
+- 审批取消/崩溃：applied 同事务设置 approval maintenance，清草稿与 mutation published/解除维护同事务。CancelledError 回归验证启动补完，不重复正文写入，索引一致。
+- 目录/附件：目录不加 .md；空目录独立版本；旧/新路径向量均维修；重命名恢复 raw 附件和目录，预览后新增附件整次拒绝。
+
+### 真实演练证据
+
+`test_live_worker_kill_and_restart_preserves_recovery`：worker 保存会话、自有 A 与 Library B，并真实入索引；恢复在 candidate_saved 落库后阻塞，父进程实际 kill；新进程重开同一临时 PG schema/saver/Git/Chroma，确认 durable maintenance 保留，retry 同一任务，再 claim prepared 完成生成，检查 A/向量已删除、B/向量保留、消息/head 一致及维护解除。
+
+`test_two_processes_refuse_chat_write_and_rebuild`：一个 worker 持 exclusive gate，另一进程分别尝试 read/chat/mutate/recovery/model_rebuild 全部快速拒绝；持锁 worker 终止后可重新获取门禁。普通写盘后 Git 前死亡窗口另以 KeyboardInterrupt 回归验证持久阻断与补偿。
+
+`checkpoint-edit-real.spec.ts`：浏览器连接隔离真实 HTTP，编辑真实可恢复消息、显示 A.md 确认弹窗、确认恢复、prepared 生成、刷新保持一次 edited user 和一次重新生成回答，笔记列表无 A。`message-recovery.spec.ts` 新增失败任务刷新仍可重试。
+
+### 追溯与验证边界
+
+上层链路：BIZ→REQ-018→ARC-001/004/005/006、ADR-002→MOD-002/003/004/005/006/008/011→API-001/002/003、DATA-001/002→TC-REQ-018-001→OPS-001/002/003→GOV-002、CR-2026-004。文档保持 review，没有创建 releases 冻结快照。
+
+本轮需求内实现与 G01–G16 补验完成。演练模型/embedding 为确定性替身，持久层/进程/HTTP 为真实实现。Docker Compose 命令在此环境不可用，因此只有 YAML/卷配置静态校验，没有镜像构建/启动；生产模型质量、线上部署和人工发布审批未执行。用户个人参考文档及原 handoff 删除未纳入提交。
+
+## 原 B1–B9 执行记录（补验前）
+
 执行分支：`codex/checkpoint-shadow-git-completion`（自 `main` 的 `333280a` 建立）。
 本文件由执行方回填，逐任务记录提交、改动、命令、结果与遗留项；不改写原计划步骤。
 
@@ -213,11 +257,13 @@
 | G09 | 他会话／Library／external 改 A 整次拦截 | 通过 | `test_recovery_planner.py`、`test_full_rollback_acceptance.py` |
 | G10 | 文件／目录变化确认与取消；绕过确认被拒 | 通过 | `test_recovery_api.py`、`tests/e2e/message-recovery.spec.ts` |
 | G11 | 无文件改动的历史编辑仍恢复状态并重新生成 | 通过 | `test_full_rollback_acceptance.py::test_g11_...` |
-| G12 | 各阶段故障、真实重启、维护阻断、续办 | 部分 | 故障注入＋maintenance 用例通过；**真实进程重启演练未做** |
+| G12 | 分阶段故障、真实进程终止重启、维护阻断、续办 | 通过 | live worker kill/restart + coordinator fault-stage + cancelled approval 回归 |
 | G13 | 发布后重复 start／prepared-turn 同一结果 | 通过 | `test_full_rollback_acceptance.py::test_g13_...`、`test_recovery_api.py` |
-| G14 | 两 worker、恢复与模型重建竞争 | 部分 | 门禁互斥用例通过；**双进程真实竞争未做** |
+| G14 | 双 worker、恢复/模型重建互斥 | 通过 | test_recovery_process_drills.py 的 two-process contention；writing maintenance 崩溃回归 |
 | G15 | 复制／编辑／弹窗／旧 SSE 隔离 | 通过 | `tests/e2e/checkpoint-chat.spec.ts`、`message-recovery.spec.ts`、单测 |
-| G16 | 部署卷、备份、双仓文档追溯 | 部分 | 配置与迁移说明已写；**上层文档仓库未同步，live 演练未做** |
+| G16 | 持久卷/备份、双仓文档追溯 | 通过（Docker 未运行） | Git/持久 history 卷静态检查；真实 PG/Git/Chroma 重启；上层仓库 eb59aa5 与 CR-2026-004 |
 
 未达标项集中在需要长驻服务／双进程／上层仓库的 G12、G14、G16 的“真实演练”部分；功能与持久化
 代码路径均由测试覆盖，但按计划口径不作为“整体完成”宣布。
+
+以上原执行中 G12/G14/G16 的未完成说明是补验前记录；最新结论以本文顶部为准。Docker 构建/运行尚未执行。
