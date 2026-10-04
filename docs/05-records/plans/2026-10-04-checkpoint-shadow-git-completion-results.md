@@ -86,8 +86,8 @@
 | B1 持久台账与跨进程工作区门禁 | `19b5fdc` | 完成 |
 | B2 真实影子 Git 与初始笔记版本 | `9351044` | 完成 |
 | B3 统一正式笔记写入 | `a69a082` | 完成 |
-| B4 可靠的单文件 RAG 更新与维修 | — | 待执行 |
-| B5 纯预览计划与共享修改冲突 | — | 待执行 |
+| B4 可靠的单文件 RAG 更新与维修 | `1d85826` | 完成 |
+| B5 纯预览计划与共享修改冲突 | `2456da1` | 完成 |
 | B6 整体恢复状态机 | — | 待执行 |
 | B7 恢复 API 与 prepared-turn 重推理 | — | 待执行 |
 | B8 编辑、确认弹窗、冲突和进度 UI | — | 待执行 |
@@ -136,7 +136,28 @@
 - 遗留：草稿批准的 workspaces gate 顺序（gate→conversation lock）与恢复协调的严格定序在 B6 统一；
   索引仍为 best-effort，B4 换成持久维修记录。
 
-### B4—B9 待执行
+### B4 `fix(retrieval): repair per-file indexes and fence stale chunks`
 
-B4 逐文件索引维修、B5 预览冲突、B6 恢复协调、B7 恢复 API、B8 编辑 UI、B9 演练与文档同步均未开始。
+- 改动：新增 `retrieval/repairs.py`、`tests/integration/test_index_repairs.py`；
+  `notes/mutations.py` 的 `_sync_index` 在具备 repairs 时改为「pending→写→验证→ready」并只修受影响路径；
+  `bootstrap/app.py` 构建 `IndexRepairService` 注入 mutation 服务。
+- 机制：bodies hash 规则 `raw-bytes-sha256-v1`，向量文本规则 `chunk-content-v1`；写入前持久标
+  `pending`，全部写完并校验（body hash + config fingerprint + 是否 indexed／空文档零 chunk）才
+  `ready`；失败保留可重试任务；`search_synced` 过滤未同步文件的命中；`reconcile` 跨重启重试。
+- 命令与结果：`pytest tests/integration/test_index_repairs.py tests/integration/test_retrieval_service.py tests/integration/test_notes_mutations.py -q` → **30 passed**；全量后端 **597 passed, 1 skipped**。
+- 遗留：启动时不自动 reconcile（B7 提供显式修复入口）。
+
+### B5 `feat(recovery): preview owned changes and reject shared conflicts`
+
+- 改动：新增 `recovery/planner.py`（纯函数）、`tests/unit/test_recovery_planner.py`。
+- 机制：`plan()` 按 workspace_seq 逆序反转本会话 owned mutations 求目标文件／目录状态；他人后续
+  操作（含 ABA 写回）、移动交叉、恢复目录内未追踪内容即冲突，`can_apply=False`；无正式写入允许
+  仅状态恢复；导入历史 `history_not_recoverable`。`RestorePlan` 记录 state_revision／workspace_seq／
+  target hash／content digest／expires_at，preview 不触碰正文／索引／活动 head。
+- 命令与结果：`pytest tests/unit/test_recovery_planner.py -q` → **7 passed**；全量后端 **604 passed, 1 skipped**。
+- 遗留：`recovery/schemas.py` 的 API 出参模型在 B7 一并落地。
+
+### B6—B9 待执行
+
+B6 恢复协调、B7 恢复 API、B8 编辑 UI、B9 演练与文档同步均未开始。
 
