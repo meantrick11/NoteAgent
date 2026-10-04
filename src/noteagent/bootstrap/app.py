@@ -31,6 +31,7 @@ from noteagent.notes.repository import FileNoteRepository
 from noteagent.notes.mutations import NoteMutationService
 from noteagent.notes.versions import NoteVersionError, NoteVersionStore
 from noteagent.recovery.gate import WorkspaceGate, is_postgres_url
+from noteagent.retrieval.repairs import IndexRepairService
 from noteagent.retrieval.service import RetrievalService
 from noteagent.web import DIST_DIR, STATIC_DIR
 from noteagent.web.router import router as web_router
@@ -99,7 +100,10 @@ def build_container(settings: Settings) -> AppContainer:
         _logger.error("shadow note repository unavailable: %s", exc)
         versions = None
     mutations = (
-        NoteMutationService(notes, versions, workspace, session_factory)
+        NoteMutationService(
+            notes, versions, workspace, session_factory,
+            repairs=IndexRepairService(session_factory, notes),
+        )
         if versions is not None else None
     )
 

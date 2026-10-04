@@ -110,11 +110,13 @@ class NoteMutationService:
         versions: NoteVersionStore,
         gate: WorkspaceGate,
         session_factory: sessionmaker[Session],
+        repairs=None,
     ) -> None:
         self._notes = notes
         self._versions = versions
         self._gate = gate
         self._session_factory = session_factory
+        self._repairs = repairs
 
     # ---- public API -------------------------------------------------------
 
@@ -174,7 +176,7 @@ class NoteMutationService:
                 after_commit=snapshot.commit, workspace_seq=seq,
                 paths=list(snapshot.changed_paths or paths),
             )
-            indexed = self._sync_index(command, retrieval)
+            indexed = self._sync_index(command, retrieval, operation_id, before)
 
         logger.info(
             "note mutation op=%s kind=%s commit=%s seq=%s paths=%s",
@@ -279,10 +281,34 @@ class NoteMutationService:
             except Exception:  # best-effort; the ledger keeps the record
                 logger.exception("note restore failed path=%s", path)
 
-    def _sync_index(self, command: MutationCommand, retrieval: Any | None) -> bool:
-        """Best-effort index update; durable repair records land in B4."""
+    def _index_paths(self, command: MutationCommand, before: dict[str, bytes]) -> list[str]:
+        """Concrete note paths whose vectors must be brought in line."""
+        notes = self._notes
+        if command.kind == FOLDER_DELETE:
+            return list(before)
+        if command.kind == DELETE:
+            return [notes.normalize(command.file_name or "")]
+        if command.kind == MOVE:
+            return [notes.normalize(command.file_name or ""), notes.normalize(command.dest or "")]
+        if command.kind == FOLDER_RENAME:
+            old = notes.normalize(command.name or "")
+            new = notes.normalize(command.dest or "")
+            return [n for n in notes.list_notes()
+                    if n.startswith(f"{old}/") or n.startswith(f"{new}/")]
+        if command.kind in (CREATE, WRITE):
+            return [notes.normalize(command.file_name or "")]
+        return []
+
+    def _sync_index(self, command: MutationCommand, retrieval: Any | None,
+                    operation_id: str, before: dict[str, bytes]) -> bool:
+        """Update the vectors for the affected paths; durable when repairs is present."""
         if retrieval is None:
             return False
+        paths = self._index_paths(command, before)
+        if self._repairs is not None:
+            statuses = self._repairs.repair_many(paths, retrieval, operation_id=operation_id)
+            return all(status.synced for status in statuses)
+        # Legacy best-effort path (no repair ledger available).
         try:
             if command.kind == DELETE:
                 retrieval.delete_note(self._notes.normalize(command.file_name or ""))
@@ -296,10 +322,8 @@ class NoteMutationService:
                     logger.exception("index delete failed path=%s", src)
                 return bool(retrieval.index_note(dest))
             if command.kind == FOLDER_DELETE:
-                prefix = f"{self._notes.normalize(command.name or '')}/"
-                for name in self._notes.list_notes():
-                    if name.startswith(prefix):
-                        retrieval.delete_note(name)
+                for name in before:
+                    retrieval.delete_note(name)
                 return False
             target = self._notes.normalize(command.file_name or "")
             retrieval.index_note(target)
