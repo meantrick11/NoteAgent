@@ -70,6 +70,27 @@ const JOB = {
   stage: 'succeeded', prepared_turn_id: 'run-9', error: null, retryable: true, plan: {},
 }
 
+test('long message edits at full height without an inner scrollbar', async ({ page }) => {
+  await stubApi(page)
+  const content = Array.from({ length: 100 }, (_, i) => `Line ${i + 1}`).join('\n')
+  await page.route(url => url.pathname.endsWith('/messages'), route => route.fulfill({
+    json: [{ ...MESSAGES[0], content }],
+  }))
+  await page.goto('/assistant')
+  const row = page.locator('.msg-row.user').first()
+  const originalHeight = await row.locator('.msg-body').evaluate(el => el.getBoundingClientRect().height)
+  await row.getByRole('button', { name: '编辑这条消息' }).click()
+  const box = row.getByRole('textbox', { name: '编辑这条消息' })
+  await expect(box).toHaveValue(content)
+  await expect.poll(() => box.evaluate(el => el.clientHeight)).toBeGreaterThanOrEqual(originalHeight - 2)
+  await expect.poll(() => box.evaluate(el => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1)
+  await box.fill(content + '\nAdded line')
+  await page.setViewportSize({ width: 480, height: 800 })
+  await expect.poll(() => box.evaluate(el => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1)
+  await row.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(row.locator('.msg-body')).toHaveText(content)
+})
+
 test('state-only edit waits for confirmation after keyboard submission', async ({ page }) => {
   const calls = await stubApi(page)
   await page.route(url => url.pathname.endsWith('/recoveries/preview'), route => route.fulfill({

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps<{ value: string; busy?: boolean }>()
 const emit = defineEmits<{
@@ -10,6 +10,28 @@ const emit = defineEmits<{
 
 // IME 组合输入期间绝不提交；Enter 只换行。
 const composing = ref(false)
+const input = ref<HTMLTextAreaElement | null>(null)
+let observer: ResizeObserver | undefined
+let previousWidth = -1
+
+function resizeToContent(): void {
+  const element = input.value
+  if (!element) return
+  element.style.height = '0px'
+  element.style.height = `${element.scrollHeight}px`
+}
+
+watch(() => props.value, resizeToContent, { flush: 'post' })
+onMounted(() => {
+  resizeToContent()
+  observer = new ResizeObserver(([entry]) => {
+    if (!entry || entry.contentRect.width === previousWidth) return
+    previousWidth = entry.contentRect.width
+    resizeToContent()
+  })
+  if (input.value) observer.observe(input.value)
+})
+onBeforeUnmount(() => observer?.disconnect())
 
 function onInput(event: Event): void {
   emit('update:value', (event.target as HTMLTextAreaElement).value)
@@ -31,11 +53,12 @@ function onKeydown(event: KeyboardEvent): void {
 <template>
   <div class="msg-edit">
     <textarea
+      ref="input"
       class="msg-edit-input"
       :value="props.value"
       :disabled="props.busy"
       aria-label="编辑这条消息"
-      rows="3"
+      rows="1"
       @input="onInput"
       @keydown="onKeydown"
       @compositionstart="composing = true"
@@ -63,12 +86,14 @@ function onKeydown(event: KeyboardEvent): void {
 .msg-edit-input {
   width: 100%;
   box-sizing: border-box;
-  resize: vertical;
+  resize: none;
+  overflow: hidden;
   font: inherit;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
+  line-height: inherit;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--text);
 }
 
