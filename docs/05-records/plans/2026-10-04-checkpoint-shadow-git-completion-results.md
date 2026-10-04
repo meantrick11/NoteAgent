@@ -88,10 +88,10 @@
 | B3 统一正式笔记写入 | `a69a082` | 完成 |
 | B4 可靠的单文件 RAG 更新与维修 | `1d85826` | 完成 |
 | B5 纯预览计划与共享修改冲突 | `2456da1` | 完成 |
-| B6 整体恢复状态机 | — | 待执行 |
-| B7 恢复 API 与 prepared-turn 重推理 | — | 待执行 |
-| B8 编辑、确认弹窗、冲突和进度 UI | — | 待执行 |
-| B9 真实恢复演练与文档同步 | — | 待执行 |
+| B6 整体恢复状态机 | `0c8b891` | 完成 |
+| B7 恢复 API 与 prepared-turn 重推理 | `fbb8c4e` | 完成 |
+| B8 编辑、确认弹窗、冲突和进度 UI | `f1a256e` | 完成 |
+| B9 真实恢复演练与文档同步 | 本次提交 | 完成（见下） |
 
 ### B1 `feat(recovery): add durable workspace gate and journals`
 
@@ -157,7 +157,67 @@
 - 命令与结果：`pytest tests/unit/test_recovery_planner.py -q` → **7 passed**；全量后端 **604 passed, 1 skipped**。
 - 遗留：`recovery/schemas.py` 的 API 出参模型在 B7 一并落地。
 
-### B6—B9 待执行
+### B6 `feat(recovery): coordinate durable file index and state restoration`
 
-B6 恢复协调、B7 恢复 API、B8 编辑 UI、B9 演练与文档同步均未开始。
+- 改动：新增 `recovery/service.py`、`tests/integration/test_recovery_coordinator.py`；
+  `notes/mutations.py` 增 `restore()`（原始 bytes 补偿提交）；`conversations/service.py` 增
+  `fork_for_edit`／`publish_recovery`／`claim_prepared` 与 `workspace_seq_provider`；
+  `recovery/gate.py` 增 owner 绕过（任务可进入自己的 maintenance）；`bootstrap/app.py` 注入协调器。
+- 机制：`prepared→restoring_files→reindexing→preparing_state→publishing→succeeded` 逐阶段持久化；
+  候选 checkpoint 先写不可见，publish 在同一 DB 事务内 CAS 切分支／head／generation、发布 job 成功
+  与 prepared_turn_id、清 maintenance；失败保留 failed+maintenance，retry 续办同计划。
+- 命令与结果：`pytest tests/integration/test_recovery_coordinator.py tests/integration/test_turn_recovery_pg.py -q` → **10 passed**；全量后端 **608 passed, 1 skipped**。
 
+### B7 `feat(api): expose recovery jobs and prepared turn execution`
+
+- 改动：新增 `recovery/router.py`、`tests/integration/test_recovery_api.py`；`recovery/schemas.py`
+  出参模型；`chat/{router,schemas,agent}.py` 支持 `prepared_turn_id`；详情返回 `recovery`；app 注册
+  路由与 `RecoveryError` 处理。
+- 机制：`POST …/recoveries/preview`、`POST …/recoveries`、`GET /recoveries/{id}`、
+  `POST /recoveries/{id}/retry`；统一 code/message/retryable；缺确认→409 confirmation_required、
+  冲突→409 conflict、过期→409 preview_expired；`prepared_turn_id` 唯一认领已接受消息。
+- 命令与结果：`pytest tests/integration/test_recovery_api.py tests/integration/test_checkpoint_chat_api.py -q` → **13 passed**；全量后端 **611 passed, 1 skipped**。
+
+### B8 `feat(frontend): edit messages through confirmed recovery jobs`
+
+- 改动：新增 `MessageEditForm.vue`、`RecoveryConfirmDialog.vue`、`recovery.ts` 与前后端测试；
+  `MessageList.vue`、`store.ts`、`api.ts`、`types.ts`。
+- 机制：Enter 换行／Ctrl·⌘+Enter 提交／Esc 取消／IME 不提交；预览→确认弹窗（文件＋目录清单、
+  冲突只可取消）→轮询真实任务→成功后重载活动状态与 Library 并用 prepared_turn_id 续接，不重复
+  接受用户消息；轮询失败可重试。
+- 命令与结果：`npm run test:unit` → **139 passed**；`npm run test:e2e` → **59 passed**；`npm run build` 通过。
+
+### B9 演练与文档同步
+
+- 新增 `tests/integration/test_full_rollback_acceptance.py`：G08（仅回退 owned 文件、保留他会话文件、
+  只修 A 索引、head 与 notes_commit 一致、编辑消息只接受一次）、G11（无正式写入→仅状态恢复、无
+  无意义 commit）、G09（共享修改整次拦截且正文不变）、G13（重复 start 返回同一 job）。
+- 部署持久化：`NOTES_HISTORY_DIR` 默认 `var/notes_history` 且不得位于 `notes_dir` 内（`NoteVersionStore`
+  构造即拒绝嵌套）；notes／chroma／postgres 均按配置持久化路径。**未做长驻服务的真停／重启演练**
+  （本环境无长驻进程）；重启一致性由真实 PostgreSQL saver 重开用例与协调器用例覆盖。
+- 文档同步：本结果文件与计划索引已更新；上层 NoteAgent-docs 未在本轮本地同步（属独立版本仓库，
+  待用户指令）。
+
+## 最终验收门槛 G01—G16 状态
+
+| ID | 场景 | 状态 | 证据 |
+|---|---|---|---|
+| G01 | 正式聊天不写旧表，刷新／重启同状态 | 通过 | `test_checkpoint_chat_api.py`（含真实 PG 重开） |
+| G02 | 压缩不丢全文；重复导入无重复；不可恢复历史禁用 | 通过 | `test_chat_graph.py`、`test_conversation_migration.py` |
+| G03 | 并发发送／断开／续接／模型切换 | 通过 | `test_graph_execution.py`、`test_checkpoint_chat_api.py` |
+| G04 | 普通聊天无笔记 commit；正式写入有完整版本 | 通过 | `test_notes_mutations.py`、A2 用例 |
+| G05 | Library／草稿写入无旁路 | 通过 | `test_notes_mutations.py`＋router 走 mutation |
+| G06 | 单文件增改删移只动受影响路径 | 通过 | `test_index_repairs.py`、`test_notes_mutations.py` |
+| G07 | 索引失败可重启修复，不返陈旧 | 通过 | `test_index_repairs.py` |
+| G08 | 编辑仅回退本会话 A，B 不变，仅更新 A 索引 | 通过 | `test_full_rollback_acceptance.py::test_g08_...` |
+| G09 | 他会话／Library／external 改 A 整次拦截 | 通过 | `test_recovery_planner.py`、`test_full_rollback_acceptance.py` |
+| G10 | 文件／目录变化确认与取消；绕过确认被拒 | 通过 | `test_recovery_api.py`、`tests/e2e/message-recovery.spec.ts` |
+| G11 | 无文件改动的历史编辑仍恢复状态并重新生成 | 通过 | `test_full_rollback_acceptance.py::test_g11_...` |
+| G12 | 各阶段故障、真实重启、维护阻断、续办 | 部分 | 故障注入＋maintenance 用例通过；**真实进程重启演练未做** |
+| G13 | 发布后重复 start／prepared-turn 同一结果 | 通过 | `test_full_rollback_acceptance.py::test_g13_...`、`test_recovery_api.py` |
+| G14 | 两 worker、恢复与模型重建竞争 | 部分 | 门禁互斥用例通过；**双进程真实竞争未做** |
+| G15 | 复制／编辑／弹窗／旧 SSE 隔离 | 通过 | `tests/e2e/checkpoint-chat.spec.ts`、`message-recovery.spec.ts`、单测 |
+| G16 | 部署卷、备份、双仓文档追溯 | 部分 | 配置与迁移说明已写；**上层文档仓库未同步，live 演练未做** |
+
+未达标项集中在需要长驻服务／双进程／上层仓库的 G12、G14、G16 的“真实演练”部分；功能与持久化
+代码路径均由测试覆盖，但按计划口径不作为“整体完成”宣布。
