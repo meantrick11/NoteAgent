@@ -50,8 +50,11 @@ export const messages: Message[] = [
     role: 'user',
     content: 'Go 的并发模型是什么？',
     created_at: '2026-09-28T10:00:01Z',
+    turn_id: 't-1',
     citations: [],
     tool_steps: [],
+    editable: false,
+    edit_unavailable_reason: 'recovery_not_available',
   },
   {
     id: 'm-2',

@@ -28,6 +28,12 @@ from noteagent.model_management.service import (
 )
 from noteagent.model_management.store import ModelSettingsStore
 from noteagent.notes.repository import FileNoteRepository
+from noteagent.notes.mutations import NoteMutationService
+from noteagent.notes.versions import NoteVersionError, NoteVersionStore
+from noteagent.recovery.gate import WorkspaceBusy, WorkspaceGate, is_postgres_url
+from noteagent.recovery.router import recovery_error_handler, router as recovery_router
+from noteagent.recovery.service import RecoveryCoordinator, RecoveryError
+from noteagent.retrieval.repairs import IndexRepairService
 from noteagent.retrieval.service import RetrievalService
 from noteagent.web import DIST_DIR, STATIC_DIR
 from noteagent.web.router import router as web_router
@@ -48,6 +54,15 @@ class AppContainer:
     # 会话元数据与 checkpoint：lifespan 负责 open/close，构造时还未连接。
     conversations: ConversationService | None = None
     checkpoints: CheckpointRuntime | None = None
+    # 跨进程工作区门禁：read/chat 共享，mutate/recovery/model_rebuild 独占。
+    workspace: WorkspaceGate | None = None
+    # 影子 Git 版本仓库；Git 不可用时为 None（B3 必须拒绝无历史保护的写入）。
+    versions: NoteVersionStore | None = None
+    # 正式笔记写入的唯一入口（Library、草稿批准、导入）。
+    mutations: NoteMutationService | None = None
+    history_required: bool = False
+    # 整体回退协调器：预览、启动、重试。
+    recovery: RecoveryCoordinator | None = None
 
     @property
     def retrieval(self) -> RetrievalService | None:
@@ -73,22 +88,61 @@ def build_container(settings: Settings) -> AppContainer:
     notes = FileNoteRepository(settings.notes_dir)  #Notes repository initialization
     drafts = DraftStore(history)
 
+    # 只构造，不连接：异步 saver 必须由 lifespan 打开，否则没有地方关闭它。
+    checkpoints = CheckpointRuntime.from_conn_string(postgres_uri(settings.database_url))
+    session_factory = create_session_factory(engine)
+    # 门禁只用 libpq 连接（PostgreSQL）。SQLite 测试走进程内读写锁。
+    workspace = WorkspaceGate(
+        session_factory,
+        libpq_dsn=postgres_uri(settings.database_url) if is_postgres_url(settings.database_url) else None,
+    )
+    conversations = ConversationService(
+        session_factory, checkpoints,
+        workspace_seq_provider=lambda: workspace.state().seq,
+    )
+    # 影子 Git 版本仓库：与 notes_dir、代码仓库 .git 隔离。Git 不可用时不阻断启动，
+    # 但版本存储为 None，正式写入必须据此拒绝（无历史保护的写入不允许）。
+    try:
+        versions = NoteVersionStore(settings.notes_history_dir, settings.notes_dir)
+    except Exception as exc:  # noqa: BLE001 - 启动不因缺少 Git 而失败
+        _logger.error("shadow note repository unavailable: %s", exc)
+        from noteagent.notes.mutations import HistoryUnavailable
+        raise HistoryUnavailable("shadow history unavailable; refusing unprotected writes") from exc
+    mutations = (
+        NoteMutationService(
+            notes, versions, workspace, session_factory,
+            repairs=IndexRepairService(session_factory, notes),
+        )
+        if versions is not None else None
+    )
+    repairs = IndexRepairService(session_factory, notes)
+
     # 装配器是 bootstrap 与 model_management 之间唯一的接口，避免两边互相导入。
-    assembler = BootstrapAssembler(settings, notes, drafts, history)
+    # 它拿到共享的会话服务与 checkpointer：切换模型只重建图运行对象，不换状态存储。
+    assembler = BootstrapAssembler(
+        settings, notes, drafts, history, conversations, checkpoints, mutations
+    )
     model_runtime = ModelRuntimeService(
         settings=settings,
         store=ModelSettingsStore(settings.model_settings_dir),
         notes=notes,
         assembler=assembler,
+        workspace=workspace,
     )
     # 持久化的 active 选择决定本次启动用哪个聊天模型与向量 collection。
     model_runtime.initialize()
 
-    # 只构造，不连接：异步 saver 必须由 lifespan 打开，否则没有地方关闭它。
-    checkpoints = CheckpointRuntime.from_conn_string(postgres_uri(settings.database_url))
-    conversations = ConversationService(
-        create_session_factory(engine), checkpoints
-    )
+    recovery = None
+    if mutations is not None:
+        recovery = RecoveryCoordinator(
+            session_factory=session_factory,
+            gate=workspace,
+            conversations=conversations,
+            mutations=mutations,
+            repairs=repairs,
+            notes=notes,
+            retrieval_provider=lambda: model_runtime.snapshot().retrieval,
+        )
 
     return AppContainer(
         settings=settings,
@@ -98,6 +152,11 @@ def build_container(settings: Settings) -> AppContainer:
         model_runtime=model_runtime,
         conversations=conversations,
         checkpoints=checkpoints,
+        workspace=workspace,
+        versions=versions,
+        mutations=mutations,
+        history_required=True,
+        recovery=recovery,
     )   ##返回一个AppContainer对象，包含所有初始化好的组件
 
 
@@ -108,8 +167,31 @@ async def lifespan(app: FastAPI):
     if container.checkpoints is not None:
         await container.checkpoints.open()
     try:
+        if container.workspace is not None:
+            container.workspace.ensure_row()
+        if container.versions is not None and container.workspace.state().current_commit is None:
+            with container.workspace.operation("mutate"):
+                container.mutations.initialize_locked()
         if container.conversations is not None:
             container.conversations.reconcile_expired_runs()
+        if container.mutations is not None:
+            maintenance = container.workspace.maintenance()
+            if maintenance is None or maintenance[1] == "mutation":
+                container.mutations.reconcile_pending()
+            maintenance = container.workspace.maintenance()
+            if maintenance is not None and maintenance[1] == "approval":
+                from noteagent.recovery.models import MutationRecord
+                from sqlalchemy import select
+                with container.mutations._session_factory() as session:
+                    pending = session.scalar(select(MutationRecord).where(MutationRecord.operation_id == maintenance[0]))
+                    cid = str(pending.conversation_id) if pending is not None else None
+                if cid is not None:
+                    with container.workspace.operation("mutate", owner=maintenance[0]):
+                        await container.chat_agent.review(cid, "approve")
+            retrieval = container.model_runtime.snapshot().retrieval
+            if retrieval is not None and container.workspace.maintenance() is None:
+                with container.workspace.operation("mutate"):
+                    container.mutations._repairs.reconcile(retrieval)
         yield
     finally:
         if container.checkpoints is not None:
@@ -134,8 +216,14 @@ def create_app(container: AppContainer) -> FastAPI:
     # 模型管理的错误结构与参数错误脱敏统一在这里注册，覆盖所有路由。
     app.add_exception_handler(ModelManagementError, model_management_error_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
+    app.add_exception_handler(RecoveryError, recovery_error_handler)
+    from fastapi.responses import JSONResponse
+    async def workspace_busy_handler(request, exc):
+        return JSONResponse(status_code=409, content={"code": "workspace_busy", "message": str(exc), "retryable": True})
+    app.add_exception_handler(WorkspaceBusy, workspace_busy_handler)
     app.include_router(web_router)   #注册页面路由（SPA 外壳 / 旧模板）
     app.include_router(chat_router)   #注册聊天路由
     app.include_router(notes_router)
     app.include_router(model_settings_router)
+    app.include_router(recovery_router)
     return app   #返回FastAPI应用

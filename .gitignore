@@ -36,6 +36,9 @@ chromadb_persist/
 var/*
 !var/README.md
 
+# shadow note version repository (private Git history; never the code repo .git)
+var/notes_history/
+
 # legacy log dir
 logs/
 

@@ -16,7 +16,7 @@ import re
 import threading
 import uuid
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
@@ -357,12 +357,15 @@ class ModelRuntimeService:
         notes: FileNoteRepository,
         assembler: RuntimeAssembler,
         probe=None,
+        workspace=None,
     ):
         self._settings = settings
         self._store = store
         self._notes = notes
         self._assembler = assembler
         self._probe_impl = probe or self._default_probe
+        # 跨进程工作区门禁（可选）：重建期间独占，避免与恢复任务并行改正文／索引。
+        self._workspace = workspace
         # 一把状态锁：快照、计数、维护标志、配置文档都归它管；只覆盖同步短操作。
         self._lock = threading.Lock()
         self._active_operations = 0
@@ -452,27 +455,27 @@ class ModelRuntimeService:
     # ---------- 快照获取 ----------
 
     @contextmanager
-    def read(self) -> Iterator[RuntimeSnapshot]:
-        """Read-only operation: allowed during maintenance, not counted."""
-        yield self._current_snapshot()
+    def read(self):
+        with (self._workspace.operation("read") if self._workspace else nullcontext()):
+            yield self._current_snapshot()
 
     @contextmanager
-    def write(self) -> Iterator[RuntimeSnapshot]:
-        """Note-writing operation: refused during maintenance, counted."""
-        snapshot = self._enter()
-        try:
-            yield snapshot
-        finally:
-            self._exit()
+    def write(self):
+        with (self._workspace.operation("mutate") if self._workspace else nullcontext()):
+            snapshot = self._enter()
+            try:
+                yield snapshot
+            finally:
+                self._exit()
 
     @contextmanager
-    def chat(self) -> Iterator[RuntimeSnapshot]:
-        """One chat round: refused during maintenance, counted."""
-        snapshot = self._enter()
-        try:
-            yield snapshot
-        finally:
-            self._exit()
+    def chat(self):
+        with (self._workspace.operation("chat") if self._workspace else nullcontext()):
+            snapshot = self._enter()
+            try:
+                yield snapshot
+            finally:
+                self._exit()
 
     def snapshot(self) -> RuntimeSnapshot:
         """Current snapshot without joining the gate (for status rendering)."""
@@ -1039,9 +1042,16 @@ class ModelRuntimeService:
     ) -> None:
         """Thread body: never let an exception escape, never leave the gate closed."""
         try:
-            self._run_rebuild(
-                model_id, resolved_revision, collection, expected_fingerprint, start_revision
-            )
+            if self._workspace is None:
+                self._run_rebuild(
+                    model_id, resolved_revision, collection, expected_fingerprint, start_revision
+                )
+            else:
+                # Exclusive: a recovery job can never run while an index rebuild does.
+                with self._workspace.operation("model_rebuild"):
+                    self._run_rebuild(
+                        model_id, resolved_revision, collection, expected_fingerprint, start_revision
+                    )
         except Exception as exc:
             _logger.exception("embedding rebuild failed target=%s", model_id)
             self._finish_job("failed", _public_error(exc))

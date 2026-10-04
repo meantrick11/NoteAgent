@@ -41,7 +41,7 @@ def _runtime(request: Request) -> ModelRuntimeService:
     return request.app.state.container.model_runtime
 
 
-def chat_lease(request: Request) -> Iterator[RuntimeSnapshot]:
+async def chat_lease(request: Request) -> Iterator[RuntimeSnapshot]:
     """Hold a chat lease for the whole SSE response.
 
     Released when the response finishes, including a client disconnect. Used as a
@@ -51,9 +51,14 @@ def chat_lease(request: Request) -> Iterator[RuntimeSnapshot]:
         yield snapshot
 
 
-def write_lease(request: Request) -> Iterator[RuntimeSnapshot]:
+async def write_lease(request: Request) -> Iterator[RuntimeSnapshot]:
     """Hold a write lease for the whole request."""
     with _runtime(request).write() as snapshot:
+        yield snapshot
+
+
+async def read_lease(request: Request):
+    with _runtime(request).read() as snapshot:
         yield snapshot
 
 

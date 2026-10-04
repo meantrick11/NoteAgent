@@ -35,12 +35,19 @@ export async function deleteConversation(id: string): Promise<void> {
   await requestJson<null>(`/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
-/** PUT /chat/draft —— 只改待审草稿正文，不写正式笔记。 */
+/** PUT /chat/draft —— 保存待审草稿正文与新建目标名，不写正式笔记。 */
 export function saveDraftContent(
   threadId: string,
   content: string,
-): Promise<{ status: string; pending_draft: PendingDraft }> {
-  return jsonRequest('/chat/draft', 'PUT', { thread_id: threadId, content })
+  expectedRevision?: number,
+  fileName?: string,
+): Promise<{ status: string; pending_draft: PendingDraft; state_revision?: number }> {
+  return jsonRequest('/chat/draft', 'PUT', {
+    thread_id: threadId,
+    content,
+    expected_revision: expectedRevision,
+    ...(fileName === undefined ? {} : { file_name: fileName }),
+  })
 }
 
 /** POST /chat/review —— 审批草稿。业务失败也是 200，必须看返回体的 status／error。 */
@@ -49,11 +56,30 @@ export function reviewDraft(body: ReviewRequest): Promise<ReviewResult> {
 }
 
 /** POST /chat —— 返回原始响应，由调用方读取 SSE 流。 */
-export async function openChatStream(question: string, conversationId: string | null) {
+export async function openChatStream(
+  question: string,
+  conversationId: string | null,
+  requestId?: string,
+  preparedTurnId?: string,
+) {
   const response = await fetch('/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, conversation_id: conversationId }),
+    body: JSON.stringify({
+      question,
+      conversation_id: conversationId,
+      request_id: requestId,
+      prepared_turn_id: preparedTurnId,
+    }),
   })
   return response
+}
+
+/** Continue an accepted turn without accepting another user message. */
+export function openResumeStream(conversationId: string, runId: string, expectedRevision: number) {
+  return fetch('/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversation_id: conversationId, run_id: runId, expected_revision: expectedRevision }),
+  })
 }

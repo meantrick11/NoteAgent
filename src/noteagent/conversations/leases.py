@@ -16,12 +16,13 @@ def expires_at():
 
 
 def reconcile_expired_runs(session_factory):
-    """Prepared has no accepted user; running keeps its exact checkpoint for resume."""
+    """Expire unaccepted claims; accepted recovery turns survive until claimed."""
     expired = or_(ConversationRun.lease_expires_at.is_(None),
                   ConversationRun.lease_expires_at <= datetime.now(timezone.utc))
     with session_factory() as session:
         session.execute(delete(ConversationRun).where(
             ConversationRun.status == "prepared", expired,
+            ConversationRun.accepted_checkpoint_id.is_(None),
         ))
         session.execute(update(ConversationRun).where(
             ConversationRun.status == "running", expired,

@@ -251,3 +251,7 @@ collection 自身的 metadata 另存上面两项身份记录（见 §4 的开头
 | [`src/noteagent/bootstrap/settings.py`](../../../src/noteagent/bootstrap/settings.py) | `CHROMA_*`、`EMBEDDING_*`、`MODEL_SETTINGS_DIR` |
 
 包说明（与代码同步的目录表）：[`src/noteagent/retrieval/README.md`](../../../src/noteagent/retrieval/README.md)。
+
+## 恢复与可信索引
+
+正式 mutation 与恢复均调用 IndexRepairService，按文件记录 pending/ready/failed；删除旧向量、重建并校验正文 body_sha256、index_fingerprint 与全部片段内容/数量/偏移。缺片段、正文改变、配置改变均阻止正式工具检索。search_relative_from_chromadb 已接 search_synced。显式单文件入索引也更新维修台账；启动 reconcile 扫描正文和已索引路径，补建与删除孤儿向量。恢复索引失败时维持 maintenance，禁止成功发布状态。

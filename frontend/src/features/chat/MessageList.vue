@@ -4,11 +4,19 @@ import { computed } from 'vue'
 import type { Citation } from '@/shared/api/types'
 import { citationMap, localizeCitations, renderAssistantHtml } from './citations'
 import type { ChatMessage } from './store'
+import { useChatStore } from './store'
+import MessageEditForm from './MessageEditForm.vue'
+import RecoveryConfirmDialog from './RecoveryConfirmDialog.vue'
 import ToolTrace from './ToolTrace.vue'
+import UserMessageActions from './UserMessageActions.vue'
 
 const props = defineProps<{ messages: ChatMessage[]; welcome: boolean }>()
 
-const emit = defineEmits<{ (event: 'cite', payload: Citation): void }>()
+const emit = defineEmits<{
+  (event: 'cite', payload: Citation): void
+}>()
+
+const chat = useChatStore()
 
 /**
  * 每条消息都有自己的编号空间，所以引用表要按消息算。
@@ -58,17 +66,43 @@ function onBodyClick(message: ChatMessage, index: number, event: MouseEvent): vo
           :live="message.live"
         />
         <div class="msg-bubble">
+          <MessageEditForm
+            v-if="message.role === 'user' && chat.editingKey === message.key"
+            :value="chat.editingText"
+            :busy="chat.recoveryPhase === 'previewing' || chat.recoveryPhase === 'running'"
+            @update:value="chat.updateEditingText"
+            @submit="chat.submitEdit"
+            @cancel="chat.cancelRecovery"
+          />
           <!-- 与旧页面一致：助手正文是 Markdown，先把引用标记插进去再解析。 -->
           <div
-            v-if="message.role === 'assistant'"
+            v-else-if="message.role === 'assistant'"
             class="msg-body"
             @click="onBodyClick(message, index, $event)"
             v-html="bodyHtml(message)"
           ></div>
           <div v-else class="msg-body">{{ message.content }}</div>
         </div>
+
+        <!-- 编辑态：只允许一条消息同时编辑，提交前必须看到预览。 -->
+        <UserMessageActions
+          v-if="message.role === 'user' && chat.editingKey !== message.key"
+          :message="message"
+          @edit="(target) => chat.beginEdit(target)"
+        />
       </div>
     </div>
+
+    <RecoveryConfirmDialog
+      v-if="(chat.recoveryPreview || chat.recoveryJob) && chat.recoveryPhase !== 'idle' && chat.recoveryPhase !== 'editing'"
+      :preview="chat.recoveryPreview"
+      :phase="chat.recoveryPhase"
+      :error="chat.recoveryError"
+      :retryable="chat.recoveryJob?.retryable ?? true"
+      @confirm="chat.confirmRecovery"
+      @cancel="chat.cancelRecovery"
+      @retry="chat.retryRecovery"
+    />
   </div>
 </template>
 

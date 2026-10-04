@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     judge_model: str = Field(default="", validation_alias="JUDGE_MODEL")
 
     notes_dir: Path = Path("notes")
+    # 影子 Git 版本仓库：与 notes_dir、代码仓库 .git 隔离；相对项目根解析，可配绝对路径。
+    notes_history_dir: Path = Field(
+        default=Path("var/notes_history"),
+        validation_alias="NOTES_HISTORY_DIR",
+    )
     chroma_dir: Path = Path("chromadb_persist")
     chroma_collection: str = "my_knowledge"
 
@@ -88,6 +93,7 @@ class Settings(BaseSettings):
 
     @field_validator(
         "notes_dir",
+        "notes_history_dir",
         "chroma_dir",
         "log_dir",
         "embedding_cache_dir",

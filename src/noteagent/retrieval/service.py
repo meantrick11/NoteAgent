@@ -203,9 +203,12 @@ class RetrievalService:
         )
         self._trace.embedded(file_name, len(chunks), _elapsed_ms(embed_started))
         ids = [f"{file_name}_{index}" for index in range(len(chunks))]
+        body_hash = hashlib.sha256(self._notes.path_of(file_name).read_bytes()).hexdigest()
         metadatas = [
             {
                 "file_name": file_name,
+                "body_sha256": body_hash,
+                "index_fingerprint": self.config_fingerprint(),
                 "chunk_index": index,
                 "heading_path": chunk.heading_path,
                 "start_char": chunk.start_char,
@@ -235,6 +238,23 @@ class RetrievalService:
     def is_indexed(self, file_name: str) -> bool:
         """True if Chroma has at least one chunk for this relative path."""
         return self._store.has_file_name(file_name)
+
+    def verify_note(self, file_name: str) -> bool:
+        """Verify every stored chunk against the current body and configuration."""
+        actual = self._store.chunks_for_file(file_name)
+        if not self._notes.exists(file_name):
+            return not actual
+        expected = self._chunker.split_with_metadata(self._notes.read(file_name))
+        digest = hashlib.sha256(self._notes.path_of(file_name).read_bytes()).hexdigest()
+        if len(actual) != len(expected):
+            return False
+        return all(content == chunk.content and metadata.get("chunk_index") == index
+                   and metadata.get("body_sha256") == digest
+                   and metadata.get("index_fingerprint") == self.config_fingerprint()
+                   and metadata.get("heading_path") == chunk.heading_path
+                   and metadata.get("start_char") == chunk.start_char
+                   and metadata.get("end_char") == chunk.end_char
+                   for index, ((content, metadata), chunk) in enumerate(zip(actual, expected)))
 
     def indexed_files(self) -> set[str]:
         """Every note path with vectors in this collection.

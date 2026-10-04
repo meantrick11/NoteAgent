@@ -20,6 +20,7 @@ from noteagent.conversations.checkpoints import postgres_uri
 from noteagent.notes.repository import FileNoteRepository
 from support.fakes import FailInjector, FakeChatModel, FakeEmbedder
 from support.harness import ConversationHarness, sqlalchemy_schema_url
+from support.webapp import pg_checkpoint_app  # noqa: F401  (pytest fixture)
 
 # psycopg's async driver refuses Windows' default ProactorEventLoop; the production
 # image runs on Linux, so this only affects the local test process.

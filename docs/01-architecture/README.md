@@ -9,4 +9,4 @@
 - [当前检索与索引身份](../03-modules/retrieval/retrieval.md)
 - [日志与追踪](../04-ops/observability.md)
 
-目标架构由 [NoteAgent-docs ARC-001](../../../NoteAgent-docs/docs/03-architecture/ARC-001-目标架构与迁移边界.md) 管理。当前未使用 LangGraph checkpoint 保存消息；整体回退尚未实现。
+目标架构由 [NoteAgent-docs ARC-001](../../../NoteAgent-docs/docs/03-architecture/ARC-001-目标架构与迁移边界.md) 管理。当前已使用 LangGraph checkpoint、独立影子 Git 与持久按文件 RAG 维修；详见 [恢复模块](../03-modules/recovery/recovery.md)。

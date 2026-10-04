@@ -33,6 +33,7 @@ const MODEL_SETTINGS = {
 interface StubOptions {
   reviewResult?: unknown
   draftSaveStatus?: number
+  draft?: typeof PENDING_DRAFT
 }
 
 function readBody(request: { postData: () => string | null }): unknown {
@@ -48,6 +49,7 @@ function readBody(request: { postData: () => string | null }): unknown {
 /** 起手就带着一份待审草稿：服务端在会话详情里返回 pending_draft。 */
 async function stubApi(page: Page, options: StubOptions = {}) {
   const calls: Array<{ method: string; url: string; body: unknown }> = []
+  let pendingDraft = { ...(options.draft ?? PENDING_DRAFT) }
   const record = (route: {
     request: () => { method: () => string; url: () => string; postData: () => string | null }
   }) => {
@@ -67,9 +69,9 @@ async function stubApi(page: Page, options: StubOptions = {}) {
       record(route)
       const status = options.draftSaveStatus ?? 200
       if (status !== 200) return route.fulfill({ status, json: { detail: 'no pending draft' } })
-      return route.fulfill({
-        json: { status: 'updated', pending_draft: { ...PENDING_DRAFT, content: '## 我改过的正文\n' } },
-      })
+      const body = readBody(route.request()) as { content: string; file_name?: string }
+      pendingDraft = { ...pendingDraft, content: body.content, file_name: body.file_name ?? pendingDraft.file_name }
+      return route.fulfill({ json: { status: 'updated', pending_draft: pendingDraft } })
     },
   )
 
@@ -94,7 +96,7 @@ async function stubApi(page: Page, options: StubOptions = {}) {
       const url = route.request().url()
       if (/\/conversations$/.test(url)) return route.fulfill({ json: CONVERSATIONS })
       if (url.includes('/messages')) return route.fulfill({ json: [] })
-      return route.fulfill({ json: { ...CONVERSATIONS[0], pending_draft: PENDING_DRAFT } })
+      return route.fulfill({ json: { ...CONVERSATIONS[0], pending_draft: pendingDraft } })
     },
   )
 
@@ -106,47 +108,41 @@ async function stubApi(page: Page, options: StubOptions = {}) {
   return calls
 }
 
-test('待审草稿进面板：常驻同意／拒绝，覆盖方式收进更多菜单', async ({ page }) => {
-  await stubApi(page)
+test('draft footer exposes append directly and submits the chosen target', async ({ page }) => {
+  const calls = await stubApi(page)
   await page.goto('/assistant')
-
-  const pane = page.getByRole('complementary', { name: '引用与草稿面板' })
-  await expect(pane).toBeVisible()
-  await expect(pane.getByText('待审批草稿')).toBeVisible()
-  await expect(pane.getByText('追加 · Go.md')).toBeVisible()
-  await expect(pane.getByRole('textbox', { name: '面板正文' })).toHaveValue(PENDING_DRAFT.content)
-
-  // 常驻按钮：同意追加 / 更多操作 / 拒绝。菜单与表单默认不占位。
+  const pane = page.locator('.cite-pane')
   await expect(pane.getByRole('button', { name: '同意追加' })).toBeVisible()
-  await expect(pane.getByRole('button', { name: '拒绝' })).toBeVisible()
-  await expect(pane.getByRole('menu', { name: '更多草稿操作' })).toHaveCount(0)
-  await expect(pane.getByRole('button', { name: '追加到所选笔记' })).toHaveCount(0)
-
-  await pane.getByRole('button', { name: /更多操作/ }).click()
-  const menu = pane.getByRole('menu', { name: '更多草稿操作' })
-  await expect(menu).toBeVisible()
-  await expect(menu.getByRole('menuitem', { name: '追加到笔记' })).toBeVisible()
-  await expect(menu.getByRole('menuitem', { name: '新建笔记' })).toBeVisible()
-
-  // 选择一种覆盖方式后只渲染对应的那一个表单。
-  await menu.getByRole('menuitem', { name: '追加到笔记' }).click()
-  await expect(menu).toHaveCount(0)
-  await expect(pane.getByRole('button', { name: '追加到所选笔记' })).toBeVisible()
-  await expect(pane.getByRole('button', { name: '新建这篇笔记' })).toHaveCount(0)
+  await expect(pane.getByRole('button', { name: '拒绝', exact: true })).toBeVisible()
+  await expect(pane.getByRole('button', { name: /更多操作/ })).toHaveCount(0)
+  await pane.getByRole('button', { name: '追加到笔记', exact: true }).click()
+  await pane.getByLabel('追加到笔记', { exact: true }).selectOption('Rust.md')
+  await pane.getByRole('button', { name: '追加到所选笔记' }).click()
+  await expect.poll(() => calls.find(c => c.url.endsWith('/chat/review'))?.body).toMatchObject({
+    action: 'override', write_action: 'append', file_name: 'Rust.md',
+  })
 })
 
-test('Esc 先收菜单而不是关掉面板', async ({ page }) => {
-  await stubApi(page)
+test('create draft name edits in the header and persists without writing a note', async ({ page }) => {
+  const calls = await stubApi(page, { draft: { ...PENDING_DRAFT, action: 'create', file_name: 'New.md' } })
   await page.goto('/assistant')
-
-  const pane = page.getByRole('complementary', { name: '引用与草稿面板' })
-  await pane.getByRole('button', { name: /更多操作/ }).click()
-  await expect(pane.getByRole('menu', { name: '更多草稿操作' })).toBeVisible()
-
-  await page.keyboard.press('Escape')
-  await expect(pane.getByRole('menu', { name: '更多草稿操作' })).toHaveCount(0)
-  // 面板本身还在。
-  await expect(pane).toBeVisible()
+  const pane = page.locator('.cite-pane')
+  await expect(pane.getByRole('button', { name: '同意新建' })).toBeVisible()
+  await pane.getByRole('button', { name: '编辑草稿笔记名' }).click()
+  await pane.getByRole('textbox', { name: '草稿笔记名', exact: true }).fill('Renamed.md')
+  await pane.getByRole('textbox', { name: '草稿笔记名', exact: true }).press('Enter')
+  await expect(pane.getByRole('button', { name: '编辑草稿笔记名' })).toContainText('Renamed.md')
+  await pane.getByRole('button', { name: '保存草稿' }).click()
+  await expect.poll(() => calls.find(c => c.url.endsWith('/chat/draft'))?.body).toMatchObject({ file_name: 'Renamed.md' })
+  expect(calls.some(c => c.url.endsWith('/chat/review'))).toBe(false)
+  await page.reload()
+  await expect(pane.getByRole('button', { name: '编辑草稿笔记名' })).toContainText('Renamed.md')
+  await pane.getByRole('button', { name: '编辑草稿笔记名' }).click()
+  await pane.getByRole('textbox', { name: '草稿笔记名', exact: true }).fill('Cancelled.md')
+  await pane.getByRole('textbox', { name: '草稿笔记名', exact: true }).press('Escape')
+  await expect(pane.getByRole('button', { name: '编辑草稿笔记名' })).toContainText('Renamed.md')
+  await pane.getByRole('button', { name: '同意新建' }).click()
+  await expect.poll(() => calls.some(c => c.url.endsWith('/chat/review'))).toBe(true)
 })
 
 test('保存草稿只调 PUT /chat/draft，不写正式笔记', async ({ page }) => {
@@ -163,7 +159,7 @@ test('保存草稿只调 PUT /chat/draft，不写正式笔记', async ({ page })
 
   const draftCall = calls.find((call) => call.url.includes('/chat/draft'))
   expect(draftCall?.method).toBe('PUT')
-  expect(draftCall?.body).toEqual({ thread_id: 'c-1', content: '## 我改过的正文\n' })
+  expect(draftCall?.body).toMatchObject({ thread_id: 'c-1', content: '## 我改过的正文\n' })
   expect(calls.some((call) => call.url.includes('/chat/review'))).toBe(false)
   expect(calls.some((call) => call.method === 'PUT' && call.url.includes('/notes/'))).toBe(false)
 })
@@ -185,7 +181,7 @@ test('同意前先把未保存正文落库，再调 review 写笔记', async ({ 
   expect(reviewIndex).toBeGreaterThan(draftIndex)
 
   const review = calls[reviewIndex]
-  expect(review.body).toEqual({ thread_id: 'c-1', action: 'approve' })
+  expect(review.body).toMatchObject({ thread_id: 'c-1', action: 'approve' })
   // 审批之后草稿区收起，引用模式回到没有内容的状态。
   await expect(pane.getByText('待审批草稿')).toHaveCount(0)
 })
@@ -229,7 +225,7 @@ test('拒绝走 reject，不写笔记也不留草稿', async ({ page }) => {
 
   await expect(page.locator('.msg-body', { hasText: '已取消写入' })).toBeVisible()
   const review = calls.find((call) => call.url.includes('/chat/review'))
-  expect(review?.body).toEqual({ thread_id: 'c-1', action: 'reject' })
+  expect(review?.body).toMatchObject({ thread_id: 'c-1', action: 'reject' })
   expect(calls.some((call) => call.method === 'PUT' && call.url.includes('/notes/'))).toBe(false)
 })
 

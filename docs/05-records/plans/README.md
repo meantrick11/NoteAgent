@@ -19,7 +19,9 @@
 
 | 文件 | 状态 | 说明 |
 |---|---|---|
-| [2026-10-01-checkpoint-shadow-git-rollback.md](2026-10-01-checkpoint-shadow-git-rollback.md) | 待执行（交给 Qoder） | A：checkpoint/历史/压缩迁移与复制；B：影子 Git、统一正文写入、按文件 RAG 恢复、用户消息编辑重推理。包含模块分区、文件变化确认及共享冲突拦截 |
+| [2026-10-04-checkpoint-shadow-git-completion.md](2026-10-04-checkpoint-shadow-git-completion.md) | B1–B9 修复补验通过，未合并/推送 | [结果](2026-10-04-checkpoint-shadow-git-completion-results.md)：646 后端/1 skip、143 单测/61 E2E/build；G12/G14 真实演练、G16 双仓追溯；Docker 未运行 |
+| [2026-10-04-rollback-acceptance-fixes.md](2026-10-04-rollback-acceptance-fixes.md) | 修复补验完成 | [原问题](2026-10-04-checkpoint-shadow-git-completion-review-b.md) 已闭环，代码 ea6bb8c、上层文档 eb59aa5 |
+| [2026-10-01-checkpoint-shadow-git-rollback.md](2026-10-01-checkpoint-shadow-git-rollback.md) | 部分完成，剩余执行见 2026-10-04 计划 | 原始两阶段范围与接口合同；基础及验收修复已合并，正式聊天切换与影子 Git 等尚未完成，不能视为整体已验收 |
 | [2026-09-10-learning-note-quality.md](2026-09-10-learning-note-quality.md) | 部分完成（持续） | 学习型笔记 v0.2 准则、语义 Judge、Prompt 迭代留痕已交付；l01 的加工维度仍未达合格线（现行 prompt 见 [note-quality.md](../../../evals/criteria/note-quality.md)） |
 
 V2.7 前端初始化计划的实现部分已完成（见下方"已完成"表），Tasks 1–8 逐项有验证证据。

@@ -214,7 +214,7 @@ test('Enter 发送、Shift+Enter 换行，回答替换流式片段', async ({ pa
 
   /* 首屏会自动打开最近一条会话，所以这一轮是发给它的。 */
   const chat = calls.find((call) => call.url.endsWith('/chat'))
-  expect(chat?.body).toEqual({ question: 'Go 并发', conversation_id: 'c-1' })
+  expect(chat?.body).toMatchObject({ question: 'Go 并发', conversation_id: 'c-1' })
 })
 
 test('新会话在首轮之后拿到正式 id', async ({ page }) => {

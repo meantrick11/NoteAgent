@@ -9,6 +9,27 @@ const chat = useChatStore()
 const textEl = ref<HTMLTextAreaElement | null>(null)
 const panel = computed(() => chat.panel)
 const inDraftMode = computed(() => panel.value.mode === 'draft')
+const renaming = ref(false)
+const name = ref('')
+const nameInput = ref<HTMLInputElement | null>(null)
+const canRename = computed(() => inDraftMode.value && panel.value.draft?.action === 'create' && !panel.value.busy)
+
+async function beginRename(): Promise<void> {
+  if (!canRename.value) return
+  name.value = panel.value.draft?.file_name ?? ''
+  renaming.value = true
+  await nextTick()
+  nameInput.value?.focus()
+  nameInput.value?.select()
+}
+function commitRename(): void {
+  if (!renaming.value || panel.value.busy) return
+  const value = name.value.trim()
+  if (!value) return
+  if (value !== panel.value.draft?.file_name) chat.renameDraft(value)
+  renaming.value = false
+}
+watch(() => [chat.currentId, panel.value.mode, panel.value.draft?.action], () => { renaming.value = false })
 
 /** 未保存标记只在用户真的改了正文时出现。 */
 function onInput(): void {
@@ -58,6 +79,8 @@ watch(
 )
 
 function save(): void {
+  if (panel.value.busy) return
+  if (renaming.value) commitRename()
   if (inDraftMode.value) void chat.saveDraftContent()
   else void chat.saveCitation()
 }
@@ -82,7 +105,13 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocumentKeydown)
   >
     <div class="cite-pane-head">
       <span class="cite-pane-badge">{{ inDraftMode ? '待审批草稿' : '引用' }}</span>
-      <span class="cite-pane-title" :title="chat.panelTitle">{{ chat.panelTitle }}</span>
+      <input v-if="renaming" ref="nameInput" v-model="name" class="cite-pane-title name-input"
+        :disabled="panel.busy"
+        aria-label="草稿笔记名" @keydown.enter.stop.prevent="commitRename"
+        @keydown.esc.stop.prevent="renaming = false" @blur="commitRename" />
+      <button v-else-if="canRename" type="button" class="cite-pane-title name-button"
+        :title="chat.panelTitle" aria-label="编辑草稿笔记名" @click="beginRename">{{ chat.panelTitle }}</button>
+      <span v-else class="cite-pane-title" :title="chat.panelTitle">{{ chat.panelTitle }}</span>
       <button
         type="button"
         class="cite-pane-save"
@@ -99,7 +128,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocumentKeydown)
       class="cite-pane-text"
       aria-label="面板正文"
       :value="panel.text"
-      :disabled="panel.textDisabled"
+      :disabled="panel.textDisabled || panel.busy"
       @input="onInput"
       @select="rememberSelection"
       @scroll="rememberSelection"
@@ -164,6 +193,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocumentKeydown)
   font-family: inherit;
   color: var(--text);
 }
+
+.name-button { border: 0; padding: 0; background: transparent; color: var(--text); text-align: left; font-family: inherit; cursor: text; }
+.name-input { width: 0; padding: 4px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-family: inherit; }
 
 .cite-pane-save {
   border: 1px solid var(--accent);

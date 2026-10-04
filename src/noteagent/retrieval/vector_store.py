@@ -158,6 +158,15 @@ class ChromaVectorStore:
         got = self._collection.get(where={"file_name": file_name}, include=["metadatas"])
         return bool(got.get("ids"))
 
+    def chunks_for_file(self, file_name: str) -> list[tuple[str, dict]]:
+        """Read persisted chunk contents and provenance for verification."""
+        live = self._live_collection()
+        if live is None:
+            return []
+        got = live.get(where={"file_name": file_name}, include=["documents", "metadatas"])
+        return sorted(zip(got.get("documents") or [], got.get("metadatas") or []),
+                      key=lambda item: item[1].get("chunk_index", -1))
+
     def list_file_names(self) -> set[str]:
         """Every note path that currently has vectors in this collection.
 

@@ -18,6 +18,7 @@ def build_chat_tools(
     notes: FileNoteRepository,
     retrieval: RetrievalService | None,
     drafts: DraftStore,
+    repairs=None,
 ) -> list[BaseTool]:
     """Build list/read/search/propose tools. Disk writes happen only after review.
 
@@ -62,7 +63,7 @@ def build_chat_tools(
         if retrieval is None:
             return {"error": "检索索引当前不可用（向量模型需要重建），请改用 read_file 读取指定笔记"}
         try:
-            hits = retrieval.search(query, top_k=3)
+            hits = repairs.search_synced(retrieval, query, top_k=3) if repairs else retrieval.search(query, top_k=3)
         except Exception as exc:
             return {"error": str(exc)}
         registry = current_citations.get()

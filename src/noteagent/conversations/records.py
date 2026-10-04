@@ -94,6 +94,12 @@ class ConversationRecord:
     running_summary: str | None
     summary_watermark_turn_id: str | None
     pending_draft: dict | None = None
+    # "legacy" (message tables) or "checkpoint" (active LangGraph head). Read paths
+    # branch on this so un-migrated histories keep working until A1 imports them.
+    state_backend: str = "legacy"
+    generation: int = 0
+    # Monotonic counter bumped on every published head change; the stale-tab token.
+    revision: int = 0
 
 
 @dataclass(slots=True)
@@ -113,6 +119,10 @@ class MessageRecord:
     status: str | None
     citations: list | None = None
     tool_steps: list | None = None
+    # Set when a user message exists but cannot be forked from (e.g. imported
+    # history with no established 安全边界). None means editability is decided
+    # by the presence of a recoverable boundary, not by this field.
+    edit_unavailable_reason: str | None = None
 
 
 def message_dict_from_record(record: MessageRecord) -> dict[str, Any]:
@@ -130,6 +140,7 @@ def message_dict_from_record(record: MessageRecord) -> dict[str, Any]:
         "output_preview": record.output_preview,
         "truncated": record.truncated,
         "status": record.status,
+        "edit_unavailable_reason": record.edit_unavailable_reason,
     }
 
 
@@ -157,4 +168,5 @@ def record_from_ui(item: Mapping[str, Any]) -> MessageRecord:
         status=item.get("status"),
         citations=list(item.get("citations") or []),
         tool_steps=list(item.get("tool_steps") or []),
+        edit_unavailable_reason=item.get("edit_unavailable_reason"),
     )

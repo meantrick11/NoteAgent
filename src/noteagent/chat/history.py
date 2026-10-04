@@ -403,6 +403,9 @@ def _to_conversation(row: Conversation) -> ConversationRecord:
             else None
         ),
         pending_draft=dict(row.pending_draft) if row.pending_draft else None,
+        state_backend=row.state_backend,
+        generation=int(row.generation or 0),
+        revision=int(row.revision or 0),
     )
 
 #将从数据库中查询出来的Message转换为Python可用的MessageRecord类
