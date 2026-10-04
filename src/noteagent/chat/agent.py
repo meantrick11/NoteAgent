@@ -26,10 +26,21 @@ from noteagent.chat.nodes import GraphRuntime
 from noteagent.conversations.checkpoints import CheckpointRuntime, checkpoint_id_of
 from noteagent.conversations.contracts import PreparedTurn
 from noteagent.conversations.service import ConversationService
+from noteagent.notes.mutations import (
+    CREATE,
+    DELETE,
+    WRITE,
+    MutationCommand,
+    MutationError,
+    Origin,
+)
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.retrieval.service import RetrievalService
 
 _logger = logging.getLogger(__name__)
+
+# Draft action -> mutation kind; append/replace differ only by the append flag.
+_DRAFT_KINDS = {"create": CREATE, "append": WRITE, "replace": WRITE, "delete": DELETE}
 
 
 class ChatAgent:
@@ -44,6 +55,7 @@ class ChatAgent:
         notes: FileNoteRepository,
         legacy_drafts: DraftStore,
         retrieval: RetrievalService | None = None,
+        mutations=None,
     ) -> None:
         self._runtime = runtime
         self._service = service
@@ -51,6 +63,7 @@ class ChatAgent:
         self._notes = notes
         self._legacy_drafts = legacy_drafts
         self._retrieval = retrieval
+        self._mutations = mutations
 
     # ---- turn execution ---------------------------------------------------
 
@@ -165,8 +178,11 @@ class ChatAgent:
             else:
                 return {"error": f"unknown action {action}"}
             try:
-                _write_draft(self._notes, target_action, target_name, draft.get("content") or "")
-            except (OSError, ValueError) as exc:
+                self._write_approved(
+                    conversation_id, target_action, target_name,
+                    draft.get("content") or "", expected_revision,
+                )
+            except (OSError, ValueError, MutationError) as exc:
                 return {"error": str(exc)}
             return {"status": "written", "action": target_action, "file_name": target_name}
 
@@ -174,6 +190,36 @@ class ChatAgent:
             conversation_id, apply, expected_revision=expected_revision,
             allow_absent=action == "reject",
         )
-        if result.get("status") == "written":
-            _sync_index(self._retrieval, result["action"], result["file_name"])
         return result
+
+    def _write_approved(self, conversation_id, action, file_name, content,
+                        expected_revision) -> None:
+        """Write an approved draft through the unified mutation service when present.
+
+        The mutation service records the operation and its before-bytes, commits the
+        shadow Git version and updates the index; without it (test/diagnostic
+        containers) the legacy direct write path is used.
+        """
+        if self._mutations is None:
+            _write_draft(self._notes, action, file_name, content)
+            _sync_index(self._retrieval, action, file_name)
+            return
+        kind = _DRAFT_KINDS.get(action)
+        if kind is None:
+            raise ValueError(f"unknown write action {action}")
+        command = MutationCommand(
+            kind=kind,
+            file_name=file_name,
+            content=content,
+            title=file_name.rsplit("/", 1)[-1].removesuffix(".md"),
+            append=action != "replace",
+        )
+        origin = Origin(
+            kind="conversation",
+            conversation_id=conversation_id,
+            run_id=f"draft-{expected_revision}",
+        )
+        self._mutations.apply(
+            command, origin, f"draft-{conversation_id}-{expected_revision}",
+            retrieval=self._retrieval,
+        )

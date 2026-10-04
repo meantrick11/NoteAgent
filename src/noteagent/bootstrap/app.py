@@ -28,6 +28,7 @@ from noteagent.model_management.service import (
 )
 from noteagent.model_management.store import ModelSettingsStore
 from noteagent.notes.repository import FileNoteRepository
+from noteagent.notes.mutations import NoteMutationService
 from noteagent.notes.versions import NoteVersionError, NoteVersionStore
 from noteagent.recovery.gate import WorkspaceGate, is_postgres_url
 from noteagent.retrieval.service import RetrievalService
@@ -54,6 +55,8 @@ class AppContainer:
     workspace: WorkspaceGate | None = None
     # 影子 Git 版本仓库；Git 不可用时为 None（B3 必须拒绝无历史保护的写入）。
     versions: NoteVersionStore | None = None
+    # 正式笔记写入的唯一入口（Library、草稿批准、导入）。
+    mutations: NoteMutationService | None = None
 
     @property
     def retrieval(self) -> RetrievalService | None:
@@ -95,11 +98,15 @@ def build_container(settings: Settings) -> AppContainer:
     except Exception as exc:  # noqa: BLE001 - 启动不因缺少 Git 而失败
         _logger.error("shadow note repository unavailable: %s", exc)
         versions = None
+    mutations = (
+        NoteMutationService(notes, versions, workspace, session_factory)
+        if versions is not None else None
+    )
 
     # 装配器是 bootstrap 与 model_management 之间唯一的接口，避免两边互相导入。
     # 它拿到共享的会话服务与 checkpointer：切换模型只重建图运行对象，不换状态存储。
     assembler = BootstrapAssembler(
-        settings, notes, drafts, history, conversations, checkpoints
+        settings, notes, drafts, history, conversations, checkpoints, mutations
     )
     model_runtime = ModelRuntimeService(
         settings=settings,
@@ -121,6 +128,7 @@ def build_container(settings: Settings) -> AppContainer:
         checkpoints=checkpoints,
         workspace=workspace,
         versions=versions,
+        mutations=mutations,
     )   ##返回一个AppContainer对象，包含所有初始化好的组件
 
 

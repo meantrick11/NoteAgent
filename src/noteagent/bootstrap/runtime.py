@@ -75,6 +75,7 @@ class BootstrapAssembler:
         history: ConversationStore,
         conversations: ConversationService | None = None,
         checkpoints: CheckpointRuntime | None = None,
+        mutations=None,
     ):
         self._settings = settings
         self._notes = notes
@@ -82,6 +83,7 @@ class BootstrapAssembler:
         self._history = history
         self._conversations = conversations
         self._checkpoints = checkpoints
+        self._mutations = mutations
 
     def build_chat_model(self, profile: ChatProfile) -> BaseChatModel:
         """Build the chat client for one profile without logging its credential."""
@@ -154,4 +156,5 @@ class BootstrapAssembler:
             service=self._conversations,
             checkpoints=self._checkpoints,
             retrieval=retrieval,
+            mutations=self._mutations,
         )

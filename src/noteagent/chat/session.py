@@ -63,6 +63,7 @@ def build_graph_agent(
     service: ConversationService,
     checkpoints: CheckpointRuntime,
     retrieval: RetrievalService | None = None,
+    mutations=None,
 ) -> ChatAgent:
     """Assemble a ChatAgent over an explicit service and checkpointer."""
     runtime = GraphRuntime(
@@ -81,6 +82,7 @@ def build_graph_agent(
         notes=notes,
         legacy_drafts=drafts,
         retrieval=retrieval,
+        mutations=mutations,
     )
 
 
