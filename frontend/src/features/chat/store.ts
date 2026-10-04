@@ -15,11 +15,12 @@ import { defineStore } from 'pinia'
 import { ApiError, extractErrorMessage, readJsonBody } from '@/shared/api/http'
 import { alertDialog, confirmDialog, reportError } from '@/shared/ui/confirm'
 import { showSaveToast } from '@/shared/ui/toast'
-import type { Citation, Conversation, ConversationDetail, Message, PendingDraft } from '@/shared/api/types'
+import type { Citation, Conversation, ConversationDetail, Message, PendingDraft, RecoveryJob, RecoveryPreview } from '@/shared/api/types'
 // 引用面板读写的是正式笔记，所以走 notes 的接口而不是 chat 的。
 import { readNote, writeNote } from '@/features/notes/api'
 import { useNotesStore } from '@/features/notes/store'
 import * as api from './api'
+import * as recoveryApi from './recovery'
 import { locateQuote } from './citations'
 
 import { consumeSse, decodeChatEvent, TurnAccumulator, type ToolStepState } from './sse'
@@ -678,11 +679,15 @@ export const useChatStore = defineStore('chat', () => {
     return runStream('', run.run_id)
   }
 
-  async function runStream(question: string, resumeId?: string): Promise<SendOutcome> {
+  async function runStream(
+    question: string,
+    resumeId?: string,
+    preparedId?: string,
+  ): Promise<SendOutcome> {
     // 同步门闩：必须在任何 await 之前置位。
     if (streaming.value) return 'refused'
     const text = question.trim()
-    if (!text && !resumeId) return 'refused'
+    if (!text && !resumeId && !preparedId) return 'refused'
     const owner = citePaneKey(currentId.value)
     const revision = revisions.value[owner] ?? 0
     const selectedAtStart = selectionVersion.value
@@ -713,15 +718,18 @@ export const useChatStore = defineStore('chat', () => {
     const userRow = newMessage('user', text)
     userRow.requestId = requestId
     userRow.ownerKey = turn.ownerKey
-    if (!resumeId) messages.value = [...messages.value, userRow]
+    // A recovered (prepared) turn already holds its edited user message on the server.
+    if (!resumeId && !preparedId) messages.value = [...messages.value, userRow]
     liveTurn.value = turn
     const accumulator = new TurnAccumulator()
 
     let outcome: SendOutcome = 'sent'
     try {
-      const response = resumeId
-        ? await api.openResumeStream(owner, resumeId, revision)
-        : await api.openChatStream(text, owner === CITE_PENDING_KEY ? null : owner, requestId)
+      const response = preparedId
+        ? await api.openChatStream('', owner === CITE_PENDING_KEY ? null : owner, undefined, preparedId)
+        : resumeId
+          ? await api.openResumeStream(owner, resumeId, revision)
+          : await api.openChatStream(text, owner === CITE_PENDING_KEY ? null : owner, requestId)
       if (!response.ok) {
         const payload = await readJsonBody(response)
         const detail =
@@ -740,7 +748,7 @@ export const useChatStore = defineStore('chat', () => {
       finalizeTurn(turn, accumulator)
       streaming.value = false
       models.setStreaming(false)
-      if (resumeId || outcome === 'failed' || runs.value[turn.ownerKey]) {
+      if (resumeId || preparedId || outcome === 'failed' || runs.value[turn.ownerKey]) {
         await refreshRun(turn.ownerKey)
       }
       if (resumeId && !runs.value[turn.ownerKey] && currentId.value === turn.ownerKey) {
@@ -832,6 +840,134 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // ---------- 编辑历史消息与整体回退 ----------
+
+  const editingKey = ref<string | null>(null)
+  const editingText = ref('')
+  const recoveryPreview = ref<RecoveryPreview | null>(null)
+  const recoveryJob = ref<RecoveryJob | null>(null)
+  const recoveryPhase = ref<
+    'idle' | 'editing' | 'previewing' | 'confirming' | 'running' | 'conflict' | 'failed'
+  >('idle')
+  const recoveryError = ref('')
+
+  function resetRecovery(): void {
+    editingKey.value = null
+    editingText.value = ''
+    recoveryPreview.value = null
+    recoveryJob.value = null
+    recoveryError.value = ''
+    recoveryPhase.value = 'idle'
+  }
+
+  /** 同时只编辑一条；未持久化或不可编辑的消息不进入编辑态。 */
+  function beginEdit(message: ChatMessage): void {
+    if (!message.editable || !message.id) return
+    editingKey.value = message.key
+    editingText.value = message.content
+    recoveryPhase.value = 'editing'
+  }
+
+  function updateEditingText(text: string): void {
+    editingText.value = text
+  }
+
+  function cancelRecovery(): void {
+    resetRecovery()
+  }
+
+  /** 提交编辑：先存未保存草稿，再预览；冲突只展示取消，不退化为强制覆盖。 */
+  async function submitEdit(): Promise<void> {
+    const key = editingKey.value
+    const conversationId = currentId.value
+    if (!key || !conversationId || recoveryPhase.value === 'running') return
+    const message = visibleMessages.value.find((item) => item.key === key)
+    if (!message || !message.id) return
+    if (editingText.value.trim() === message.content.trim()) {
+      resetRecovery()
+      return
+    }
+    if (panel.value.dirty && panel.value.mode === 'draft' && !(await saveDraftContent())) return
+
+    recoveryPhase.value = 'previewing'
+    recoveryError.value = ''
+    try {
+      const preview = await recoveryApi.previewRecovery(
+        conversationId, message.id, editingText.value, revisions.value[conversationId] ?? 0,
+      )
+      recoveryPreview.value = preview
+      if (!preview.can_apply) {
+        recoveryPhase.value = 'conflict'
+        return
+      }
+      if (preview.requires_confirmation) {
+        recoveryPhase.value = 'confirming'
+        return
+      }
+      await confirmRecovery()
+    } catch (error) {
+      recoveryError.value = (error as Error).message
+      recoveryPhase.value = 'failed'
+    }
+  }
+
+  async function confirmRecovery(): Promise<void> {
+    const preview = recoveryPreview.value
+    const conversationId = currentId.value
+    // Only a fresh preview may start; a conflict/failed plan must not be force-applied.
+    if (!preview || !conversationId) return
+    if (recoveryPhase.value !== 'confirming' && recoveryPhase.value !== 'previewing') return
+    recoveryPhase.value = 'running'
+    try {
+      const job = await recoveryApi.startRecovery(
+        conversationId, preview.preview_id, editingText.value,
+        recoveryApi.requiredConfirmations(preview), newRequestId(),
+      )
+      await pollRecovery(job)
+    } catch (error) {
+      recoveryError.value = (error as Error).message
+      recoveryPhase.value = 'failed'
+    }
+  }
+
+  async function retryRecovery(): Promise<void> {
+    const job = recoveryJob.value
+    if (!job || recoveryPhase.value === 'running') return
+    recoveryPhase.value = 'running'
+    try {
+      await pollRecovery(await recoveryApi.retryRecovery(job.job_id, newRequestId()))
+    } catch (error) {
+      recoveryError.value = (error as Error).message
+      recoveryPhase.value = 'failed'
+    }
+  }
+
+  /** 轮询真实任务直到终态；成功后重载活动状态并用 prepared turn 续接生成。 */
+  async function pollRecovery(job: RecoveryJob): Promise<void> {
+    recoveryJob.value = job
+    let current = job
+    for (let i = 0; i < 120 && current.status !== 'succeeded' && current.status !== 'failed'; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      current = await recoveryApi.getRecoveryJob(current.job_id)
+      recoveryJob.value = current
+    }
+    if (current.status !== 'succeeded' || !current.prepared_turn_id) {
+      recoveryError.value = current.error ?? '恢复未完成'
+      recoveryPhase.value = 'failed'
+      return
+    }
+    await loadMessages(current.conversation_id)
+    await refreshRun(current.conversation_id)
+    await notes.refreshAfterExternalChange()
+    const preparedTurnId = current.prepared_turn_id
+    resetRecovery()
+    await runStream('', undefined, preparedTurnId)
+  }
+
+  async function runPrepared(preparedTurnId: string): Promise<SendOutcome> {
+    return runStream('', undefined, preparedTurnId)
+  }
+
   return {
     conversations,
     currentId,
@@ -876,5 +1012,19 @@ export const useChatStore = defineStore('chat', () => {
     send,
     resumeRun,
     pushNotice,
+    // 编辑历史消息与整体回退
+    editingKey,
+    editingText,
+    recoveryPreview,
+    recoveryJob,
+    recoveryPhase,
+    recoveryError,
+    beginEdit,
+    updateEditingText,
+    submitEdit,
+    confirmRecovery,
+    cancelRecovery,
+    retryRecovery,
+    runPrepared,
   }
 })

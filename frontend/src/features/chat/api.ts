@@ -58,6 +58,7 @@ export async function openChatStream(
   question: string,
   conversationId: string | null,
   requestId?: string,
+  preparedTurnId?: string,
 ) {
   const response = await fetch('/chat', {
     method: 'POST',
@@ -66,6 +67,7 @@ export async function openChatStream(
       question,
       conversation_id: conversationId,
       request_id: requestId,
+      prepared_turn_id: preparedTurnId,
     }),
   })
   return response

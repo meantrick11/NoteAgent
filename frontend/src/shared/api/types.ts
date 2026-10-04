@@ -35,6 +35,54 @@ export interface ConversationDetail extends Conversation {
     user_message_id?: string | null
     request_id?: string
   } | null
+  /** 进行中或失败的恢复任务，前端据此显示进度并续办。 */
+  recovery?: RecoveryJob | null
+}
+
+export interface RecoveryFileChange {
+  path: string
+  action: string
+  target_hash?: string | null
+  current_hash?: string | null
+}
+
+export interface RecoveryFolderChange {
+  path: string
+  action: string
+}
+
+export interface RecoveryConflict {
+  path: string
+  reason: string
+}
+
+/** POST …/recoveries/preview 的返回：纯预览，尚未改动任何正文。 */
+export interface RecoveryPreview {
+  preview_id: string
+  conversation_id: string
+  can_apply: boolean
+  requires_confirmation: boolean
+  file_changes: RecoveryFileChange[]
+  folder_changes: RecoveryFolderChange[]
+  conflicts: RecoveryConflict[]
+  affected_messages: string[]
+  state_revision: number
+  workspace_seq: number
+  content_digest: string
+  expires_at?: string | null
+}
+
+/** 恢复任务状态。 */
+export interface RecoveryJob {
+  job_id: string
+  operation_id: string
+  conversation_id: string
+  status: string
+  stage?: string | null
+  prepared_turn_id?: string | null
+  error?: string | null
+  retryable: boolean
+  plan?: Record<string, unknown>
 }
 
 export interface Citation {

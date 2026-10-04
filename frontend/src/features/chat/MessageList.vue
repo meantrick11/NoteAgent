@@ -4,6 +4,9 @@ import { computed } from 'vue'
 import type { Citation } from '@/shared/api/types'
 import { citationMap, localizeCitations, renderAssistantHtml } from './citations'
 import type { ChatMessage } from './store'
+import { useChatStore } from './store'
+import MessageEditForm from './MessageEditForm.vue'
+import RecoveryConfirmDialog from './RecoveryConfirmDialog.vue'
 import ToolTrace from './ToolTrace.vue'
 import UserMessageActions from './UserMessageActions.vue'
 
@@ -11,8 +14,9 @@ const props = defineProps<{ messages: ChatMessage[]; welcome: boolean }>()
 
 const emit = defineEmits<{
   (event: 'cite', payload: Citation): void
-  (event: 'edit', message: ChatMessage): void
 }>()
+
+const chat = useChatStore()
 
 /**
  * 每条消息都有自己的编号空间，所以引用表要按消息算。
@@ -71,13 +75,34 @@ function onBodyClick(message: ChatMessage, index: number, event: MouseEvent): vo
           ></div>
           <div v-else class="msg-body">{{ message.content }}</div>
         </div>
+
+        <!-- 编辑态：只允许一条消息同时编辑，提交前必须看到预览。 -->
+        <MessageEditForm
+          v-if="message.role === 'user' && chat.editingKey === message.key"
+          :value="chat.editingText"
+          :busy="chat.recoveryPhase === 'previewing' || chat.recoveryPhase === 'running'"
+          @update:value="chat.updateEditingText"
+          @submit="chat.submitEdit"
+          @cancel="chat.cancelRecovery"
+        />
         <UserMessageActions
-          v-if="message.role === 'user'"
+          v-else-if="message.role === 'user'"
           :message="message"
-          @edit="(target) => emit('edit', target)"
+          @edit="(target) => chat.beginEdit(target)"
         />
       </div>
     </div>
+
+    <RecoveryConfirmDialog
+      v-if="chat.recoveryPreview && chat.recoveryPhase !== 'idle' && chat.recoveryPhase !== 'editing'"
+      :preview="chat.recoveryPreview"
+      :phase="chat.recoveryPhase"
+      :error="chat.recoveryError"
+      :retryable="chat.recoveryJob?.retryable ?? true"
+      @confirm="chat.confirmRecovery"
+      @cancel="chat.cancelRecovery"
+      @retry="chat.retryRecovery"
+    />
   </div>
 </template>
 
