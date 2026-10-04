@@ -85,7 +85,7 @@
 |---|---|---|
 | B1 持久台账与跨进程工作区门禁 | `19b5fdc` | 完成 |
 | B2 真实影子 Git 与初始笔记版本 | `9351044` | 完成 |
-| B3 统一正式笔记写入 | — | 待执行 |
+| B3 统一正式笔记写入 | `a69a082` | 完成 |
 | B4 可靠的单文件 RAG 更新与维修 | — | 待执行 |
 | B5 纯预览计划与共享修改冲突 | — | 待执行 |
 | B6 整体恢复状态机 | — | 待执行 |
@@ -120,8 +120,23 @@
   （symlink 用例在无权限平台跳过）；全量后端 **583 passed, 1 skipped**。
 - 遗留：`snapshot/read_blob` 已具备，尚未被写入路径调用（B3 接入）。
 
-### B3—B9 待执行
+### B3 `feat(notes): route all durable writes through mutation service`
 
-B3 统一写入、B4 逐文件索引维修、B5 预览冲突、B6 恢复协调、B7 恢复 API、B8 编辑 UI、
-B9 演练与文档同步均未开始，尚无实现、无测试、无提交。
+- 改动：新增 `notes/mutations.py`、`tests/integration/test_notes_mutations.py`；
+  `notes/repository.py` 增 `path_of`；`notes/router.py` 七个写端点改走 `apply`；
+  `chat/agent.py` 的 checkpoint 草稿批准改走 `apply`（`_write_approved`）；
+  `chat/session.py`、`bootstrap/runtime.py`、`bootstrap/app.py` 注入 mutation 服务。
+- 机制：`apply` 先写台账（operation + before blobs），再写盘、提交影子版本、推进
+  workspace_seq，最后才报成功；`operation_id` 幂等；`expected_hashes` 不符即 `ConflictError`；
+  Git 失败回滚 before bytes 并记 failed；Git 已提交但台账缺失时按保留 ref 续办且不重写磁盘。
+- 命令与结果：`pytest tests/integration/test_notes_mutations.py tests/integration/test_checkpoint_draft_api.py tests/integration/test_notes_api.py -q` → **21 passed**；全量后端 **590 passed, 1 skipped**。
+- repository 写入调用点审计：`notes/mutations.py`（唯一正式路径）、`notes/router.py` 与
+  `chat/drafts.py` 仅剩「无影子仓库」兼容分支（legacy 会话／测试容器）、
+  `prompt_eval/run.py::seed_notes`（评测播种）。生产容器始终带 mutation 服务，无生产旁路。
+- 遗留：草稿批准的 workspaces gate 顺序（gate→conversation lock）与恢复协调的严格定序在 B6 统一；
+  索引仍为 best-effort，B4 换成持久维修记录。
+
+### B4—B9 待执行
+
+B4 逐文件索引维修、B5 预览冲突、B6 恢复协调、B7 恢复 API、B8 编辑 UI、B9 演练与文档同步均未开始。
 
