@@ -764,6 +764,8 @@ export const useChatStore = defineStore('chat', () => {
       }
       if (resumeId && !runs.value[turn.ownerKey] && currentId.value === turn.ownerKey) {
         await loadMessages(turn.ownerKey)
+      } else if (outcome === 'sent') {
+        await refreshMessageCapabilities(turn.ownerKey)
       }
     }
     return outcome
@@ -936,6 +938,26 @@ export const useChatStore = defineStore('chat', () => {
       if (token === recoveryToken && currentId.value === conversationId && detail?.recovery) {
         recoveryJob.value = detail.recovery
       }
+    }
+  }
+
+  /** Read server-owned recovery eligibility after a streamed turn is persisted. */
+  async function refreshMessageCapabilities(owner: string): Promise<void> {
+    if (owner === CITE_PENDING_KEY || currentId.value !== owner) return
+    const selected = selectionVersion.value
+    try {
+      const persisted = await api.listMessages(owner)
+      if (currentId.value !== owner || selected !== selectionVersion.value || !Array.isArray(persisted)) return
+      const byId = new Map(persisted.map(item => [item.id, item]))
+      messages.value = messages.value.map(item => {
+        const server = item.id ? byId.get(item.id) : undefined
+        return server && item.role === 'user'
+          ? { ...item, editable: server.editable === true,
+              editUnavailableReason: server.edit_unavailable_reason ?? null }
+          : item
+      })
+    } catch {
+      // A failed eligibility read leaves editing disabled until the next refresh.
     }
   }
 

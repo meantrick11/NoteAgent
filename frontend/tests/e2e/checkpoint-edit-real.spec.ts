@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test'
 let server: ChildProcess
 let backend: string
 
-test.beforeAll(async () => {
+test.beforeEach(async () => {
   test.setTimeout(60_000)
   const root = resolve(process.cwd(), '..')
   server = spawn(resolve(root, '.venv/Scripts/python.exe'), ['tests/support/resume_server.py', '--edit'], {
@@ -30,7 +30,22 @@ test.beforeAll(async () => {
   }).toBe(200)
 })
 
-test.afterAll(() => { server?.kill() })
+test.afterEach(() => { server?.kill() })
+
+test('fresh streamed message becomes editable without reloading', async ({ page }) => {
+  await page.route((url) => ['/chat', '/notes'].includes(url.pathname) || url.pathname.startsWith('/conversations') || url.pathname.startsWith('/recoveries') || url.pathname.startsWith('/model-settings'), async (route) => {
+    const original = new URL(route.request().url())
+    const response = await route.fetch({ url: `${backend}${original.pathname}${original.search}`,
+      headers: { ...route.request().headers(), origin: backend } })
+    await route.fulfill({ response })
+  })
+  await page.goto('/assistant')
+  await page.getByRole('textbox', { name: '输入你的问题' }).fill('fresh streamed question')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  const fresh = page.locator('.msg-row.user').last()
+  await expect(fresh).toContainText('fresh streamed question')
+  await expect(fresh.getByRole('button', { name: '编辑这条消息' })).toBeEnabled()
+})
 
 test('real checkpoint edit confirms file rollback and persists regenerated reply', async ({ page }) => {
   await page.route((url) => ['/chat', '/notes'].includes(url.pathname) || url.pathname.startsWith('/conversations') || url.pathname.startsWith('/recoveries') || url.pathname.startsWith('/model-settings'), async (route) => {

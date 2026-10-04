@@ -98,6 +98,10 @@ describe('message identity in the store', () => {
 
   it('replaces the optimistic user row by request id, not by text', async () => {
     const { fetch } = stubFetch((url, init) => {
+      if (url === '/conversations/c-9/messages') return jsonResponse([
+        { id: 'srv-u', role: 'user', content: '你好', created_at: 'x', turn_id: 't-9',
+          editable: true, edit_unavailable_reason: null, citations: [], tool_steps: [] },
+      ])
       if (url === '/model-settings') return jsonResponse(modelSettings)
       if (url === '/conversations') return jsonResponse([])
       if (url === '/chat') {
@@ -129,5 +133,7 @@ describe('message identity in the store', () => {
     const users = chat.messages.filter((m) => m.role === 'user')
     expect(users.map((m) => m.id)).toEqual(['srv-u'])
     expect(users[0].turnId).toBe('t-9')
+    expect(users[0].editable).toBe(true)
+    expect(users[0].editUnavailableReason).toBeNull()
   })
 })
