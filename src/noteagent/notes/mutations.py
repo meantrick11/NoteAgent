@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,7 +34,18 @@ MOVE = "move"
 FOLDER_CREATE = "folder_create"
 FOLDER_RENAME = "folder_rename"
 FOLDER_DELETE = "folder_delete"
+# Recovery-only raw-bytes restore; never produced by a normal caller command.
+RECOVERY = "recovery"
 KINDS = {CREATE, WRITE, DELETE, MOVE, FOLDER_CREATE, FOLDER_RENAME, FOLDER_DELETE}
+
+
+def _safe_folder(name: str) -> str:
+    """Return a one-level folder name; reject traversal and absolute paths."""
+    raw = str(name).replace("\\", "/").strip().strip("/")
+    parts = raw.split("/")
+    if not raw or any(part in ("", ".", "..") for part in parts):
+        raise MutationError(f"unsafe folder: {name!r}")
+    return raw
 
 
 class MutationError(RuntimeError):
@@ -185,6 +197,87 @@ class NoteMutationService:
         return MutationResult(
             operation_id, command.kind, list(snapshot.changed_paths or paths),
             snapshot.commit, seq, indexed, reused=snapshot.reused,
+        )
+
+    def restore(
+        self,
+        *,
+        restores: dict[str, bytes],
+        deletes: list[str],
+        folders_create: list[str],
+        folders_delete: list[str],
+        origin: Origin,
+        operation_id: str,
+        lock: bool = True,
+    ) -> MutationResult:
+        """Recovery-only: write raw target bytes / delete paths as one commit.
+
+        Bytes are written as-is (never re-encoded), so a rollback restores the exact
+        on-disk content. Folders are only touched by the manifest: a removed folder is
+        rmdir'd only when empty, so other sessions' files are always preserved.
+        """
+        existing = self._ledger_get(operation_id)
+        if existing is not None and existing["status"] == "applied":
+            return self._from_ledger(existing)
+
+        paths = sorted(set(restores) | set(deletes))
+        before: dict[str, bytes] = {}
+        for path in paths:
+            try:
+                before[path] = self._notes.path_of(path).read_bytes()
+            except (OSError, ValueError):
+                continue
+        parent = self._gate.state().current_commit
+        retained = self._versions.resolve_ref(operation_id)
+        if retained is not None and existing is None:
+            seq = self._gate.advance(current_commit=retained)
+            self._ledger_upsert(
+                operation_id, origin,
+                MutationCommand(kind=RECOVERY, file_name=None), before, parent,
+                retained, seq, "applied", paths,
+            )
+            return MutationResult(operation_id, RECOVERY, paths, retained, seq)
+
+        if existing is None:
+            self._ledger_upsert(
+                operation_id, origin, MutationCommand(kind=RECOVERY, file_name=None),
+                before, parent, None, 0, "writing", paths,
+            )
+        with (self._gate.operation("mutate") if lock else nullcontext()):
+            try:
+                for path, data in restores.items():
+                    target = self._notes.path_of(path)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(data)
+                for path in deletes:
+                    target = self._notes.path_of(path)
+                    if target.exists():
+                        target.unlink()
+                for folder in folders_create:
+                    (self._notes.root / _safe_folder(folder)).mkdir(parents=True, exist_ok=True)
+                for folder in folders_delete:
+                    target = self._notes.root / _safe_folder(folder)
+                    if target.is_dir() and not any(target.iterdir()):
+                        target.rmdir()
+                snapshot = self._versions.snapshot(parent, operation_id)
+            except GitFailure:
+                raise
+            except Exception as exc:
+                self._restore(before)
+                self._ledger_status(operation_id, "failed", str(exc))
+                raise GitFailure(f"recovery commit failed: {exc}") from exc
+            seq = self._gate.advance(current_commit=snapshot.commit)
+            self._ledger_status(
+                operation_id, "applied", after_commit=snapshot.commit,
+                workspace_seq=seq, paths=list(snapshot.changed_paths or paths),
+            )
+        logger.info(
+            "note restore op=%s commit=%s seq=%s restored=%d deleted=%d",
+            operation_id, snapshot.commit, seq, len(restores), len(deletes),
+        )
+        return MutationResult(
+            operation_id, RECOVERY, list(snapshot.changed_paths or paths),
+            snapshot.commit, seq, True, reused=snapshot.reused,
         )
 
     def head_commit(self) -> str | None:

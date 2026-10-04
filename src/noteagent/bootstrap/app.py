@@ -31,6 +31,7 @@ from noteagent.notes.repository import FileNoteRepository
 from noteagent.notes.mutations import NoteMutationService
 from noteagent.notes.versions import NoteVersionError, NoteVersionStore
 from noteagent.recovery.gate import WorkspaceGate, is_postgres_url
+from noteagent.recovery.service import RecoveryCoordinator
 from noteagent.retrieval.repairs import IndexRepairService
 from noteagent.retrieval.service import RetrievalService
 from noteagent.web import DIST_DIR, STATIC_DIR
@@ -58,6 +59,8 @@ class AppContainer:
     versions: NoteVersionStore | None = None
     # 正式笔记写入的唯一入口（Library、草稿批准、导入）。
     mutations: NoteMutationService | None = None
+    # 整体回退协调器：预览、启动、重试。
+    recovery: RecoveryCoordinator | None = None
 
     @property
     def retrieval(self) -> RetrievalService | None:
@@ -86,11 +89,14 @@ def build_container(settings: Settings) -> AppContainer:
     # 只构造，不连接：异步 saver 必须由 lifespan 打开，否则没有地方关闭它。
     checkpoints = CheckpointRuntime.from_conn_string(postgres_uri(settings.database_url))
     session_factory = create_session_factory(engine)
-    conversations = ConversationService(session_factory, checkpoints)
     # 门禁只用 libpq 连接（PostgreSQL）。SQLite 测试走进程内读写锁。
     workspace = WorkspaceGate(
         session_factory,
         libpq_dsn=postgres_uri(settings.database_url) if is_postgres_url(settings.database_url) else None,
+    )
+    conversations = ConversationService(
+        session_factory, checkpoints,
+        workspace_seq_provider=lambda: workspace.state().seq,
     )
     # 影子 Git 版本仓库：与 notes_dir、代码仓库 .git 隔离。Git 不可用时不阻断启动，
     # 但版本存储为 None，正式写入必须据此拒绝（无历史保护的写入不允许）。
@@ -106,6 +112,7 @@ def build_container(settings: Settings) -> AppContainer:
         )
         if versions is not None else None
     )
+    repairs = IndexRepairService(session_factory, notes)
 
     # 装配器是 bootstrap 与 model_management 之间唯一的接口，避免两边互相导入。
     # 它拿到共享的会话服务与 checkpointer：切换模型只重建图运行对象，不换状态存储。
@@ -122,6 +129,18 @@ def build_container(settings: Settings) -> AppContainer:
     # 持久化的 active 选择决定本次启动用哪个聊天模型与向量 collection。
     model_runtime.initialize()
 
+    recovery = None
+    if mutations is not None:
+        recovery = RecoveryCoordinator(
+            session_factory=session_factory,
+            gate=workspace,
+            conversations=conversations,
+            mutations=mutations,
+            repairs=repairs,
+            notes=notes,
+            retrieval_provider=lambda: model_runtime.snapshot().retrieval,
+        )
+
     return AppContainer(
         settings=settings,
         notes=notes,
@@ -133,6 +152,7 @@ def build_container(settings: Settings) -> AppContainer:
         workspace=workspace,
         versions=versions,
         mutations=mutations,
+        recovery=recovery,
     )   ##返回一个AppContainer对象，包含所有初始化好的组件
 
 

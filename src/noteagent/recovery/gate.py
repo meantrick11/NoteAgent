@@ -145,18 +145,23 @@ class WorkspaceGate:
 
     # ---- gate --------------------------------------------------------------
 
-    def operation(self, mode: str) -> "_GateSession":
-        """Hold the gate in ``mode`` for the duration of a with-block."""
+    def operation(self, mode: str, *, owner: str | None = None) -> "_GateSession":
+        """Hold the gate in ``mode`` for the duration of a with-block.
+
+        ``owner`` lets the job that set the maintenance flag enter its own window; no
+        other caller can.
+        """
         if mode not in ALL_MODES:
             raise ValueError(f"unknown workspace mode: {mode!r}")
-        return _GateSession(self, mode)
+        return _GateSession(self, mode, owner)
 
-    def _acquire(self, mode: str):
+    def _acquire(self, mode: str, owner: str | None = None):
         """Take the lock; returns the backend handle to release later."""
         handle = self._acquire_postgres(mode) if self._dsn else self._acquire_local(mode)
         # The lock is held; now enforce the durable maintenance flag for every
         # gated mode (read/chat/mutate/recovery/model_rebuild).
-        if self.maintenance() is not None:
+        maintenance = self.maintenance()
+        if maintenance is not None and maintenance[0] != owner:
             self._release(mode, handle)
             raise WorkspaceBusy(
                 "workspace is in maintenance; only repair and status are available"
@@ -204,14 +209,15 @@ class WorkspaceGate:
 class _GateSession:
     """Context manager (sync and async) wrapping one gate acquisition."""
 
-    def __init__(self, gate: WorkspaceGate, mode: str) -> None:
+    def __init__(self, gate: WorkspaceGate, mode: str, owner: str | None = None) -> None:
         self._gate = gate
         self._mode = mode
+        self._owner = owner
         self._handle = None
         self._acquired = False
 
     def __enter__(self) -> "_GateSession":
-        self._handle = self._gate._acquire(self._mode)
+        self._handle = self._gate._acquire(self._mode, self._owner)
         self._acquired = True
         return self
 

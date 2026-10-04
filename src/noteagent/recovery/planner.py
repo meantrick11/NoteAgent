@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 
 @dataclass(slots=True)
@@ -85,9 +85,9 @@ class RestorePlan:
             "workspace_seq": self.workspace_seq,
             "can_apply": self.can_apply,
             "requires_confirmation": self.requires_confirmation,
-            "file_changes": [c.__dict__ for c in self.file_changes],
-            "folder_changes": [c.__dict__ for c in self.folder_changes],
-            "conflicts": [c.__dict__ for c in self.conflicts],
+            "file_changes": [asdict(c) for c in self.file_changes],
+            "folder_changes": [asdict(c) for c in self.folder_changes],
+            "conflicts": [asdict(c) for c in self.conflicts],
             "affected_messages": list(self.affected_messages),
             "content_digest": self.content_digest,
             "expires_at": self.expires_at,

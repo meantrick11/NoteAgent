@@ -40,6 +40,7 @@ from noteagent.conversations.records import (
     validate_state,
 )
 from noteagent.db.models import Conversation
+from noteagent.recovery.models import RecoveryJob, WorkspaceState
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +52,11 @@ class ConversationService:
         self,
         session_factory: sessionmaker[Session],
         runtime: CheckpointRuntime,
+        workspace_seq_provider=None,
     ) -> None:
         self._session_factory = session_factory
         self._runtime = runtime
+        self._workspace_seq = workspace_seq_provider or (lambda: 0)
 
     # ---- metadata ---------------------------------------------------------
 
@@ -292,6 +295,168 @@ class ConversationService:
             )
             session.commit()
             return {**result, "state_revision": revision + 1}
+
+    # ---- recovery: fork, publish ------------------------------------------
+
+    async def fork_for_edit(
+        self,
+        conversation_id: str,
+        before_checkpoint_id: str,
+        candidate_values: Mapping[str, Any],
+        request_id: str,
+        operation_id: str,
+    ) -> PreparedTurn:
+        """Prepare a new branch forked from a boundary and accept one edited message.
+
+        Idempotent by ``request_id``: a repeat returns the already-prepared turn. The
+        candidate checkpoint is written unpublished; nothing becomes active until
+        :meth:`publish_recovery`.
+        """
+        self.reconcile_expired_runs()
+        turn_id = uuid.uuid4()
+        user_message_id = uuid.uuid4()
+        lease_token = str(uuid.uuid4())
+        with self._session_factory() as session:
+            conversation = self._load(session, conversation_id)
+            session.execute(select(Conversation.id).where(
+                Conversation.id == conversation.id).with_for_update())
+            session.refresh(conversation)
+            existing = session.scalar(select(ConversationRun).where(
+                ConversationRun.request_id == request_id))
+            if existing is not None:
+                raise TurnAlreadyClaimed(request_id)
+            if self._has_active_run(session, conversation.id):
+                raise ConversationBusy(conversation_id)
+            old_branch = self._branch(session, conversation)
+            branch = ConversationBranch(
+                conversation_id=conversation.id,
+                parent_branch_id=old_branch.id,
+                fork_checkpoint_id=before_checkpoint_id,
+                checkpoint_ns=CHECKPOINT_NS,
+            )
+            session.add(branch)
+            session.flush()
+            branch_id = str(branch.id)
+            generation = int(conversation.generation or 0)
+            old_branch_id = str(old_branch.id)
+            session.commit()
+
+        values = dict(candidate_values)
+        values.update(
+            branch_id=branch_id,
+            generation=generation,
+            current_turn_id=str(turn_id),
+            current_user_id=str(user_message_id),
+            run_status="running",
+            tool_rounds=0,
+            runtime_messages=[],
+            citation_registry=[],
+            tool_steps=[],
+            announced_tool_ids=[],
+        )
+        saved = await self.write_state(
+            conversation_id, values, branch_id=branch_id,
+            parent_checkpoint_id=before_checkpoint_id, publish=False,
+        )
+        with self._session_factory() as session:
+            run = ConversationRun(
+                conversation_id=uuid.UUID(conversation_id),
+                branch_id=uuid.UUID(branch_id),
+                turn_id=turn_id,
+                user_message_id=user_message_id,
+                generation=generation,
+                checkpoint_id=checkpoint_id_of(saved),
+                accepted_checkpoint_id=checkpoint_id_of(saved),
+                status="prepared",
+                request_id=request_id,
+                lease_token=lease_token,
+                lease_expires_at=expires_at(),
+            )
+            session.add(run)
+            session.commit()
+            run_id = str(run.id)
+        logger.info(
+            "recovery fork conversation=%s branch=%s run=%s op=%s",
+            conversation_id, branch_id, run_id, operation_id,
+        )
+        return PreparedTurn(
+            conversation_id=conversation_id,
+            branch_id=branch_id,
+            turn_id=str(turn_id),
+            user_message_id=str(user_message_id),
+            generation=generation,
+            run_id=run_id,
+            request_id=request_id,
+            before_config=thread_config(conversation_id, before_checkpoint_id),
+            config=saved,
+            head_config=saved,
+            lease_token=lease_token,
+        )
+
+    def recovery_context(self, conversation_id: str) -> tuple[str, int, int] | None:
+        """(active_branch_id, generation, revision) for a recovery CAS, or None."""
+        with self._session_factory() as session:
+            conversation = self._load(session, conversation_id, required=False)
+            if conversation is None or conversation.active_branch_id is None:
+                return None
+            return (
+                str(conversation.active_branch_id),
+                int(conversation.generation or 0),
+                int(conversation.revision or 0),
+            )
+
+    def publish_recovery(
+        self,
+        *,
+        conversation_id: str,
+        old_branch_id: str,
+        new_branch_id: str,
+        candidate_checkpoint_id: str,
+        job_id: str,
+        prepared_turn_id: str,
+        expected_generation: int,
+        expected_revision: int,
+    ) -> None:
+        """CAS-switch to the recovered branch and release maintenance in one transaction.
+
+        The candidate checkpoint already exists but was invisible; this is the single
+        atomic switch that makes the new branch active, marks the job succeeded and
+        clears the durable maintenance flag.
+        """
+        cid = uuid.UUID(conversation_id)
+        with self._session_factory() as session:
+            moved = session.execute(update(Conversation).where(
+                Conversation.id == cid,
+                Conversation.active_branch_id == uuid.UUID(old_branch_id),
+                Conversation.generation == expected_generation,
+                Conversation.revision == expected_revision,
+            ).values(
+                active_branch_id=uuid.UUID(new_branch_id),
+                generation=expected_generation + 1,
+                revision=Conversation.revision + 1,
+                updated_at=datetime.now(timezone.utc),
+            ))
+            if moved.rowcount != 1:
+                raise StaleConversation(conversation_id)
+            moved = session.execute(update(ConversationBranch).where(
+                ConversationBranch.id == uuid.UUID(new_branch_id),
+                ConversationBranch.conversation_id == cid,
+            ).values(head_checkpoint_id=candidate_checkpoint_id))
+            if moved.rowcount != 1:
+                raise StaleConversation(conversation_id)
+            session.execute(update(WorkspaceState).where(WorkspaceState.id == 1).values(
+                maintenance_job_id=None, maintenance_kind=None,
+            ))
+            job = session.get(RecoveryJob, uuid.UUID(job_id)) if job_id else None
+            if job is not None:
+                job.status = "succeeded"
+                job.stage = "succeeded"
+                job.prepared_turn_id = prepared_turn_id
+            session.commit()
+            logger.info(
+                "recovery published conversation=%s branch=%s job=%s",
+                conversation_id, new_branch_id, job_id,
+            )
 
     async def list_messages(self, conversation_id: str) -> list[MessageRecord] | None:
         """Project the active checkpoint's display history; None when unknown."""
@@ -546,6 +711,10 @@ class ConversationService:
             parent_checkpoint_id=before_checkpoint_id,
             publish=False,
         )
+        # Read the workspace seq *before* opening the publish transaction: the provider
+        # takes its own session, and a nested session on the same connection would roll
+        # back the publish we are about to commit.
+        workspace_seq = int(self._workspace_seq() or 0)
         with self._session_factory() as session:
             self._publish(session, conversation_id, branch_id,
                           checkpoint_id_of(saved), before_checkpoint_id, generation)
@@ -564,9 +733,9 @@ class ConversationService:
                     turn_id=turn_id,
                     before_checkpoint_ns=CHECKPOINT_NS,
                     before_checkpoint_id=before_checkpoint_id,
-                    workspace_seq=0,
-                    recoverable=False,
-                    reason="阶段 A：尚未建立正文版本，暂不可整体回退",
+                    workspace_seq=workspace_seq,
+                    recoverable=True,
+                    reason=None,
                 )
             )
             session.commit()
