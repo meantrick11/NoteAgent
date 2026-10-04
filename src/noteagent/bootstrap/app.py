@@ -30,7 +30,7 @@ from noteagent.model_management.store import ModelSettingsStore
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.notes.mutations import NoteMutationService
 from noteagent.notes.versions import NoteVersionError, NoteVersionStore
-from noteagent.recovery.gate import WorkspaceGate, is_postgres_url
+from noteagent.recovery.gate import WorkspaceBusy, WorkspaceGate, is_postgres_url
 from noteagent.recovery.router import recovery_error_handler, router as recovery_router
 from noteagent.recovery.service import RecoveryCoordinator, RecoveryError
 from noteagent.retrieval.repairs import IndexRepairService
@@ -60,6 +60,7 @@ class AppContainer:
     versions: NoteVersionStore | None = None
     # 正式笔记写入的唯一入口（Library、草稿批准、导入）。
     mutations: NoteMutationService | None = None
+    history_required: bool = False
     # 整体回退协调器：预览、启动、重试。
     recovery: RecoveryCoordinator | None = None
 
@@ -105,7 +106,8 @@ def build_container(settings: Settings) -> AppContainer:
         versions = NoteVersionStore(settings.notes_history_dir, settings.notes_dir)
     except Exception as exc:  # noqa: BLE001 - 启动不因缺少 Git 而失败
         _logger.error("shadow note repository unavailable: %s", exc)
-        versions = None
+        from noteagent.notes.mutations import HistoryUnavailable
+        raise HistoryUnavailable("shadow history unavailable; refusing unprotected writes") from exc
     mutations = (
         NoteMutationService(
             notes, versions, workspace, session_factory,
@@ -153,6 +155,7 @@ def build_container(settings: Settings) -> AppContainer:
         workspace=workspace,
         versions=versions,
         mutations=mutations,
+        history_required=True,
         recovery=recovery,
     )   ##返回一个AppContainer对象，包含所有初始化好的组件
 
@@ -166,10 +169,29 @@ async def lifespan(app: FastAPI):
     try:
         if container.workspace is not None:
             container.workspace.ensure_row()
-        if container.versions is not None:
-            container.versions.init()
+        if container.versions is not None and container.workspace.state().current_commit is None:
+            with container.workspace.operation("mutate"):
+                container.mutations.initialize_locked()
         if container.conversations is not None:
             container.conversations.reconcile_expired_runs()
+        if container.mutations is not None:
+            maintenance = container.workspace.maintenance()
+            if maintenance is None or maintenance[1] == "mutation":
+                container.mutations.reconcile_pending()
+            maintenance = container.workspace.maintenance()
+            if maintenance is not None and maintenance[1] == "approval":
+                from noteagent.recovery.models import MutationRecord
+                from sqlalchemy import select
+                with container.mutations._session_factory() as session:
+                    pending = session.scalar(select(MutationRecord).where(MutationRecord.operation_id == maintenance[0]))
+                    cid = str(pending.conversation_id) if pending is not None else None
+                if cid is not None:
+                    with container.workspace.operation("mutate", owner=maintenance[0]):
+                        await container.chat_agent.review(cid, "approve")
+            retrieval = container.model_runtime.snapshot().retrieval
+            if retrieval is not None and container.workspace.maintenance() is None:
+                with container.workspace.operation("mutate"):
+                    container.mutations._repairs.reconcile(retrieval)
         yield
     finally:
         if container.checkpoints is not None:
@@ -195,6 +217,10 @@ def create_app(container: AppContainer) -> FastAPI:
     app.add_exception_handler(ModelManagementError, model_management_error_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.add_exception_handler(RecoveryError, recovery_error_handler)
+    from fastapi.responses import JSONResponse
+    async def workspace_busy_handler(request, exc):
+        return JSONResponse(status_code=409, content={"code": "workspace_busy", "message": str(exc), "retryable": True})
+    app.add_exception_handler(WorkspaceBusy, workspace_busy_handler)
     app.include_router(web_router)   #注册页面路由（SPA 外壳 / 旧模板）
     app.include_router(chat_router)   #注册聊天路由
     app.include_router(notes_router)

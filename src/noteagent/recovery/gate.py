@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from contextvars import ContextVar
 from contextlib import contextmanager
 from collections.abc import Iterator
 
@@ -89,6 +90,7 @@ class WorkspaceGate:
         self._session_factory = session_factory
         self._dsn = libpq_dsn
         self._local = _LocalRW()
+        self._held = ContextVar(f"workspace_gate_{id(self)}", default=None)
 
     # ---- maintenance (durable) -------------------------------------------
 
@@ -145,7 +147,7 @@ class WorkspaceGate:
 
     # ---- gate --------------------------------------------------------------
 
-    def operation(self, mode: str, *, owner: str | None = None) -> "_GateSession":
+    def operation(self, mode: str, *, owner: str | None = None, nested: bool = False) -> "_GateSession":
         """Hold the gate in ``mode`` for the duration of a with-block.
 
         ``owner`` lets the job that set the maintenance flag enter its own window; no
@@ -153,7 +155,7 @@ class WorkspaceGate:
         """
         if mode not in ALL_MODES:
             raise ValueError(f"unknown workspace mode: {mode!r}")
-        return _GateSession(self, mode, owner)
+        return _GateSession(self, mode, owner, nested)
 
     def _acquire(self, mode: str, owner: str | None = None):
         """Take the lock; returns the backend handle to release later."""
@@ -209,20 +211,29 @@ class WorkspaceGate:
 class _GateSession:
     """Context manager (sync and async) wrapping one gate acquisition."""
 
-    def __init__(self, gate: WorkspaceGate, mode: str, owner: str | None = None) -> None:
+    def __init__(self, gate: WorkspaceGate, mode: str, owner: str | None = None, nested=False) -> None:
         self._gate = gate
+        self._nested = nested
         self._mode = mode
         self._owner = owner
         self._handle = None
         self._acquired = False
+        self._token = None
 
     def __enter__(self) -> "_GateSession":
+        held = self._gate._held.get()
+        if held is not None and self._nested:
+            if held in EXCLUSIVE_MODES or self._mode in SHARED_MODES:
+                return self
+            raise WorkspaceBusy("cannot upgrade a shared workspace lease")
         self._handle = self._gate._acquire(self._mode, self._owner)
         self._acquired = True
+        self._token = self._gate._held.set(self._mode)
         return self
 
     def __exit__(self, *exc) -> None:
         if self._acquired:
+            self._gate._held.reset(self._token)
             self._gate._release(self._mode, self._handle)
             self._acquired = False
             self._handle = None

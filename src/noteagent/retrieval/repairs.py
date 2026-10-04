@@ -113,6 +113,12 @@ class IndexRepairService:
                     # Empty/whitespace documents are legal zero-chunk results.
                     if not _is_empty(self._notes, path):
                         raise RuntimeError("index wrote no vectors for a non-empty note")
+            if self.body_hash(path) != current_hash or _safe_fingerprint(retrieval) != fingerprint:
+                raise RuntimeError("body or index configuration changed during repair")
+            if current_hash is None and retrieval.is_indexed(path):
+                raise RuntimeError("deleted note still has vectors")
+            if hasattr(retrieval, "verify_note") and not retrieval.verify_note(path):
+                raise RuntimeError("stored chunks do not match current note")
             self._mark(path, READY, body_hash=current_hash, fingerprint=fingerprint,
                        operation_id=operation_id)
             return RepairStatus(path, READY, current_hash, fingerprint, True)
@@ -127,7 +133,9 @@ class IndexRepairService:
 
     def reconcile(self, retrieval, *, operation_id: str = "reconcile") -> list[RepairStatus]:
         """Retry every unsynced path (startup and explicit repair use the same op)."""
-        return self.repair_many(self.unsynced_paths(), retrieval, operation_id=operation_id)
+        paths = set(self.unsynced_paths()) | set(self._notes.list_notes())
+        paths |= set(retrieval.indexed_files()) if hasattr(retrieval, "indexed_files") else set()
+        return self.repair_many(sorted(p for p in paths if not self.is_synced(p, retrieval)), retrieval, operation_id=operation_id)
 
     # ---- sync checks and search fencing -----------------------------------
 
@@ -142,7 +150,9 @@ class IndexRepairService:
         if row["body_hash"] != current:
             return False
         if current is None:
-            return True  # file gone: ledger says ready, nothing to serve
+            return not retrieval.is_indexed(path)
+        if hasattr(retrieval, "verify_note"):
+            return retrieval.verify_note(path)
         if _is_empty(self._notes, path):
             return not retrieval.is_indexed(path)
         return retrieval.is_indexed(path)

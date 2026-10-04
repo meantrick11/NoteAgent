@@ -176,6 +176,17 @@ def test_chat_rejects_unmigrated_legacy_conversation(tmp_path):
     assert response.status_code == 409
 
 
+def test_production_legacy_draft_cannot_bypass_history(tmp_path):
+    app = build_checkpoint_app(tmp_path, reply_batches=[[]])
+    app.container.history_required = True
+    legacy = app.history.create('legacy')
+    app.history.set_pending_draft(legacy.id, {'action': 'create', 'file_name': 'Legacy.md', 'content': 'old'})
+    review = app.client.post('/chat/review', json={'thread_id': legacy.id, 'action': 'approve'})
+    edit = app.client.put('/chat/draft', json={'thread_id': legacy.id, 'content': 'new'})
+    assert review.status_code == edit.status_code == 409
+    assert not app.notes.exists('Legacy.md')
+
+
 def test_interrupted_run_resumes_over_http_without_duplicate_user(tmp_path):
     import asyncio
 
@@ -249,3 +260,17 @@ def test_detail_reconciles_a_run_that_expired_after_startup(tmp_path):
     detail = app.client.get(f"/conversations/{conv.id}").json()
     assert detail["active_run"]["run_id"] == prepared.run_id
     assert detail["active_run"]["status"] == "interrupted"
+
+@pytest.mark.parametrize('path', ['/notes', '/notes/A.md', '/chat'])
+def test_durable_maintenance_blocks_real_http(tmp_path, path):
+    from noteagent.db import create_session_factory
+    from noteagent.recovery.gate import WorkspaceGate
+    app = build_checkpoint_app(tmp_path, reply_batches=[['answer']])
+    gate = WorkspaceGate(create_session_factory(app.container.engine))
+    gate.ensure_row()
+    app.container.workspace = gate
+    app.container.model_runtime._workspace = gate
+    gate.set_maintenance('repair', 'recovery')
+    response = app.client.post(path, json={'question': 'q'}) if path == '/chat' else app.client.get(path)
+    assert response.status_code == 409
+    assert app.history.list_conversations() == []

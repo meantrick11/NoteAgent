@@ -94,7 +94,7 @@ function onBodyClick(message: ChatMessage, index: number, event: MouseEvent): vo
     </div>
 
     <RecoveryConfirmDialog
-      v-if="chat.recoveryPreview && chat.recoveryPhase !== 'idle' && chat.recoveryPhase !== 'editing'"
+      v-if="(chat.recoveryPreview || chat.recoveryJob) && chat.recoveryPhase !== 'idle' && chat.recoveryPhase !== 'editing'"
       :preview="chat.recoveryPreview"
       :phase="chat.recoveryPhase"
       :error="chat.recoveryError"

@@ -5,7 +5,7 @@ import type { RecoveryPreview } from '@/shared/api/types'
 import { conflictSummary } from './recovery'
 
 const props = defineProps<{
-  preview: RecoveryPreview
+  preview: RecoveryPreview | null
   phase: 'idle' | 'editing' | 'previewing' | 'confirming' | 'running' | 'conflict' | 'failed'
   error?: string
   retryable?: boolean
@@ -17,9 +17,9 @@ defineEmits<{
   (event: 'retry'): void
 }>()
 
-const conflicts = computed(() => props.preview.conflicts ?? [])
-const files = computed(() => props.preview.file_changes ?? [])
-const folders = computed(() => props.preview.folder_changes ?? [])
+const conflicts = computed(() => props.preview?.conflicts ?? [])
+const files = computed(() => props.preview?.file_changes ?? [])
+const folders = computed(() => props.preview?.folder_changes ?? [])
 const busy = computed(() => props.phase === 'running' || props.phase === 'previewing')
 </script>
 
@@ -35,7 +35,7 @@ const busy = computed(() => props.phase === 'running' || props.phase === 'previe
             {{ item.path || '（会话状态）' }}：{{ item.reason }}
           </li>
         </ul>
-        <p class="hint">{{ conflictSummary(preview) }}</p>
+        <p v-if="preview" class="hint">{{ conflictSummary(preview) }}</p>
       </template>
 
       <template v-else>

@@ -16,7 +16,7 @@ import re
 import threading
 import uuid
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
@@ -455,27 +455,27 @@ class ModelRuntimeService:
     # ---------- 快照获取 ----------
 
     @contextmanager
-    def read(self) -> Iterator[RuntimeSnapshot]:
-        """Read-only operation: allowed during maintenance, not counted."""
-        yield self._current_snapshot()
+    def read(self):
+        with (self._workspace.operation("read") if self._workspace else nullcontext()):
+            yield self._current_snapshot()
 
     @contextmanager
-    def write(self) -> Iterator[RuntimeSnapshot]:
-        """Note-writing operation: refused during maintenance, counted."""
-        snapshot = self._enter()
-        try:
-            yield snapshot
-        finally:
-            self._exit()
+    def write(self):
+        with (self._workspace.operation("mutate") if self._workspace else nullcontext()):
+            snapshot = self._enter()
+            try:
+                yield snapshot
+            finally:
+                self._exit()
 
     @contextmanager
-    def chat(self) -> Iterator[RuntimeSnapshot]:
-        """One chat round: refused during maintenance, counted."""
-        snapshot = self._enter()
-        try:
-            yield snapshot
-        finally:
-            self._exit()
+    def chat(self):
+        with (self._workspace.operation("chat") if self._workspace else nullcontext()):
+            snapshot = self._enter()
+            try:
+                yield snapshot
+            finally:
+                self._exit()
 
     def snapshot(self) -> RuntimeSnapshot:
         """Current snapshot without joining the gate (for status rendering)."""

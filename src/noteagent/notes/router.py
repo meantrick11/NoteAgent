@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from noteagent.model_management.router import write_lease
+from noteagent.model_management.router import read_lease, write_lease
 from noteagent.model_management.service import RuntimeSnapshot
 from noteagent.notes.mutations import (
     CREATE,
@@ -47,7 +47,11 @@ def _notes(request: Request) -> FileNoteRepository:
 
 def _mutations(request: Request):
     """The unified write service, when the deployment has a shadow Git store."""
-    return getattr(request.app.state.container, "mutations", None)
+    container = request.app.state.container
+    service = getattr(container, "mutations", None)
+    if getattr(container, "history_required", False) and service is None:
+        raise HTTPException(status_code=503, detail="note history unavailable; writes refused")
+    return service
 
 
 def _read_snapshot(request: Request) -> RuntimeSnapshot:
@@ -113,7 +117,7 @@ def _folder_of(file_name: str) -> str:
     return file_name.rsplit("/", 1)[0]
 
 
-@router.get("/notes", response_model=NotesListOut)
+@router.get("/notes", response_model=NotesListOut, dependencies=[Depends(read_lease)])
 async def list_notes(request: Request) -> NotesListOut:
     """List folders and notes with mtime and index status. No notes table."""
     notes = _notes(request)
@@ -161,7 +165,10 @@ async def create_note(
     except Exception as exc:
         _raise_notes_error(exc)
         raise
-    indexed = _try_index(retrieval, name)
+    mutations = _mutations(request)
+    repairs = mutations._repairs if mutations is not None else None
+    indexed = (repairs.repair(name, retrieval, operation_id=_op_id()).synced
+               if repairs is not None and retrieval is not None else _try_index(retrieval, name))
     _logger.info("notes http create file=%s indexed=%s", name, indexed)
     return NoteWriteOut(file_name=name, indexed=indexed)
 
@@ -180,7 +187,7 @@ async def create_folder(
                 MutationCommand(kind=FOLDER_CREATE, name=body.name),
                 Origin.library(), _op_id(), retrieval=snapshot.retrieval,
             )
-            name = _notes(request).normalize(body.name)
+            name = _notes(request).normalize_folder(body.name)
         else:
             name = _notes(request).create_folder(body.name)
     except Exception as exc:
@@ -202,8 +209,8 @@ async def rename_folder(
     retrieval = snapshot.retrieval
     try:
         if mutations is not None:
-            old = notes.normalize(body.from_path)
-            new = notes.normalize(body.to_path)
+            old = notes.normalize_folder(body.from_path)
+            new = notes.normalize_folder(body.to_path)
             mutations.apply(
                 MutationCommand(kind=FOLDER_RENAME, name=old, dest=new),
                 Origin.library(), _op_id(), retrieval=retrieval,
@@ -234,7 +241,7 @@ async def delete_folder(
     retrieval = snapshot.retrieval
     try:
         if mutations is not None:
-            folder = notes.normalize(name)
+            folder = notes.normalize_folder(name)
             deleted = [n for n in notes.list_notes() if n.startswith(f"{folder}/")]
             mutations.apply(
                 MutationCommand(kind=FOLDER_DELETE, name=folder),
@@ -298,12 +305,15 @@ async def index_note(
     except Exception as exc:
         _raise_notes_error(exc)
         raise
-    indexed = _try_index(retrieval, name)
+    mutations = _mutations(request)
+    repairs = mutations._repairs if mutations is not None else None
+    indexed = (repairs.repair(name, retrieval, operation_id=_op_id()).synced
+               if repairs is not None and retrieval is not None else _try_index(retrieval, name))
     _logger.info("notes http index file=%s indexed=%s", name, indexed)
     return NoteWriteOut(file_name=name, indexed=indexed)
 
 
-@router.get("/notes/{file_name:path}", response_model=NoteContentOut)
+@router.get("/notes/{file_name:path}", response_model=NoteContentOut, dependencies=[Depends(read_lease)])
 async def read_note(file_name: str, request: Request) -> NoteContentOut:
     """Return Markdown text of one note."""
     notes = _notes(request)

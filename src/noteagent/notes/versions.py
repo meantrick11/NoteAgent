@@ -196,7 +196,7 @@ class NoteVersionStore:
 
         if parent is not None:
             parent_tree = self._rev_parse(f"{parent}^{{tree}}")
-            if parent_tree == tree:
+            if parent_tree == tree and self.folders(parent) == folders:
                 # Nothing changed: reuse the parent, never manufacture an empty commit.
                 self._retain(operation_id, parent)
                 return Snapshot(commit=parent, parent=parent, changed_paths=[], reused=True)
@@ -230,10 +230,10 @@ class NoteVersionStore:
         parent_folders = set(self.folders(parent))
         for folder in folders:
             if folder not in parent_folders:
-                changed.add(folder)
+                changed.add(folder + "/")
         for folder in parent_folders:
             if folder not in folders:
-                changed.add(folder)
+                changed.add(folder + "/")
         return sorted(changed)
 
     def manifests(self, commit: str) -> dict[str, str]:

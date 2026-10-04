@@ -1,9 +1,26 @@
 # NoteAgent 数据库
 
-全局职责见 [architecture.md §5.7](architecture.md#57-数据库)。本文是现行两张表的列、索引、两种读法与实例。
+全局职责见 [architecture.md §5.7](architecture.md#57-数据库)。当前权威会话状态为 checkpoint，应用表负责元数据和恢复协调。下面原 Conversation/Message 字典仅用于旧数据迁移核对，不再作为正式消息写入协议。
 
 | 项 | 内容 |
+|
+## 当前持久层
+
+| 存储 | 权威数据 |
 |---|---|
+| LangGraph PostgreSQL saver | GraphState：ui_messages、working_records、摘要、草稿、本轮工具消息、notes_commit/seq |
+| conversations / conversation_branches | 元数据、state_backend、active branch/head、generation、revision |
+| conversation_runs / user_message_boundaries | 持久输入身份、接受前安全 checkpoint、运行租约与可恢复边界 |
+| workspace_state | seq、current_commit 与持久 maintenance |
+| mutation_records | operation、归属、路径/目录前像、前后 commit、writing/applied/published/failed |
+| recovery_previews / recovery_jobs | 确认计划、编辑摘要、候选、prepared turn 与失败阶段 |
+| index_repairs | 正文哈希、索引配置、pending/ready/failed 与重试信息 |
+
+应用表由 Alembic 管理，saver 的表由 runtime.setup 生命周期管理。事务边界见 [恢复实现](../03-modules/recovery/recovery.md)；不能把 saver 写入与应用事务当作自动原子。旧 messages、摘要/草稿列只用于 legacy 数据读取或导入。
+
+## 旧数据字典（迁移参考）
+
+---|---|
 | 生产库 | PostgreSQL（`DATABASE_URL` 必须 `postgresql+psycopg://`） |
 | 测试库 | 内存 SQLite（`Base.metadata.create_all`） |
 | 聊天装配 | [context-management.md](../03-modules/chat/context-management.md) |

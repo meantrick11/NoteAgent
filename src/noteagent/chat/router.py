@@ -97,11 +97,11 @@ EDIT_RECOVERY_UNAVAILABLE = "recovery_not_available"
 EDIT_NOT_MIGRATED = "history_not_migrated"
 
 
-def _message_out(message) -> MessageOut:
+def _message_out(message, editable=False) -> MessageOut:
     """Project one stored record into the HTTP contract, including editability."""
     reason = None
     if message.role == "user":
-        reason = message.edit_unavailable_reason or EDIT_RECOVERY_UNAVAILABLE
+        reason = None if editable else message.edit_unavailable_reason or EDIT_RECOVERY_UNAVAILABLE
     return MessageOut(
         id=message.id,
         role=message.role,
@@ -110,7 +110,7 @@ def _message_out(message) -> MessageOut:
         turn_id=message.turn_id,
         citations=[CitationOut.model_validate(item) for item in (message.citations or [])],
         tool_steps=[ToolStepOut.model_validate(item) for item in (message.tool_steps or [])],
-        editable=False,
+        editable=editable,
         edit_unavailable_reason=reason,
     )
 
@@ -133,7 +133,10 @@ async def list_messages(conversation_id: str, request: Request) -> list[MessageO
     if records is None:
         raise HTTPException(status_code=404, detail="conversation not found")
     _logger.info("list messages conversation=%s count=%d", conversation_id, len(records))
-    return [_message_out(m) for m in records]
+    editable_ids = set()
+    if container.recovery is not None and container.conversations is not None:
+        editable_ids = container.conversations.recoverable_message_ids(conversation_id)
+    return [_message_out(m, m.role == "user" and m.id in editable_ids) for m in records]
 
 # 更改路由，如果点击重命名会到此路由，进行对话的重命名路由操作
 @router.patch("/conversations/{conversation_id}")
@@ -235,7 +238,9 @@ def _claim_prepared_turn(
             status_code=422, detail="prepared_turn_id and question are mutually exclusive"
         )
     try:
-        prepared = agent.claim_prepared(require.prepared_turn_id)
+        prepared = agent.claim_prepared(require.prepared_turn_id,
+            conversation_id=require.conversation_id or require.thread_id,
+            expected_revision=require.expected_revision)
     except ConversationBusy:
         raise HTTPException(status_code=409, detail="conversation has a running turn")
     except TurnAlreadyClaimed:
@@ -310,7 +315,7 @@ async def chat_with(
             "turn_id": prepared.turn_id,
             "run_id": prepared.run_id,
             "request_id": prepared.request_id,
-            "state_revision": prepared.generation,
+            "state_revision": request.app.state.container.conversations.current_revision(prepared.conversation_id),
         },
     )
 
@@ -345,8 +350,11 @@ async def update_chat_draft(
     vector is touched. Approval still goes through POST /chat/review.
     """
     history = request.app.state.container.history
-    if history.get(require.thread_id) is None:
+    record = history.get(require.thread_id)
+    if record is None:
         raise HTTPException(status_code=404, detail="conversation not found")
+    if request.app.state.container.history_required and record.state_backend != "checkpoint":
+        raise HTTPException(status_code=409, detail="legacy conversation must be migrated before editing")
     agent = snapshot.chat_agent
     _logger.info(
         "[thread=%s] draft update chars=%d", require.thread_id, len(require.content)
@@ -385,8 +393,11 @@ async def chat_review(
 
     Approval writes notes and reindexes them, so it is gated like any other write.
     """
-    if request.app.state.container.history.get(require.thread_id) is None:
+    record = request.app.state.container.history.get(require.thread_id)
+    if record is None:
         raise HTTPException(status_code=404, detail="conversation not found")
+    if request.app.state.container.history_required and record.state_backend != "checkpoint":
+        raise HTTPException(status_code=409, detail="legacy conversation must be migrated before reviewing")
     agent = snapshot.chat_agent
     _logger.info(
         "[thread=%s] review action=%s write_action=%s file=%s",

@@ -148,7 +148,7 @@ class BootstrapAssembler:
         model = self.build_chat_model(profile)
         return build_graph_agent(
             model=model,
-            tools=build_chat_tools(self._notes, retrieval, self._drafts),
+            tools=build_chat_tools(self._notes, retrieval, self._drafts, repairs=self._mutations._repairs if self._mutations else None),
             notes=self._notes,
             drafts=self._drafts,
             budget=budget_for_window(self._settings, profile.context_window),

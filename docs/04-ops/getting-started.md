@@ -68,3 +68,9 @@ docker-compose up --build
 **页面能开，对话失败。** 几乎都是没填或填错 `DEEPSEEK_API_KEY` / `DEEPSEEK_API_BASE` / `CHAT_MODEL`。改 `.env` 后需要重新 `docker compose up`（compose 用 `env_file` 读密钥）。
 
 **本机开发、跑测试、环境变量全表。** 见 [local-dev.md](../00-overview/local-dev.md)。
+
+## 材料历史与恢复
+
+Docker 镜像安装 Git；Compose 设置 NOTES_HISTORY_DIR=var/notes_history，独立 notes_history 卷挂载 /app/var/notes_history。备份同时覆盖 PostgreSQL（含 saver 表）、notes 和影子 Git；Chroma 可重建。不要用临时容器层保存历史，也不要覆盖整个 /app/var 遮住模型缓存。
+
+服务启动先处理未完成 mutation/approval，再维修索引；恢复 maintenance 留给同一任务 retry。刷新 Assistant 可找回失败任务重试；prepared turn 可稍后继续生成。详见 [恢复实现](../03-modules/recovery/recovery.md)。本轮未构建/启动 Docker 镜像，Compose 仅静态校验；真实进程演练在隔离本机服务完成。

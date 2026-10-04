@@ -43,6 +43,23 @@ def _ledger(factory, operation_id):
         return session.scalar(select(MutationRecord).where(MutationRecord.operation_id == operation_id))
 
 
+def test_worker_death_before_git_keeps_gate_closed_until_compensation(env, monkeypatch):
+    from noteagent.recovery.gate import WorkspaceBusy
+    service, notes, versions, gate, _ = env
+    service.initialize_locked()
+    def terminate(*args, **kwargs):
+        raise KeyboardInterrupt('worker killed')
+    monkeypatch.setattr(versions, 'snapshot', terminate)
+    with pytest.raises(KeyboardInterrupt):
+        service.apply(MutationCommand(kind=CREATE, file_name='A.md'), Origin.library(), 'crashed')
+    assert gate.maintenance() == ('crashed', 'mutation')
+    with pytest.raises(WorkspaceBusy):
+        service.apply(MutationCommand(kind=CREATE, file_name='B.md'), Origin.library(), 'later')
+    service.reconcile_pending()
+    assert not notes.exists('A.md')
+    assert gate.maintenance() is None
+
+
 def test_create_write_move_delete_are_ledgered(env):
     service, notes, versions, gate, factory = env
     created = service.apply(
@@ -166,3 +183,43 @@ def test_conversation_origin_is_attributed(env):
     )
     row = _ledger(factory, "op-conv")
     assert row.origin_kind == "conversation" and row.run_id == "run-9"
+
+
+@pytest.mark.parametrize("kind", [CREATE, MOVE, "folder_rename"])
+def test_git_failure_restores_absence_and_folders(env, monkeypatch, kind):
+    service, notes, versions, gate, factory = env
+    service.apply(MutationCommand(kind=CREATE, file_name="Old/A.md", content="base"), Origin.library(), "base")
+    before = {p.relative_to(notes.root).as_posix(): p.read_bytes() for p in notes.root.rglob("*.md")}
+    folders = notes.list_folders()
+    def boom(*args, **kwargs): raise RuntimeError("git failed")
+    monkeypatch.setattr(versions, "snapshot", boom)
+    command = {CREATE: MutationCommand(kind=CREATE, file_name="New.md"), MOVE: MutationCommand(kind=MOVE, file_name="Old/A.md", dest="B.md"), "folder_rename": MutationCommand(kind="folder_rename", name="Old", dest="New")}[kind]
+    with pytest.raises(GitFailure): service.apply(command, Origin.library(), "failed")
+    assert {p.relative_to(notes.root).as_posix(): p.read_bytes() for p in notes.root.rglob("*.md")} == before
+    assert notes.list_folders() == folders
+
+
+def test_writing_ledger_retry_does_not_append_twice(env, monkeypatch):
+    service, notes, versions, gate, factory = env
+    service.apply(MutationCommand(kind=CREATE, file_name="A.md"), Origin.library(), "base")
+    publish = service._ledger_status
+    def fail(operation_id, status, *args, **kwargs):
+        if status == "applied": raise RuntimeError("database unavailable")
+        return publish(operation_id, status, *args, **kwargs)
+    monkeypatch.setattr(service, "_ledger_status", fail)
+    cmd = MutationCommand(kind=WRITE, file_name="A.md", content="once", append=True)
+    with pytest.raises(RuntimeError): service.apply(cmd, Origin.library(), "append")
+    monkeypatch.setattr(service, "_ledger_status", publish)
+    service.apply(cmd, Origin.library(), "append")
+    assert notes.read("A.md").count("once") == 1
+
+def test_empty_folder_changes_have_distinct_versions(env):
+    service, notes, versions, gate, factory = env
+    base = versions.init()
+    notes.create_folder('Empty')
+    created = versions.snapshot(base, 'folder-added')
+    assert not created.reused
+    assert versions.folders(created.commit) == ['Empty']
+    notes.rename_folder('Empty', 'Renamed')
+    moved = versions.snapshot(created.commit, 'folder-moved')
+    assert versions.folders(moved.commit) == ['Renamed']

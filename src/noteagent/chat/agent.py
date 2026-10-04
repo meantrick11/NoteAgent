@@ -83,9 +83,9 @@ class ChatAgent:
             run_id, conversation_id=conversation_id, expected_revision=expected_revision,
         )
 
-    def claim_prepared(self, run_id: str) -> PreparedTurn:
+    def claim_prepared(self, run_id: str, **kwargs) -> PreparedTurn:
         """Claim a prepared (recovery-forked) run without re-accepting its message."""
-        return self._service.claim_prepared(run_id)
+        return self._service.claim_prepared(run_id, **kwargs)
 
     async def run(self, prepared: PreparedTurn, *, resume: bool = False) -> AsyncIterator[dict]:
         """Run the compiled graph for an already-prepared turn and emit its events."""
@@ -170,7 +170,10 @@ class ChatAgent:
                 retrieval=self._retrieval,
             )
 
+        applied_operation = None
+
         def apply(draft: dict) -> dict:
+            nonlocal applied_operation
             if action == "reject":
                 return {"status": "rejected"}
             if action == "override":
@@ -182,22 +185,30 @@ class ChatAgent:
             else:
                 return {"error": f"unknown action {action}"}
             try:
-                self._write_approved(
+                mutation = self._write_approved(
                     conversation_id, target_action, target_name,
-                    draft.get("content") or "", expected_revision,
+                    draft.get("content") or "", draft["_head_id"], branch_id=draft["_branch_id"],
                 )
             except (OSError, ValueError, MutationError) as exc:
                 return {"error": str(exc)}
-            return {"status": "written", "action": target_action, "file_name": target_name}
+            payload = {"status": "written", "action": target_action, "file_name": target_name}
+            if mutation is not None:
+                applied_operation = mutation.operation_id
+                payload.update(_mutation_operation=mutation.operation_id, notes_commit=mutation.commit, workspace_seq=mutation.workspace_seq)
+            return payload
 
-        result = await self._service.review_pending_draft(
-            conversation_id, apply, expected_revision=expected_revision,
-            allow_absent=action == "reject",
-        )
-        return result
+        try:
+            return await self._service.review_pending_draft(
+                conversation_id, apply, expected_revision=expected_revision,
+                allow_absent=action == "reject",
+            )
+        except Exception:
+            if applied_operation and self._mutations._ledger_get(applied_operation)["status"] != "published":
+                self._mutations._gate.set_maintenance(applied_operation, "approval")
+            raise
 
     def _write_approved(self, conversation_id, action, file_name, content,
-                        expected_revision) -> None:
+                        expected_revision, *, branch_id=None):
         """Write an approved draft through the unified mutation service when present.
 
         The mutation service records the operation and its before-bytes, commits the
@@ -221,9 +232,10 @@ class ChatAgent:
         origin = Origin(
             kind="conversation",
             conversation_id=conversation_id,
+            branch_id=branch_id,
             run_id=f"draft-{expected_revision}",
         )
-        self._mutations.apply(
+        return self._mutations.apply(
             command, origin, f"draft-{conversation_id}-{expected_revision}",
             retrieval=self._retrieval,
         )

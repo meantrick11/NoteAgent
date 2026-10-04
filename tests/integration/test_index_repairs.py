@@ -143,3 +143,26 @@ def test_reconcile_retries_failed_repairs_after_restart(env, monkeypatch):
     results = restarted.reconcile(retrieval, operation_id="reconcile")
     assert any(r.path == "A.md" and r.status == READY for r in results)
     assert restarted.is_synced("A.md", retrieval)
+
+def test_formal_tool_filters_failed_repairs(env):
+    from noteagent.chat.drafts import DraftStore
+    from noteagent.chat.tools import build_chat_tools
+    notes, retrieval, repairs, factory = env
+    notes.create('A.md', 'A'); notes.write('A.md', 'old content', append=True)
+    repairs.repair('A.md', retrieval, operation_id='initial')
+    repairs._mark('A.md', 'failed', operation_id='broken')
+    tools = build_chat_tools(notes, retrieval, DraftStore(None), repairs=repairs)
+    search = next(t for t in tools if t.name == 'search_relative_from_chromadb')
+    assert search.invoke({'query': 'old content'})['fragments'] == []
+
+
+def test_missing_chunk_is_fenced_and_repaired(env):
+    notes, retrieval, repairs, _ = env
+    notes.create('A.md', 'A')
+    notes.write('A.md', 'content ' * 1500, append=True)
+    repairs.repair('A.md', retrieval, operation_id='initial')
+    assert repairs.is_synced('A.md', retrieval)
+    retrieval._store._collection.delete(ids=['A.md_0'])
+    assert not repairs.is_synced('A.md', retrieval)
+    assert repairs.search_synced(retrieval, 'content') == []
+    assert repairs.reconcile(retrieval)[0].synced

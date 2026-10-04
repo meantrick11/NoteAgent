@@ -286,15 +286,23 @@ class ConversationService:
                 conversation_id, values, branch_id=str(branch.id),
                 parent_checkpoint_id=head, publish=False,
             )
-            result = apply(dict(draft))
+            result = apply({**draft, "_state_revision": revision, "_branch_id": str(branch.id), "_head_id": head})
             if "error" in result:
                 return result
+            if result.get("_mutation_operation"):
+                values["notes_commit"] = result["notes_commit"]
+                values["workspace_seq"] = result["workspace_seq"]
+                saved = await self.write_state(conversation_id, values, branch_id=str(branch.id), parent_checkpoint_id=head, publish=False)
             self._publish(
                 session, conversation_id, str(branch.id), checkpoint_id_of(saved),
                 head, conversation.generation, revision, True,
             )
+            if result.get("_mutation_operation"):
+                from noteagent.recovery.models import MutationRecord
+                session.execute(update(MutationRecord).where(MutationRecord.operation_id == result["_mutation_operation"]).values(status="published"))
+                session.execute(update(WorkspaceState).where(WorkspaceState.maintenance_job_id == result["_mutation_operation"]).values(maintenance_job_id=None, maintenance_kind=None))
             session.commit()
-            return {**result, "state_revision": revision + 1}
+            return {k: v for k, v in {**result, "state_revision": revision + 1}.items() if not k.startswith("_")}
 
     # ---- recovery: fork, publish ------------------------------------------
 
@@ -314,7 +322,7 @@ class ConversationService:
         """
         self.reconcile_expired_runs()
         turn_id = uuid.uuid4()
-        user_message_id = uuid.uuid4()
+        user_message_id = uuid.UUID(candidate_values["ui_messages"][-1]["id"])
         lease_token = str(uuid.uuid4())
         with self._session_factory() as session:
             conversation = self._load(session, conversation_id)
@@ -324,7 +332,15 @@ class ConversationService:
             existing = session.scalar(select(ConversationRun).where(
                 ConversationRun.request_id == request_id))
             if existing is not None:
-                raise TurnAlreadyClaimed(request_id)
+                boundary = session.scalar(select(UserMessageBoundary).where(UserMessageBoundary.message_id == existing.user_message_id))
+                if boundary is None:
+                    raise StaleConversation(conversation_id)
+                config = thread_config(conversation_id, existing.accepted_checkpoint_id)
+                return PreparedTurn(conversation_id=conversation_id, branch_id=str(existing.branch_id),
+                    turn_id=str(existing.turn_id), user_message_id=str(existing.user_message_id),
+                    generation=existing.generation, run_id=str(existing.id), request_id=request_id,
+                    before_config=thread_config(conversation_id, boundary.before_checkpoint_id),
+                    config=config, head_config=config, lease_token=existing.lease_token)
             if self._has_active_run(session, conversation.id):
                 raise ConversationBusy(conversation_id)
             old_branch = self._branch(session, conversation)
@@ -337,7 +353,7 @@ class ConversationService:
             session.add(branch)
             session.flush()
             branch_id = str(branch.id)
-            generation = int(conversation.generation or 0)
+            generation = int(conversation.generation or 0) + 1
             old_branch_id = str(old_branch.id)
             session.commit()
 
@@ -354,6 +370,16 @@ class ConversationService:
             tool_steps=[],
             announced_tool_ids=[],
         )
+        # Save a before-message boundary on the new branch with the restored workspace.
+        baseline = dict(values)
+        baseline["ui_messages"] = list(values["ui_messages"][:-1])
+        baseline["working_records"] = list(values["working_records"][:-1])
+        baseline["run_status"] = "idle"
+        before_saved = await self.write_state(conversation_id, baseline, branch_id=branch_id,
+            parent_checkpoint_id=before_checkpoint_id, publish=False)
+        before_checkpoint_id = checkpoint_id_of(before_saved)
+        values["ui_messages"][-1] = {**values["ui_messages"][-1], "turn_id": str(turn_id)}
+        values["working_records"][-1] = dict(values["ui_messages"][-1])
         saved = await self.write_state(
             conversation_id, values, branch_id=branch_id,
             parent_checkpoint_id=before_checkpoint_id, publish=False,
@@ -373,6 +399,10 @@ class ConversationService:
                 lease_expires_at=expires_at(),
             )
             session.add(run)
+            session.add(UserMessageBoundary(conversation_id=uuid.UUID(conversation_id),
+                branch_id=uuid.UUID(branch_id), message_id=user_message_id, turn_id=turn_id,
+                before_checkpoint_ns=CHECKPOINT_NS, before_checkpoint_id=before_checkpoint_id,
+                workspace_seq=int(candidate_values.get("workspace_seq") or 0), recoverable=True))
             session.commit()
             run_id = str(run.id)
         logger.info(
@@ -457,6 +487,14 @@ class ConversationService:
                 "recovery published conversation=%s branch=%s job=%s",
                 conversation_id, new_branch_id, job_id,
             )
+
+    def recoverable_message_ids(self, conversation_id):
+        with self._session_factory() as session:
+            conversation = self._load(session, conversation_id)
+            rows = session.scalars(select(UserMessageBoundary).where(
+                UserMessageBoundary.conversation_id == conversation.id,
+                UserMessageBoundary.recoverable.is_(True)))
+            return {str(row.message_id) for row in rows}
 
     async def list_messages(self, conversation_id: str) -> list[MessageRecord] | None:
         """Project the active checkpoint's display history; None when unknown."""
@@ -812,7 +850,8 @@ class ConversationService:
             session.commit()
             return prepared
 
-    def claim_prepared(self, run_id: str) -> PreparedTurn:
+    def claim_prepared(self, run_id: str, *, conversation_id: str | None = None,
+                       expected_revision: int | None = None) -> PreparedTurn:
         """Claim an accepted but not-yet-started prepared run (recovery fork).
 
         Used after a recovery publishes its branch: the forked turn already holds the
@@ -824,7 +863,11 @@ class ConversationService:
                 ConversationRun.id == uuid.UUID(run_id)).with_for_update())
             if run is None:
                 raise ConversationNotFound(run_id)
+            if conversation_id and str(run.conversation_id) != conversation_id:
+                raise ConversationNotFound(run_id)
             conversation = self._load(session, str(run.conversation_id))
+            if expected_revision is not None and conversation.revision != expected_revision:
+                raise StaleConversation(str(run.conversation_id))
             branch = self._branch(session, conversation)
             if run.branch_id != branch.id:
                 raise StaleConversation(str(run.conversation_id))

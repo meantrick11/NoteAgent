@@ -12,8 +12,8 @@
 
 审批在同一 Conversation 行锁下检查运行占用和版本，读取固定 head，保存未发布的清草稿候选，然后执行正文写入和 head 发布。新回合认领、续接及 head 发布均遵循该锁。被拒绝的审批以及 saver 候选写入失败不会触碰正文。重命名／删除的同步数据库调用在工作线程运行，以免审批等待 saver 时阻塞事件循环。
 
-## 当前边界
+## 材料写入与恢复边界
 
-成功审批仍通过原索引同步流程更新 RAG。影子 Git、持久文件 mutation、崩溃补偿、按文件索引维修及用户消息编辑回退属于后续 B 阶段；当前没有整体回退保证。正文已写入而最终数据库提交失败的场景仍需该阶段处理。
+影子 Git、持久 mutation、按文件索引维修与消息编辑已经接入。writing 与 maintenance 同事务，草稿 applied 同时保留 approval maintenance，清草稿发布将日志置 published 并解除维护。取消/重启由启动流程完成同一操作，避免正文已写而状态未清的不一致。
 
-验证和实施范围见 [阶段 A 修复记录](../../05-records/plans/2026-10-04-checkpoint-shadow-git-completion-fixes.md)。
+恢复后的 prepared run 持久保留直到显式领取，不被 60 秒未接受输入的临时 claim 清理。POST /chat 在认领前验证所属会话和 revision；刷新后可继续生成。详细操作见 [恢复模块](../recovery/recovery.md)，验证见 [执行结果](../../05-records/plans/2026-10-04-checkpoint-shadow-git-completion-results.md)。

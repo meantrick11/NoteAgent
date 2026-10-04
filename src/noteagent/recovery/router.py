@@ -90,6 +90,7 @@ async def start_recovery(
     job = await _coordinator(request).start(
         body.preview_id, body.edited_content,
         body.confirmed_file_changes, body.operation_id,
+        conversation_id=conversation_id,
     )
     if job.get("conversation_id") not in (None, conversation_id):
         raise HTTPException(status_code=404, detail="recovery not found")

@@ -180,3 +180,141 @@ async def test_confirmation_is_required_for_file_changes(tmp_path):
     assert plan.requires_confirmation
     with pytest.raises(ConfirmationRequired):
         await env.coordinator.start(preview_id, "改", [], "op-job-4")
+
+async def test_stale_preview_preserves_later_library_write(tmp_path):
+    env = _Env(tmp_path)
+    c, t = await env.turn()
+    env.owned_write(c.id)
+    pid, p = await env.coordinator.preview(c.id, t.user_message_id, 'edited')
+    env.mutations.apply(MutationCommand(kind=WRITE, file_name='A.md', content='later', append=False), Origin.library(), 'library', retrieval=env.retrieval)
+    with pytest.raises((PlanConflict, Exception)) as error:
+        await env.coordinator.start(pid, 'edited', [x.path for x in p.file_changes], 'restore')
+    assert 'later' in env.notes.read('A.md')
+    assert env.gate.maintenance() is None
+
+async def test_failed_index_blocks_publication(tmp_path):
+    env = _Env(tmp_path)
+    c, t = await env.turn()
+    env.owned_write(c.id)
+    pid, p = await env.coordinator.preview(c.id, t.user_message_id, 'edited')
+    original = env.conversations.recovery_context(c.id)
+    def fail(name): raise RuntimeError('vector unavailable')
+    env.retrieval.delete_note = fail
+    with pytest.raises(Exception):
+        await env.coordinator.start(pid, 'edited', [x.path for x in p.file_changes], 'restore')
+    assert env.conversations.recovery_context(c.id) == original
+    assert env.gate.maintenance() is not None
+
+@pytest.mark.parametrize('stage', ['candidate_saved', 'before_publish', 'after_publish'])
+async def test_candidate_and_publication_retry_is_idempotent(tmp_path, stage):
+    faults = FailInjector()
+    env = _Env(tmp_path, faults=faults)
+    c, t = await env.turn()
+    pid, p = await env.coordinator.preview(c.id, t.user_message_id, 'edited')
+    faults.inject(stage)
+    try:
+        await env.coordinator.start(pid, 'edited', [], 'restore')
+    except Exception:
+        pass
+    job = env.job('restore')
+    retried = await env.coordinator.retry(str(job.id), 'restore')
+    assert retried['status'] == 'succeeded'
+    assert env.gate.maintenance() is None
+    assert len(await env.conversations.list_messages(c.id)) == 1
+
+async def test_recovered_turn_can_finish_and_resume(tmp_path):
+    env = _Env(tmp_path)
+    c, t = await env.turn()
+    pid, p = await env.coordinator.preview(c.id, t.user_message_id, 'edited')
+    j = await env.coordinator.start(pid, 'edited', [], 'restore')
+    run = env.conversations.claim_prepared(j['prepared_turn_id'])
+    messages = await env.conversations.list_messages(c.id)
+    assert messages[-1].id == run.user_message_id
+    env.conversations.interrupt_run(run)
+    resumed = env.conversations.resume_turn(run.run_id, conversation_id=c.id)
+    env.conversations.finish_run(resumed, checkpoint_id_of(resumed.config), 'completed')
+    assert env.conversations.get_active_run(c.id) is None
+
+async def test_external_edit_before_preview_is_conflict(tmp_path):
+    env = _Env(tmp_path)
+    c, t = await env.turn()
+    env.owned_write(c.id)
+    env.notes.path_of('A.md').write_bytes(b'external keep')
+    pid, p = await env.coordinator.preview(c.id, t.user_message_id, 'edited')
+    assert not p.can_apply
+    with pytest.raises(PlanConflict):
+        await env.coordinator.start(pid, 'edited', ['A.md'], 'restore')
+    assert env.notes.path_of('A.md').read_bytes() == b'external keep'
+
+async def test_owned_note_in_new_folder_rolls_back_file_and_folder(tmp_path):
+    env = _Env(tmp_path)
+    c, t = await env.turn()
+    env.owned_write(c.id, name='New/A.md')
+    pid, p = await env.coordinator.preview(c.id, t.user_message_id, 'edited')
+    assert p.can_apply
+    await env.coordinator.start(pid, 'edited', [x.path for x in p.file_changes] + [x.path for x in p.folder_changes], 'restore')
+    assert not env.notes.exists('New/A.md')
+    assert env.notes.list_folders() == []
+
+async def test_recovery_preserves_boundary_draft_and_compacted_records(tmp_path):
+    env = _Env(tmp_path)
+    c = await env.conversations.create_conversation('t')
+    view = await env.conversations.get_state(c.id)
+    state = dict(view.values)
+    state['working_records'] = []
+    state['running_summary'] = 'summary'
+    state['pending_draft'] = {'action': 'create', 'file_name': 'Pending.md', 'content': 'draft'}
+    await env.conversations.write_state(c.id, state, branch_id=state['branch_id'], publish=True)
+    turn = await env.conversations.prepare_turn(c.id, 'original', 'original')
+    env.conversations.finish_run(turn, checkpoint_id_of(turn.config), 'completed')
+    pid, p = await env.coordinator.preview(c.id, turn.user_message_id, 'edited')
+    await env.coordinator.start(pid, 'edited', [], 'restore')
+    restored = (await env.conversations.get_state(c.id)).values
+    assert restored['running_summary'] == 'summary'
+    assert restored['pending_draft']['content'] == 'draft'
+    assert [m['content'] for m in restored['working_records']] == ['edited']
+
+
+async def test_accepted_prepared_recovery_survives_expired_lease(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    from noteagent.conversations.models import ConversationRun
+    env = _Env(tmp_path)
+    c, turn = await env.turn()
+    pid, _ = await env.coordinator.preview(c.id, turn.user_message_id, 'edited')
+    job = await env.coordinator.start(pid, 'edited', [], 'restore')
+    with env.factory() as session:
+        run = session.get(ConversationRun, uuid.UUID(job['prepared_turn_id']))
+        run.lease_expires_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+        session.commit()
+    claimed = env.conversations.claim_prepared(job['prepared_turn_id'], conversation_id=c.id)
+    assert claimed.user_message_id == (await env.conversations.list_messages(c.id))[-1].id
+
+
+async def test_new_untracked_attachment_after_preview_is_preserved(tmp_path):
+    env = _Env(tmp_path)
+    c, turn = await env.turn()
+    env.owned_write(c.id, name='New/A.md')
+    pid, p = await env.coordinator.preview(c.id, turn.user_message_id, 'edited')
+    attachment = env.notes.root / 'New/attachment.txt'
+    attachment.write_bytes(b'keep')
+    with pytest.raises(PlanConflict):
+        await env.coordinator.start(pid, 'edited', [x.path for x in p.file_changes] + [x.path for x in p.folder_changes], 'restore')
+    assert attachment.read_bytes() == b'keep'
+    assert env.notes.exists('New/A.md')
+
+
+async def test_folder_rename_restores_notes_and_attachments(tmp_path):
+    from noteagent.notes.mutations import FOLDER_RENAME
+    env = _Env(tmp_path)
+    env.notes.create('Old/A.md', 'A')
+    attachment = env.notes.root / 'Old/attachment.txt'
+    attachment.write_bytes(b'attachment')
+    c, turn = await env.turn()
+    env.mutations.apply(MutationCommand(kind=FOLDER_RENAME, name='Old', dest='New'),
+                        Origin(kind='conversation', conversation_id=c.id), 'rename', retrieval=env.retrieval)
+    pid, p = await env.coordinator.preview(c.id, turn.user_message_id, 'edited')
+    assert p.can_apply, p.conflicts
+    await env.coordinator.start(pid, 'edited', [x.path for x in p.file_changes] + [x.path for x in p.folder_changes], 'restore')
+    assert env.notes.exists('Old/A.md')
+    assert attachment.read_bytes() == b'attachment'
+    assert not (env.notes.root / 'New').exists()

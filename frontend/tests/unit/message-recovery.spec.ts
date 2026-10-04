@@ -94,6 +94,34 @@ beforeEach(() => {
 })
 
 describe('message recovery flow', () => {
+  it('reload restores a failed durable recovery job', async () => {
+    const failed = { ...JOB, status: 'failed', error: 'index unavailable', prepared_turn_id: null }
+    const stub = makeStub({ '/conversations/c-1': () => jsonResponse({
+      id: 'c-1', pending_draft: null, state_revision: 3, recovery: failed,
+    }) })
+    vi.stubGlobal('fetch', stub.fetch)
+    const chat = useChatStore()
+    await chat.openConversation('c-1')
+    expect(chat.recoveryJob?.job_id).toBe('j-1')
+    expect(chat.recoveryPhase).toBe('failed')
+    expect(chat.recoveryError).toBe('index unavailable')
+  })
+
+  it('start failure reconnects the persisted job for retry', async () => {
+    const stub = makeStub()
+    const chat = await readyWithMessage(stub)
+    chat.beginEdit(chat.messages[0])
+    chat.updateEditingText('edited')
+    await chat.submitEdit()
+    const failed = { ...JOB, status: 'failed', error: 'index unavailable', prepared_turn_id: null }
+    const next = makeStub({ '/conversations/c-1': (init) => init.method === 'POST'
+      ? jsonResponse({ message: 'failed' }, 500)
+      : jsonResponse({ id: 'c-1', pending_draft: null, state_revision: 3, recovery: failed }) })
+    vi.stubGlobal('fetch', next.fetch)
+    await chat.confirmRecovery()
+    expect(chat.recoveryPhase).toBe('failed')
+    expect(chat.recoveryJob?.job_id).toBe('j-1')
+  })
   it('preview requires confirmation and cancel starts nothing', async () => {
     const stub = makeStub()
     const chat = await readyWithMessage(stub)
@@ -164,4 +192,33 @@ describe('message recovery flow', () => {
     expect(chat.recoveryPhase).toBe('idle')
     expect(stub.calls.some((c) => c.url.includes('/recoveries/preview'))).toBe(false)
   })
+})
+
+it('ignores a preview returned after switching conversations', async () => {
+  let release!: (r: Response) => void
+  const base = makeStub()
+  const delayed = stubFetch((url, init) => url.endsWith('/recoveries/preview') ? new Promise<Response>((resolve) => { release = resolve }) : base.fetch(url, init))
+  const chat = await readyWithMessage(delayed)
+  chat.beginEdit(chat.messages[0]); chat.updateEditingText('edited')
+  const pending = chat.submitEdit()
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+  await chat.openConversation('c-2')
+  release(jsonResponse(PREVIEW)); await pending
+  expect(chat.currentId).toBe('c-2')
+  expect(chat.recoveryPreview).toBeNull()
+  expect(chat.recoveryPhase).toBe('idle')
+})
+
+it('late recovery success cannot run the prepared turn in a different conversation', async () => {
+  let release!: (r: Response) => void
+  const base = makeStub()
+  const delayed = stubFetch((url, init) => url === '/conversations/c-1/recoveries' ? new Promise<Response>((resolve) => { release = resolve }) : base.fetch(url, init))
+  const chat = await readyWithMessage(delayed)
+  chat.beginEdit(chat.messages[0]); chat.updateEditingText('edited'); await chat.submitEdit()
+  const pending = chat.confirmRecovery()
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+  await chat.openConversation('c-2')
+  release(jsonResponse(JOB)); await pending
+  expect(chat.currentId).toBe('c-2')
+  expect(delayed.calls.some((c) => c.url === '/chat')).toBe(false)
 })

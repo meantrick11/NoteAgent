@@ -52,8 +52,8 @@ function onKeydown(event: KeyboardEvent): void {
 <template>
   <div class="input-area">
     <div v-if="chat.activeRun && !chat.streaming" class="resume-bar" role="status">
-      <span>{{ chat.activeRun.status === 'interrupted' ? '上一条回复已中断，可继续生成。' : '上一条回复仍在处理中。' }}</span>
-      <button v-if="chat.activeRun.status === 'interrupted'" type="button"
+      <span>{{ ['interrupted', 'prepared'].includes(chat.activeRun.status) ? '上一条回复已中断，可继续生成。' : '上一条回复仍在处理中。' }}</span>
+      <button v-if="['interrupted', 'prepared'].includes(chat.activeRun.status)" type="button"
         :disabled="!models.canSend" @click="chat.resumeRun()">继续生成</button>
       <button v-else type="button" @click="chat.currentId && chat.loadMessages(chat.currentId)">刷新状态</button>
     </div>

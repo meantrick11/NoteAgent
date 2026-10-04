@@ -24,8 +24,8 @@ from noteagent.conversations.records import MessageRecord, message_dict_from_rec
 from noteagent.conversations.service import ConversationService
 from noteagent.notes.mutations import NoteMutationService, Origin
 from noteagent.recovery.gate import WorkspaceGate
-from noteagent.recovery.models import MutationRecord, RecoveryJob, RecoveryPreview
-from noteagent.recovery.planner import MutationView, RestorePlan, plan as build_plan
+from noteagent.recovery.models import MutationRecord, RecoveryJob, RecoveryPreview, WorkspaceState
+from noteagent.recovery.planner import Conflict, MutationView, RestorePlan, plan as build_plan
 from noteagent.retrieval.repairs import IndexRepairService
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,11 @@ class RecoveryCoordinator:
 
     # ---- preview ----------------------------------------------------------
 
-    async def preview(self, conversation_id: str, message_id: str, edited_content: str,
+    async def preview(self, conversation_id, message_id, edited_content, expected_revision=None):
+        with self._gate.operation("read"):
+            return await self._preview_locked(conversation_id, message_id, edited_content, expected_revision)
+
+    async def _preview_locked(self, conversation_id: str, message_id: str, edited_content: str,
                       expected_revision: int | None = None) -> tuple[str, RestorePlan]:
         """Build and persist a pure preview; changes no body, index or head."""
         context = self._conversations.recovery_context(conversation_id)
@@ -123,6 +127,20 @@ class RecoveryCoordinator:
             affected_messages=[message_id],
             expires_at=(datetime.now(timezone.utc) + PREVIEW_TTL).isoformat(),
         )
+        current_commit = self._gate.state().current_commit
+        if current_commit:
+            affected = {c.path for c in result.file_changes}
+            for path in affected:
+                stored = self._mutations._versions.read_blob(current_commit, path)
+                stored_hash = hashlib.sha256(stored).hexdigest() if stored is not None else None
+                if stored_hash != manifest.get(path):
+                    result.conflicts.append(Conflict(path, "external modification since recorded version"))
+        result_dict = result.as_dict()
+        result_dict["edited_digest"] = hashlib.sha256(edited_content.encode()).hexdigest()
+        result_dict["generation"] = generation
+        result_dict["owned_operations"] = [m.operation_id for m in owned]
+        result_dict["folder_manifest"] = {path: digest for path, digest in manifest.items()
+            if any(path.startswith(c.path) for c in result.folder_changes)}
         preview_id = str(uuid.uuid4())
         with self._session_factory() as session:
             session.add(RecoveryPreview(
@@ -130,7 +148,7 @@ class RecoveryCoordinator:
                 conversation_id=uuid.UUID(conversation_id),
                 message_id=uuid.UUID(message_id),
                 expected_revision=revision,
-                plan=result.as_dict(),
+                plan=result_dict,
                 expires_at=datetime.now(timezone.utc) + PREVIEW_TTL,
             ))
             session.commit()
@@ -138,8 +156,17 @@ class RecoveryCoordinator:
 
     # ---- start / retry ----------------------------------------------------
 
-    async def start(self, preview_id: str, edited_content: str,
-                    confirmed_files: list[str], operation_id: str) -> dict:
+    async def start(self, preview_id, edited_content, confirmed_files, operation_id, *, conversation_id=None):
+        existing = self._job_by_operation(operation_id)
+        if existing is not None:
+            if conversation_id and existing["conversation_id"] != conversation_id:
+                raise RecoveryNotFound(preview_id)
+            return existing
+        with self._gate.operation("recovery"):
+            return await self._start_locked(preview_id, edited_content, confirmed_files, operation_id, requested_conversation_id=conversation_id)
+
+    async def _start_locked(self, preview_id: str, edited_content: str,
+                    confirmed_files: list[str], operation_id: str, requested_conversation_id=None) -> dict:
         """Validate the preview and run the restore machine (idempotent by operation_id)."""
         existing = self._job_by_operation(operation_id)
         if existing is not None:
@@ -154,6 +181,23 @@ class RecoveryCoordinator:
             conversation_id = str(preview_row.conversation_id)
             message_id = str(preview_row.message_id)
             expected_revision = preview_row.expected_revision
+        if requested_conversation_id and conversation_id != requested_conversation_id:
+            raise RecoveryNotFound(preview_id)
+        if hashlib.sha256(edited_content.encode()).hexdigest() != plan_dict.get("edited_digest"):
+            raise PreviewExpired("edited content changed since preview")
+        if self._gate.state().seq != plan_dict["workspace_seq"]:
+            raise PreviewExpired("workspace changed since preview")
+        manifest = self._manifest()
+        folders = [c["path"] for c in plan_dict.get("folder_changes", [])]
+        current_folders = {path: digest for path, digest in manifest.items()
+                           if any(path.startswith(folder) for folder in folders)}
+        if current_folders != plan_dict.get("folder_manifest", {}):
+            raise PlanConflict("folder contents changed since preview")
+        for change in plan_dict.get("file_changes", []):
+            if manifest.get(change["path"]) != change.get("current_hash"):
+                raise PlanConflict("file changed since preview")
+        if self._conversations.get_active_run(conversation_id) is not None:
+            raise PlanConflict("conversation has an active run")
 
         if expires is not None and expires.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
             raise PreviewExpired("preview expired")
@@ -188,8 +232,10 @@ class RecoveryCoordinator:
                 edited_content=edited_content,
                 confirmed_paths=list(confirmed_files),
             ))
+            workspace = session.get(WorkspaceState, 1)
+            workspace.maintenance_job_id = job_id
+            workspace.maintenance_kind = "recovery"
             session.commit()
-        self._gate.set_maintenance(job_id, "recovery")
 
         try:
             return await self._run(
@@ -200,6 +246,8 @@ class RecoveryCoordinator:
             )
         except Exception as exc:  # noqa: BLE001 - failure keeps maintenance + failed row
             logger.exception("recovery job failed job=%s", job_id)
+            if self._job_row(job_id)["status"] == "succeeded":
+                return self._job_row(job_id)
             self._update_job(job_id, status="failed", retryable=True, error=_public(exc))
             raise
 
@@ -222,6 +270,8 @@ class RecoveryCoordinator:
                 old_branch_id=old_branch_id, generation=generation, revision=revision,
             )
         except Exception as exc:  # noqa: BLE001
+            if self._job_row(job_id)["status"] == "succeeded":
+                return self._job_row(job_id)
             self._update_job(job_id, status="failed", retryable=True, error=_public(exc))
             raise
 
@@ -249,7 +299,7 @@ class RecoveryCoordinator:
                    edited_content, old_branch_id, generation, revision) -> dict:
         retrieval = self._retrieval_provider()
 
-        with self._gate.operation("recovery", owner=job_id):
+        with self._gate.operation("recovery", owner=job_id, nested=True):
             boundary_row = self._boundary_row(message_id) or {}
             owned, _later = self._split_mutations(
                 conversation_id, boundary_row.get("workspace_seq") or 0
@@ -259,15 +309,20 @@ class RecoveryCoordinator:
             self._fault("file_applied")
 
             self._stage(job_id, "reindexing")
-            paths = restored["changed_paths"]
+            paths = [p for p in restored["changed_paths"] if p.endswith(".md")]
             if retrieval is not None and paths:
-                self._repairs.repair_many(paths, retrieval, operation_id=f"{operation_id}:index")
+                statuses = self._repairs.repair_many(paths, retrieval, operation_id=f"{operation_id}:index")
+                if not all(status.synced for status in statuses):
+                    raise RecoveryError("index repair incomplete; retry required")
+            elif paths:
+                raise RecoveryError("retrieval unavailable; repair required")
             self._fault("index_rebuilt")
 
             self._stage(job_id, "preparing_state")
             prepared = await self._prepare_state(
                 conversation_id, message_id, edited_content, operation_id, restored
             )
+            self._update_job(job_id, candidate_config=prepared)
             self._fault("candidate_saved")
             self._fault("before_publish")
 
@@ -312,7 +367,7 @@ class RecoveryCoordinator:
         result = self._mutations.restore(
             restores=restores, deletes=deletes,
             folders_create=folders_create, folders_delete=folders_delete,
-            origin=Origin(kind="recovery"), operation_id=f"{operation_id}:files",
+            origin=Origin(kind="recovery", conversation_id=plan_dict["conversation_id"]), operation_id=f"{operation_id}:files",
             lock=False,  # the coordinator already holds the exclusive workspace gate
         )
         self._fault("git_committed")
@@ -346,9 +401,8 @@ class RecoveryCoordinator:
             turn_id=None, tool_name=None, tool_arguments=None, output_preview=None,
             truncated=False, status=None,
         )))
-        values["working_records"] = list(values["ui_messages"])
+        values["working_records"] = list(values.get("working_records") or []) + [values["ui_messages"][-1]]
         values["current_question"] = edited_content
-        values["pending_draft"] = None
         values["notes_commit"] = restored.get("commit")
         values["workspace_seq"] = self._gate.state().seq
         prepared = await self._conversations.fork_for_edit(
@@ -401,8 +455,15 @@ class RecoveryCoordinator:
         owned: list[MutationView] = []
         later: list[MutationView] = []
         with self._session_factory() as session:
+            undone = set()
+            for job in session.scalars(select(RecoveryJob).where(RecoveryJob.conversation_id == cid, RecoveryJob.status == "succeeded")):
+                undone.update((job.plan or {}).get("owned_operations", []))
             rows = session.scalars(select(MutationRecord).order_by(MutationRecord.workspace_seq))
             for row in rows:
+                if row.status not in ("applied", "published") or row.operation_id in undone:
+                    continue
+                if row.origin_kind == "recovery" and row.conversation_id == cid:
+                    continue
                 if int(row.workspace_seq or 0) <= boundary_seq:
                     continue  # before the boundary: neither undone nor a conflict
                 view = MutationView(
@@ -418,12 +479,9 @@ class RecoveryCoordinator:
         return owned, later
 
     def _manifest(self) -> dict[str, str | None]:
-        out: dict[str, str | None] = {}
-        for name in self._notes.list_notes():
-            try:
-                out[name] = hashlib.sha256(self._notes.path_of(name).read_bytes()).hexdigest()
-            except (OSError, ValueError):
-                out[name] = None
+        files, folders = self._mutations._versions._scan()
+        out = {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}
+        out.update({f + "/": "directory" for f in folders})
         return out
 
     def _versions_ref(self):

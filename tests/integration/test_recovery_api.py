@@ -29,6 +29,28 @@ def _client(coordinator) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
 
 
+def test_formal_library_folder_mutations_use_real_names_and_repair_paths(tmp_path):
+    from support.durable_app import build_durable_app
+    app = build_durable_app(tmp_path)
+    client = app.client
+    created = client.post('/notes/folders', json={'name': 'Old'})
+    assert created.status_code == 200 and created.json()['name'] == 'Old'
+    note = client.post('/notes', json={'file_name': 'Old/A.md'})
+    assert note.status_code == 200
+    moved = client.post('/notes/folders/rename', json={'from_path': 'Old', 'to_path': 'New'})
+    assert moved.status_code == 200, moved.text
+    assert moved.json()['files'] == ['New/A.md']
+    assert not app.container.retrieval.is_indexed('Old/A.md')
+    assert app.container.mutations._repairs.is_synced('New/A.md', app.container.retrieval)
+    app.container.mutations._repairs._mark('New/A.md', 'failed')
+    assert client.post('/notes/New/A.md/index').json()['indexed']
+    assert app.container.mutations._repairs.is_synced('New/A.md', app.container.retrieval)
+    removed = client.delete('/notes/folders/New')
+    assert removed.status_code == 200, removed.text
+    assert not app.notes.list_notes()
+    assert not app.container.retrieval.is_indexed('New/A.md')
+
+
 async def test_preview_then_confirmation_required_then_start(tmp_path):
     env = _Env(tmp_path)
     record, prepared = await env.turn()
@@ -140,3 +162,51 @@ async def test_job_available_during_maintenance_and_retry_completes(tmp_path):
     assert retried.status_code == 200
     assert retried.json()["status"] == "succeeded"
     assert env.gate.maintenance() is None
+
+async def test_wrong_conversation_recovery_has_no_side_effect(tmp_path):
+    env = _Env(tmp_path)
+    c, t = await env.turn()
+    other, _ = await env.turn('other')
+    env.owned_write(c.id)
+    pid, plan = await env.coordinator.preview(c.id, t.user_message_id, 'edit')
+    before = env.notes.read('A.md')
+    response = _client(env.coordinator).post(f'/conversations/{other.id}/recoveries', json={'preview_id': pid, 'edited_content': 'edit', 'confirmed_file_changes': ['A.md'], 'operation_id': 'wrong'})
+    assert response.status_code == 404
+    assert env.notes.read('A.md') == before
+    assert env.gate.maintenance() is None
+
+async def test_formal_message_can_edit_and_prepared_turn_finishes(tmp_path):
+    import json
+    from support.webapp import build_checkpoint_app
+    from noteagent.recovery.service import RecoveryCoordinator
+    from noteagent.recovery.gate import WorkspaceGate
+    from noteagent.notes.versions import NoteVersionStore
+    from noteagent.notes.mutations import NoteMutationService
+    from noteagent.retrieval.repairs import IndexRepairService
+    from noteagent.db import create_session_factory
+    app = build_checkpoint_app(tmp_path / 'app', reply_batches=[['first', 'recomputed']])
+    factory = create_session_factory(app.container.engine)
+    gate = WorkspaceGate(factory); gate.ensure_row()
+    app.container.workspace = gate
+    app.container.model_runtime._workspace = gate
+    repair = IndexRepairService(factory, app.notes)
+    mutations = NoteMutationService(app.notes, NoteVersionStore(tmp_path / 'history', app.notes.root), gate, factory, repairs=repair)
+    app.container.mutations = mutations
+    app.container.recovery = RecoveryCoordinator(session_factory=factory, gate=gate, conversations=app.service, mutations=mutations, repairs=repair, notes=app.notes, retrieval_provider=lambda: app.agent_retrieval)
+    response = app.client.post('/chat', json={'question': 'original'})
+    events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith('data: {')]
+    cid = next(e['id'] for e in events if 'title' in e)
+    messages = app.client.get(f'/conversations/{cid}/messages').json()
+    assert messages[0]['editable'] is True
+    preview = app.client.post(f'/conversations/{cid}/recoveries/preview', json={'message_id': messages[0]['id'], 'edited_content': 'edited'}).json()
+    job_response = app.client.post(f'/conversations/{cid}/recoveries', json={'preview_id': preview['preview_id'], 'edited_content': 'edited', 'confirmed_file_changes': [], 'operation_id': 'formal'})
+    assert job_response.status_code == 200
+    job = job_response.json()
+    result = app.client.post('/chat', json={'conversation_id': cid, 'prepared_turn_id': job['prepared_turn_id']})
+    assert result.status_code == 200
+    assert 'recomputed' in result.text
+    detail = app.client.get(f'/conversations/{cid}').json()
+    assert detail['active_run'] is None
+    updated = app.client.get(f'/conversations/{cid}/messages').json()
+    assert [m['content'] for m in updated] == ['edited', 'recomputed']
+    assert updated[0]['editable'] is True

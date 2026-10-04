@@ -156,3 +156,61 @@ def test_busy_approval_has_no_file_or_draft_side_effect(tmp_path):
     assert not app.notes.exists("N.md")
     assert asyncio.run(app.service.get_pending_draft(conv_id)) == before
     assert app.service.get_active_run(conv_id)["run_id"] == prepared.run_id
+
+async def test_optional_revision_does_not_reuse_different_approvals(tmp_path):
+    from noteagent.db import create_session_factory
+    from noteagent.recovery.gate import WorkspaceGate
+    from noteagent.notes.versions import NoteVersionStore
+    from noteagent.notes.mutations import NoteMutationService
+    app = _app_with_draft(tmp_path / 'app')
+    cid = _proposal_draft(app)
+    from noteagent.notes.repository import FileNoteRepository
+    app.notes = FileNoteRepository(tmp_path / 'notes')
+    app.container.notes = app.notes
+    app.container.chat_agent._notes = app.notes
+    factory = create_session_factory(app.container.engine)
+    gate = WorkspaceGate(factory); gate.ensure_row()
+    mutations = NoteMutationService(app.notes, NoteVersionStore(tmp_path / 'history', app.notes.root), gate, factory)
+    app.container.chat_agent._mutations = mutations
+    response = app.client.post('/chat/review', json={'thread_id': cid, 'action': 'approve'})
+    assert response.status_code == 200, response.text
+    assert response.json().get('status') == 'written', response.text
+    state = dict((await app.service.get_state(cid)).values)
+    state['pending_draft'] = {'action': 'create', 'file_name': 'Other.md', 'content': 'second'}
+    await app.service.write_state(cid, state, publish=True, branch_id=state["branch_id"])
+    response = app.client.post('/chat/review', json={'thread_id': cid, 'action': 'approve'})
+    assert response.status_code == 200, response.text
+    assert response.json().get('status') == 'written', response.text
+    assert app.notes.exists('Other.md')
+
+
+async def test_cancelled_approval_keeps_durable_maintenance_and_startup_finishes(tmp_path, monkeypatch):
+    import asyncio
+    from support.durable_app import build_durable_app
+    from noteagent.bootstrap.app import lifespan
+    app = build_durable_app(tmp_path)
+    cid = (await app.service.create_conversation('approval')).id
+    state = dict((await app.service.get_state(cid)).values)
+    state['pending_draft'] = {'action': 'create', 'file_name': 'N.md', 'content': 'once'}
+    await app.service.write_state(cid, state, publish=True, branch_id=state['branch_id'])
+    original = app.service.write_state
+    calls = 0
+    async def cancelled(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise asyncio.CancelledError()
+        return await original(*args, **kwargs)
+    monkeypatch.setattr(app.service, 'write_state', cancelled)
+    import pytest
+    with pytest.raises(asyncio.CancelledError):
+        await app.container.chat_agent.review(cid, 'approve')
+    assert app.notes.exists('N.md')
+    assert app.container.workspace.maintenance()[1] == 'approval'
+    assert (await app.service.get_pending_draft(cid)) is not None
+    monkeypatch.setattr(app.service, 'write_state', original)
+    async with lifespan(app.client.app):
+        assert app.container.workspace.maintenance() is None
+        assert await app.service.get_pending_draft(cid) is None
+        assert app.notes.read('N.md').count('once') == 1
+        assert app.container.mutations._repairs.is_synced('N.md', app.container.retrieval)

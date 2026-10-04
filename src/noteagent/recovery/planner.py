@@ -139,20 +139,16 @@ def plan(
     # Rebuild the target file state by inverting owned operations, newest first.
     targets: dict[str, str | None] = dict(current_manifest)
     affected_files: set[str] = set()
-    folder_changes: list[FolderChange] = []
+    folder_targets: dict[str, bool] = {}
     for mutation in sorted(owned_mutations, key=lambda m: m.workspace_seq, reverse=True):
-        if mutation.kind in ("folder_create", "folder_delete", "folder_rename"):
-            for path in mutation.paths:
-                if not path.endswith("/"):
-                    continue
-                if mutation.kind == "folder_create":
-                    folder_changes.append(FolderChange(path, "delete"))
-                elif mutation.kind == "folder_delete":
-                    folder_changes.append(FolderChange(path, "create"))
-            continue
         for path in mutation.paths:
+            if path.endswith("/"):
+                folder_targets[path] = path in mutation.before_hashes or mutation.kind == "folder_delete"
+                continue
             affected_files.add(path)
             targets[path] = mutation.before_hashes.get(path)
+    folder_changes = [FolderChange(path, "create" if exists else "delete")
+                      for path, exists in sorted(folder_targets.items())]
 
     # Any later mutation touching an affected path (or inside an affected folder) is a
     # shared change -> conflict, even when it wrote the same bytes back (ABA).
@@ -168,7 +164,7 @@ def plan(
     boundary_files = boundary.get("files") or {}
     for folder in affected_folders:
         for path in current_manifest:
-            if path.startswith(folder) and path not in boundary_files:
+            if path.startswith(folder) and path not in boundary_files and path not in affected_files and path not in folder_targets:
                 result.conflicts.append(Conflict(path, "untracked file inside a restored folder"))
 
     for path in sorted(affected_files):

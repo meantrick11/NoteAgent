@@ -178,6 +178,10 @@ class FileNoteRepository:
         """Return the stored relative path (`Folder/Note.md` or `Note.md`)."""
         return self._normalize_note(file_name)
 
+    def normalize_folder(self, name: str) -> str:
+        """Validate a folder name without applying the Markdown file suffix."""
+        return self._normalize_folder(name)
+
     def path_of(self, file_name: str) -> Path:
         """Resolved filesystem path for a note (traversal already rejected)."""
         return self._resolve(file_name)

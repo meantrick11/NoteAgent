@@ -23,6 +23,7 @@ services:
       HOST: "0.0.0.0"
       DATABASE_URL: postgresql+psycopg://noteagent:noteagent@db:5432/noteagent
       NOTES_DIR: notes
+      NOTES_HISTORY_DIR: var/notes_history
       CHROMA_DIR: chromadb_persist
       EMBEDDING_CACHE_DIR: var/models
       EMBEDDING_LOCAL_FILES_ONLY: "true"
@@ -30,6 +31,7 @@ services:
       MODEL_SETTINGS_DIR: var/model_settings
     volumes:
       - ./notes:/app/notes
+      - notes_history:/app/var/notes_history
       - chroma_data:/app/chromadb_persist
       - app_logs:/app/var/logs
       # 只挂载 UI 配置目录，不覆盖整个 /app/var，否则镜像里预下载的模型会被隐藏。
@@ -41,6 +43,7 @@ services:
 
 volumes:
   pgdata:
+  notes_history:
   chroma_data:
   app_logs:
   model_settings:

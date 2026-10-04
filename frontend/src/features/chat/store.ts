@@ -271,6 +271,7 @@ export const useChatStore = defineStore('chat', () => {
 
   async function openConversation(id: string): Promise<void> {
     if (id === currentId.value) return
+    resetRecovery()
     selectionVersion.value += 1
     currentId.value = id
     await loadMessages(id)
@@ -292,6 +293,12 @@ export const useChatStore = defineStore('chat', () => {
         revisions.value[requested] = detail.state_revision ?? 0
         runs.value[requested] = detail.active_run ?? null
         applyServerDraft(requested, detail.pending_draft, detail.state_revision ?? 0)
+        if (detail.recovery && detail.recovery.status !== 'succeeded') {
+          recoveryOwner = requested
+          recoveryJob.value = detail.recovery
+          recoveryError.value = detail.recovery.error ?? '恢复尚未完成，请重试'
+          recoveryPhase.value = 'failed'
+        }
       }
     } catch {
       if (currentId.value !== requested) return
@@ -317,6 +324,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function newChat(): void {
+    resetRecovery()
     selectionVersion.value += 1
     currentId.value = null
     messages.value = []
@@ -675,7 +683,9 @@ export const useChatStore = defineStore('chat', () => {
 
   async function resumeRun(): Promise<SendOutcome> {
     const run = activeRun.value
-    if (!run || run.status !== 'interrupted' || !currentId.value) return 'refused'
+    if (!run || !currentId.value) return 'refused'
+    if (run.status === 'prepared') return runStream('', undefined, run.run_id)
+    if (run.status !== 'interrupted') return 'refused'
     return runStream('', run.run_id)
   }
 
@@ -683,12 +693,13 @@ export const useChatStore = defineStore('chat', () => {
     question: string,
     resumeId?: string,
     preparedId?: string,
+    ownerId?: string,
   ): Promise<SendOutcome> {
     // 同步门闩：必须在任何 await 之前置位。
     if (streaming.value) return 'refused'
     const text = question.trim()
     if (!text && !resumeId && !preparedId) return 'refused'
-    const owner = citePaneKey(currentId.value)
+    const owner = citePaneKey(ownerId ?? currentId.value)
     const revision = revisions.value[owner] ?? 0
     const selectedAtStart = selectionVersion.value
 
@@ -851,7 +862,12 @@ export const useChatStore = defineStore('chat', () => {
   >('idle')
   const recoveryError = ref('')
 
+  let recoveryToken = 0
+  let recoveryOwner: string | null = null
+
   function resetRecovery(): void {
+    recoveryToken += 1
+    recoveryOwner = null
     editingKey.value = null
     editingText.value = ''
     recoveryPreview.value = null
@@ -863,6 +879,8 @@ export const useChatStore = defineStore('chat', () => {
   /** 同时只编辑一条；未持久化或不可编辑的消息不进入编辑态。 */
   function beginEdit(message: ChatMessage): void {
     if (!message.editable || !message.id) return
+    recoveryToken += 1
+    recoveryOwner = currentId.value
     editingKey.value = message.key
     editingText.value = message.content
     recoveryPhase.value = 'editing'
@@ -879,7 +897,10 @@ export const useChatStore = defineStore('chat', () => {
   /** 提交编辑：先存未保存草稿，再预览；冲突只展示取消，不退化为强制覆盖。 */
   async function submitEdit(): Promise<void> {
     const key = editingKey.value
-    const conversationId = currentId.value
+    const conversationId = recoveryOwner
+    const token = recoveryToken
+    const content = editingText.value
+    if (conversationId !== currentId.value) return
     if (!key || !conversationId || recoveryPhase.value === 'running') return
     const message = visibleMessages.value.find((item) => item.key === key)
     if (!message || !message.id) return
@@ -889,12 +910,14 @@ export const useChatStore = defineStore('chat', () => {
     }
     if (panel.value.dirty && panel.value.mode === 'draft' && !(await saveDraftContent())) return
 
+    if (token !== recoveryToken || conversationId !== currentId.value) return
     recoveryPhase.value = 'previewing'
     recoveryError.value = ''
     try {
       const preview = await recoveryApi.previewRecovery(
-        conversationId, message.id, editingText.value, revisions.value[conversationId] ?? 0,
+        conversationId, message.id, content, revisions.value[conversationId] ?? 0,
       )
+      if (token !== recoveryToken || currentId.value !== conversationId) return
       recoveryPreview.value = preview
       if (!preview.can_apply) {
         recoveryPhase.value = 'conflict'
@@ -906,49 +929,68 @@ export const useChatStore = defineStore('chat', () => {
       }
       await confirmRecovery()
     } catch (error) {
+      if (token !== recoveryToken) return
       recoveryError.value = (error as Error).message
       recoveryPhase.value = 'failed'
+      const detail = await api.getConversation(conversationId).catch(() => null)
+      if (token === recoveryToken && currentId.value === conversationId && detail?.recovery) {
+        recoveryJob.value = detail.recovery
+      }
     }
   }
 
   async function confirmRecovery(): Promise<void> {
     const preview = recoveryPreview.value
-    const conversationId = currentId.value
+    const conversationId = preview?.conversation_id
+    const token = recoveryToken
+    const content = editingText.value
+    if (conversationId !== currentId.value || recoveryOwner !== conversationId) return
     // Only a fresh preview may start; a conflict/failed plan must not be force-applied.
     if (!preview || !conversationId) return
     if (recoveryPhase.value !== 'confirming' && recoveryPhase.value !== 'previewing') return
     recoveryPhase.value = 'running'
     try {
       const job = await recoveryApi.startRecovery(
-        conversationId, preview.preview_id, editingText.value,
+        conversationId, preview.preview_id, content,
         recoveryApi.requiredConfirmations(preview), newRequestId(),
       )
-      await pollRecovery(job)
+      if (token !== recoveryToken || currentId.value !== conversationId) return
+      await pollRecovery(job, token)
     } catch (error) {
+      if (token !== recoveryToken) return
       recoveryError.value = (error as Error).message
       recoveryPhase.value = 'failed'
+      const detail = await api.getConversation(conversationId).catch(() => null)
+      if (token === recoveryToken && currentId.value === conversationId && detail?.recovery) {
+        recoveryJob.value = detail.recovery
+      }
     }
   }
 
   async function retryRecovery(): Promise<void> {
     const job = recoveryJob.value
+    const token = recoveryToken
+    if (job?.conversation_id !== currentId.value) return
     if (!job || recoveryPhase.value === 'running') return
     recoveryPhase.value = 'running'
     try {
-      await pollRecovery(await recoveryApi.retryRecovery(job.job_id, newRequestId()))
+      await pollRecovery(await recoveryApi.retryRecovery(job.job_id, newRequestId()), token)
     } catch (error) {
+      if (token !== recoveryToken) return
       recoveryError.value = (error as Error).message
       recoveryPhase.value = 'failed'
     }
   }
 
   /** 轮询真实任务直到终态；成功后重载活动状态并用 prepared turn 续接生成。 */
-  async function pollRecovery(job: RecoveryJob): Promise<void> {
+  async function pollRecovery(job: RecoveryJob, token = recoveryToken): Promise<void> {
+    if (token !== recoveryToken || job.conversation_id !== currentId.value) return
     recoveryJob.value = job
     let current = job
     for (let i = 0; i < 120 && current.status !== 'succeeded' && current.status !== 'failed'; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 400))
       current = await recoveryApi.getRecoveryJob(current.job_id)
+      if (token !== recoveryToken || current.conversation_id !== currentId.value) return
       recoveryJob.value = current
     }
     if (current.status !== 'succeeded' || !current.prepared_turn_id) {
@@ -959,9 +1001,11 @@ export const useChatStore = defineStore('chat', () => {
     await loadMessages(current.conversation_id)
     await refreshRun(current.conversation_id)
     await notes.refreshAfterExternalChange()
+    if (token !== recoveryToken || current.conversation_id !== currentId.value) return
     const preparedTurnId = current.prepared_turn_id
+    const owner = current.conversation_id
     resetRecovery()
-    await runStream('', undefined, preparedTurnId)
+    await runStream('', undefined, preparedTurnId, owner)
   }
 
   async function runPrepared(preparedTurnId: string): Promise<SendOutcome> {

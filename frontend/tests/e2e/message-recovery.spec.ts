@@ -43,6 +43,21 @@ const MODEL_SETTINGS = {
   indexed_files: 0, corpus_files: 0, busy: false, embedding_job: null,
 }
 
+test('刷新失败恢复任务仍显示重试入口', async ({ page }) => {
+  const calls = await stubApi(page)
+  await page.route((url) => url.pathname === '/conversations/c-1', (route) => route.fulfill({
+    json: { id: 'c-1', title: 'failed', pending_draft: null, state_revision: 3,
+      recovery: { ...JOB, status: 'failed', prepared_turn_id: null, error: 'index unavailable' } },
+  }))
+  await page.route((url) => url.pathname === '/recoveries/j-1/retry', (route) => route.fulfill({ json: JOB }))
+  await page.goto('/assistant')
+  await page.reload()
+  const dialog = page.getByRole('dialog', { name: '确认整体回退' })
+  await expect(dialog).toContainText('index unavailable')
+  await dialog.getByRole('button', { name: '重试', exact: true }).click()
+  await expect.poll(() => calls.some(c => c.url.endsWith('/chat'))).toBe(true)
+})
+
 const PREVIEW = {
   preview_id: 'p-1', conversation_id: 'c-1', can_apply: true, requires_confirmation: true,
   file_changes: [{ path: 'A.md', action: 'restore', target_hash: 'h0', current_hash: 'h1' }],

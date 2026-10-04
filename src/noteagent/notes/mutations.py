@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.notes.versions import NoteVersionError, NoteVersionStore
 from noteagent.recovery.gate import WorkspaceGate
-from noteagent.recovery.models import MutationRecord
+from noteagent.recovery.models import MutationRecord, WorkspaceState
 
 logger = logging.getLogger(__name__)
 
@@ -144,60 +144,132 @@ class NoteMutationService:
         """Apply one operation idempotently and durably."""
         if command.kind not in KINDS:
             raise MutationError(f"unknown mutation kind: {command.kind!r}")
-        existing = self._ledger_get(operation_id)
-        if existing is not None and existing["status"] == "applied":
-            return self._from_ledger(existing)
+        with self._gate.operation("mutate", owner=operation_id, nested=True):
+            return self._apply_locked(command, origin, operation_id, expected_hashes, retrieval)
 
+    def _apply_locked(self, command, origin, operation_id, expected_hashes, retrieval):
+        existing = self._ledger_get(operation_id)
+        if existing is not None and existing["status"] in ("applied", "published"):
+            self._sync_index(command, retrieval, operation_id, {})
+            return self._from_ledger(existing)
+        retained = self._versions.resolve_ref(operation_id)
+        if retained is not None:
+            if existing is None:
+                self._ledger_upsert(operation_id, origin, command, {}, None, None, 0, "writing", self._affected_paths(command))
+            self._ledger_status(operation_id, "applied", after_commit=retained)
+            self._sync_index(command, retrieval, operation_id, {})
+            return self._from_ledger(self._ledger_get(operation_id))
+        parent = self.initialize_locked()
+        if existing is not None and existing["status"] == "writing":
+            self._restore_commit(existing["before_commit"])
+        self._record_external(parent)
+        parent = self._gate.state().current_commit
         before = self._read_before(command)
         if expected_hashes:
             self._check_expected(before, expected_hashes)
-        paths = sorted(before)
-
-        parent = self._gate.state().current_commit
-        # Git already accepted this operation (crash between commit and ledger):
-        # finish the ledger and never touch the disk again.
-        retained = self._versions.resolve_ref(operation_id)
-        if retained is not None and existing is None:
-            seq = self._gate.advance(current_commit=retained)
-            self._ledger_upsert(
-                operation_id, origin, command, before, parent, retained, seq, "applied", paths
-            )
-            return MutationResult(operation_id, command.kind, paths, retained, seq)
-
-        if existing is None:
-            self._ledger_upsert(
-                operation_id, origin, command, before, parent, None, 0, "writing", paths
-            )
-
-        with self._gate.operation("mutate"):
+        paths = self._affected_paths(command)
+        disk_before = self._capture_disk()
+        self._ledger_upsert(operation_id, origin, command, before, parent, None, 0, "writing", paths)
+        try:
+            self._apply_disk(command)
+            snapshot = self._versions.snapshot(parent, operation_id)
+        except Exception as exc:
             try:
-                self._apply_disk(command)
-            except Exception as exc:
-                self._restore(before)
-                self._ledger_status(operation_id, "failed", str(exc))
+                self._restore_disk(disk_before)
+            except Exception:
+                self._gate.set_maintenance(operation_id, "mutation")
                 raise
-            try:
-                snapshot = self._versions.snapshot(parent, operation_id)
-            except Exception as exc:
-                self._restore(before)
-                self._ledger_status(operation_id, "failed", str(exc))
-                raise GitFailure(f"version commit failed: {exc}") from exc
-            seq = self._gate.advance(current_commit=snapshot.commit)
-            self._ledger_status(
-                operation_id, "applied",
-                after_commit=snapshot.commit, workspace_seq=seq,
-                paths=list(snapshot.changed_paths or paths),
-            )
-            indexed = self._sync_index(command, retrieval, operation_id, before)
+            self._ledger_status(operation_id, "failed", str(exc))
+            raise GitFailure(f"version commit failed: {exc}") from exc
+        # A crash here is completed from the retained ref, never by replaying the write.
+        try:
+            self._ledger_status(operation_id, "applied", after_commit=snapshot.commit,
+                                paths=list(snapshot.changed_paths or paths))
+        except Exception:
+            self._gate.set_maintenance(operation_id, "mutation")
+            raise
+        indexed = self._sync_index(command, retrieval, operation_id, before)
+        result = self._from_ledger(self._ledger_get(operation_id))
+        result.indexed = indexed
+        result.reused = snapshot.reused
+        return result
 
-        logger.info(
-            "note mutation op=%s kind=%s commit=%s seq=%s paths=%s",
-            operation_id, command.kind, snapshot.commit, seq, paths,
-        )
-        return MutationResult(
-            operation_id, command.kind, list(snapshot.changed_paths or paths),
-            snapshot.commit, seq, indexed, reused=snapshot.reused,
-        )
+    def initialize_locked(self):
+        parent = self._gate.state().current_commit
+        if parent is None:
+            parent = self._versions.init()
+            with self._session_factory() as session:
+                session.get(WorkspaceState, 1).current_commit = parent
+                session.commit()
+        return parent
+
+    def _record_external(self, parent):
+        import uuid
+        files, folders = self._versions._scan()
+        names = set(files) | set(self._versions.manifests(parent))
+        if any(self._versions.read_blob(parent, n) != files.get(n) for n in names) or set(self._versions.folders(parent)) != set(folders):
+            op = f"external-{uuid.uuid4()}"
+            before = {n: self._versions.read_blob(parent, n) for n in names}
+            before = {n: data for n, data in before.items() if data is not None}
+            snap = self._versions.snapshot(parent, op)
+            if not snap.reused:
+                self._ledger_upsert(op, Origin.external(), MutationCommand(kind="external"), before, parent, None, 0, "writing", snap.changed_paths)
+                self._ledger_status(op, "applied", after_commit=snap.commit, paths=snap.changed_paths)
+
+    def _bytes(self, path):
+        target = self._disk_path(path)
+        return target.read_bytes() if target.is_file() else None
+
+    def _disk_path(self, path):
+        normalized = str(path).replace("\\", "/")
+        if any(p in ("", ".", "..") for p in normalized.split("/")):
+            raise MutationError("unsafe material path")
+        target = (self._notes.root / normalized).resolve()
+        if target == self._notes.root or not target.is_relative_to(self._notes.root):
+            raise MutationError("unsafe material path")
+        return target
+
+    def _capture_disk(self):
+        files, folders = self._versions._scan()
+        return files, set(folders)
+
+    def _restore_commit(self, commit):
+        files = {n: self._versions.read_blob(commit, n) for n in self._versions.manifests(commit)}
+        self._restore_disk((files, {f.rstrip("/") for f in self._versions.folders(commit)}))
+
+    def _restore_disk(self, image):
+        files, folders = image
+        current, current_folders = self._versions._scan()
+        for name in current:
+            if name not in files:
+                self._disk_path(name).unlink()
+        for name, data in files.items():
+            target = self._disk_path(name)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        for folder in sorted(current_folders, key=lambda f: (f.count('/'), f), reverse=True):
+            if folder not in folders:
+                target = (self._notes.root / folder).resolve()
+                if not target.is_relative_to(self._notes.root.resolve()):
+                    raise MutationError("unsafe compensation path")
+                target.rmdir()
+        for folder in folders:
+            (self._notes.root / folder).mkdir(parents=True, exist_ok=True)
+
+    def reconcile_pending(self):
+        with self._session_factory() as session:
+            pending = [r.operation_id for r in session.scalars(select(MutationRecord).where(MutationRecord.status == "writing"))]
+        for op in pending:
+            with self._gate.operation("mutate", owner=op):
+                row = self._ledger_get(op)
+                retained = self._versions.resolve_ref(op)
+                if retained:
+                    self._ledger_status(op, "applied", after_commit=retained)
+                else:
+                    self._restore_commit(row["before_commit"])
+                    self._ledger_status(op, "failed", "interrupted write restored")
+                    if self._gate.maintenance() == (op, "mutation"):
+                        self._gate.clear_maintenance()
 
     def restore(
         self,
@@ -216,46 +288,46 @@ class NoteMutationService:
         on-disk content. Folders are only touched by the manifest: a removed folder is
         rmdir'd only when empty, so other sessions' files are always preserved.
         """
+        with (self._gate.operation("mutate", owner=operation_id, nested=True) if lock else nullcontext()):
+            return self._restore_locked(restores, deletes, folders_create, folders_delete, origin, operation_id)
+
+    def _restore_locked(self, restores, deletes, folders_create, folders_delete, origin, operation_id):
         existing = self._ledger_get(operation_id)
-        if existing is not None and existing["status"] == "applied":
+        if existing is not None and existing["status"] in ("applied", "published"):
             return self._from_ledger(existing)
 
         paths = sorted(set(restores) | set(deletes))
         before: dict[str, bytes] = {}
         for path in paths:
             try:
-                before[path] = self._notes.path_of(path).read_bytes()
+                before[path] = self._disk_path(path).read_bytes()
             except (OSError, ValueError):
                 continue
-        parent = self._gate.state().current_commit
+        parent = self.initialize_locked()
+        disk_before = self._capture_disk()
         retained = self._versions.resolve_ref(operation_id)
-        if retained is not None and existing is None:
-            seq = self._gate.advance(current_commit=retained)
-            self._ledger_upsert(
-                operation_id, origin,
-                MutationCommand(kind=RECOVERY, file_name=None), before, parent,
-                retained, seq, "applied", paths,
-            )
-            return MutationResult(operation_id, RECOVERY, paths, retained, seq)
+        if retained is not None:
+            self._ledger_status(operation_id, "applied", after_commit=retained)
+            return self._from_ledger(self._ledger_get(operation_id))
 
         if existing is None:
             self._ledger_upsert(
                 operation_id, origin, MutationCommand(kind=RECOVERY, file_name=None),
                 before, parent, None, 0, "writing", paths,
             )
-        with (self._gate.operation("mutate") if lock else nullcontext()):
+        with nullcontext():
             try:
                 for path, data in restores.items():
-                    target = self._notes.path_of(path)
+                    target = self._disk_path(path)
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(data)
                 for path in deletes:
-                    target = self._notes.path_of(path)
+                    target = self._disk_path(path)
                     if target.exists():
                         target.unlink()
                 for folder in folders_create:
                     (self._notes.root / _safe_folder(folder)).mkdir(parents=True, exist_ok=True)
-                for folder in folders_delete:
+                for folder in sorted(folders_delete, key=lambda f: (f.count('/'), f), reverse=True):
                     target = self._notes.root / _safe_folder(folder)
                     if target.is_dir() and not any(target.iterdir()):
                         target.rmdir()
@@ -263,14 +335,14 @@ class NoteMutationService:
             except GitFailure:
                 raise
             except Exception as exc:
-                self._restore(before)
+                self._restore_disk(disk_before)
                 self._ledger_status(operation_id, "failed", str(exc))
                 raise GitFailure(f"recovery commit failed: {exc}") from exc
-            seq = self._gate.advance(current_commit=snapshot.commit)
             self._ledger_status(
                 operation_id, "applied", after_commit=snapshot.commit,
-                workspace_seq=seq, paths=list(snapshot.changed_paths or paths),
+                paths=list(snapshot.changed_paths or paths),
             )
+        seq = self._ledger_get(operation_id)["workspace_seq"]
         logger.info(
             "note restore op=%s commit=%s seq=%s restored=%d deleted=%d",
             operation_id, snapshot.commit, seq, len(restores), len(deletes),
@@ -307,22 +379,23 @@ class NoteMutationService:
             return [self._notes.normalize(command.file_name or ""),
                     self._notes.normalize(command.dest or "")]
         if command.kind == FOLDER_CREATE:
-            return [f"{self._notes.normalize(command.name or '')}/"]
+            return [f"{_safe_folder(command.name or '')}/"]
         if command.kind == FOLDER_RENAME:
-            folder = self._notes.normalize(command.name or "")
-            dest = self._notes.normalize(command.dest or "")
+            folder = _safe_folder(command.name or "")
+            dest = _safe_folder(command.dest or "")
             return [f"{folder}/", f"{dest}/"]
         # folder_delete
-        folder = self._notes.normalize(command.name or "")
+        folder = _safe_folder(command.name or "")
         return [f"{folder}/"]
 
     def _read_before(self, command: MutationCommand) -> dict[str, bytes]:
         before: dict[str, bytes] = {}
-        if command.kind == FOLDER_DELETE:
-            prefix = f"{self._notes.normalize(command.name or '')}/"
-            for name in self._notes.list_notes():
+        if command.kind in (FOLDER_DELETE, FOLDER_RENAME):
+            prefix = f"{_safe_folder(command.name or '')}/"
+            files, _ = self._versions._scan()
+            for name in files:
                 if name.startswith(prefix):
-                    before[name] = self._notes.path_of(name).read_bytes()
+                    before[name] = files[name]
             return before
         for path in self._affected_paths(command):
             if path.endswith("/"):
@@ -384,10 +457,10 @@ class NoteMutationService:
         if command.kind == MOVE:
             return [notes.normalize(command.file_name or ""), notes.normalize(command.dest or "")]
         if command.kind == FOLDER_RENAME:
-            old = notes.normalize(command.name or "")
-            new = notes.normalize(command.dest or "")
-            return [n for n in notes.list_notes()
-                    if n.startswith(f"{old}/") or n.startswith(f"{new}/")]
+            old = _safe_folder(command.name or "")
+            new = _safe_folder(command.dest or "")
+            return sorted(set(before) | {n for n in notes.list_notes()
+                    if n.startswith(f"{old}/") or n.startswith(f"{new}/")})
         if command.kind in (CREATE, WRITE):
             return [notes.normalize(command.file_name or "")]
         return []
@@ -398,6 +471,10 @@ class NoteMutationService:
         if retrieval is None:
             return False
         paths = self._index_paths(command, before)
+        row = self._ledger_get(operation_id)
+        if row:
+            paths = sorted(set(paths) | {p for p in row["paths"] if not p.endswith("/")})
+        paths = [p for p in paths if p.endswith(".md")]
         if self._repairs is not None:
             statuses = self._repairs.repair_many(paths, retrieval, operation_id=operation_id)
             return all(status.synced for status in statuses)
@@ -461,10 +538,17 @@ class NoteMutationService:
             row.kind = command.kind
             row.paths = list(paths)
             row.before_hashes = {path: _sha256(data) for path, data in before.items()}
+            if parent:
+                row.before_hashes.update({f + "/": "directory" for f in self._versions.folders(parent)})
             row.before_commit = parent
             row.after_commit = after
             row.workspace_seq = seq
             row.status = status
+            if status == "writing" and origin.kind != "recovery":
+                workspace = session.get(WorkspaceState, 1)
+                if workspace.maintenance_job_id in (None, operation_id):
+                    workspace.maintenance_job_id = operation_id
+                    workspace.maintenance_kind = "mutation"
             session.commit()
 
     def _ledger_status(self, operation_id, status, error=None, *, after_commit=None,
@@ -476,6 +560,21 @@ class NoteMutationService:
             if row is None:
                 return
             row.status = status
+            workspace = session.get(WorkspaceState, 1)
+            if status == "failed" and workspace.maintenance_job_id == operation_id:
+                workspace.maintenance_job_id = None
+                workspace.maintenance_kind = None
+            if status == "applied":
+                workspace = session.get(WorkspaceState, 1)
+                workspace.seq += 1
+                workspace.current_commit = after_commit
+                row.workspace_seq = workspace.seq
+                if workspace.maintenance_job_id == operation_id:
+                    workspace.maintenance_job_id = None
+                    workspace.maintenance_kind = None
+                if row.origin_kind == "conversation" and (row.run_id or "").startswith("draft-"):
+                    workspace.maintenance_job_id = operation_id
+                    workspace.maintenance_kind = "approval"
             if error is not None:
                 row.error = error[:500]
             if after_commit is not None:
@@ -509,6 +608,7 @@ def _row_to_dict(row: MutationRecord) -> dict:
         "operation_id": row.operation_id,
         "kind": row.kind,
         "paths": list(row.paths or []),
+        "before_commit": row.before_commit,
         "after_commit": row.after_commit,
         "workspace_seq": row.workspace_seq,
         "status": row.status,
