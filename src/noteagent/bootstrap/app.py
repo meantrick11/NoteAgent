@@ -28,6 +28,7 @@ from noteagent.model_management.service import (
 )
 from noteagent.model_management.store import ModelSettingsStore
 from noteagent.notes.repository import FileNoteRepository
+from noteagent.recovery.gate import WorkspaceGate, is_postgres_url
 from noteagent.retrieval.service import RetrievalService
 from noteagent.web import DIST_DIR, STATIC_DIR
 from noteagent.web.router import router as web_router
@@ -48,6 +49,8 @@ class AppContainer:
     # 会话元数据与 checkpoint：lifespan 负责 open/close，构造时还未连接。
     conversations: ConversationService | None = None
     checkpoints: CheckpointRuntime | None = None
+    # 跨进程工作区门禁：read/chat 共享，mutate/recovery/model_rebuild 独占。
+    workspace: WorkspaceGate | None = None
 
     @property
     def retrieval(self) -> RetrievalService | None:
@@ -75,8 +78,12 @@ def build_container(settings: Settings) -> AppContainer:
 
     # 只构造，不连接：异步 saver 必须由 lifespan 打开，否则没有地方关闭它。
     checkpoints = CheckpointRuntime.from_conn_string(postgres_uri(settings.database_url))
-    conversations = ConversationService(
-        create_session_factory(engine), checkpoints
+    session_factory = create_session_factory(engine)
+    conversations = ConversationService(session_factory, checkpoints)
+    # 门禁只用 libpq 连接（PostgreSQL）。SQLite 测试走进程内读写锁。
+    workspace = WorkspaceGate(
+        session_factory,
+        libpq_dsn=postgres_uri(settings.database_url) if is_postgres_url(settings.database_url) else None,
     )
 
     # 装配器是 bootstrap 与 model_management 之间唯一的接口，避免两边互相导入。
@@ -89,6 +96,7 @@ def build_container(settings: Settings) -> AppContainer:
         store=ModelSettingsStore(settings.model_settings_dir),
         notes=notes,
         assembler=assembler,
+        workspace=workspace,
     )
     # 持久化的 active 选择决定本次启动用哪个聊天模型与向量 collection。
     model_runtime.initialize()
@@ -101,6 +109,7 @@ def build_container(settings: Settings) -> AppContainer:
         model_runtime=model_runtime,
         conversations=conversations,
         checkpoints=checkpoints,
+        workspace=workspace,
     )   ##返回一个AppContainer对象，包含所有初始化好的组件
 
 
@@ -111,6 +120,8 @@ async def lifespan(app: FastAPI):
     if container.checkpoints is not None:
         await container.checkpoints.open()
     try:
+        if container.workspace is not None:
+            container.workspace.ensure_row()
         if container.conversations is not None:
             container.conversations.reconcile_expired_runs()
         yield

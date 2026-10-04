@@ -23,3 +23,4 @@ def load_all_models() -> None:
     at package load time would create a cycle.
     """
     import noteagent.conversations.models  # noqa: F401
+    import noteagent.recovery.models  # noqa: F401
