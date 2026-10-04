@@ -925,11 +925,8 @@ export const useChatStore = defineStore('chat', () => {
         recoveryPhase.value = 'conflict'
         return
       }
-      if (preview.requires_confirmation) {
-        recoveryPhase.value = 'confirming'
-        return
-      }
-      await confirmRecovery()
+      // Even state-only recovery discards later conversation state; await consent.
+      recoveryPhase.value = 'confirming'
     } catch (error) {
       if (token !== recoveryToken) return
       recoveryError.value = (error as Error).message
@@ -969,7 +966,7 @@ export const useChatStore = defineStore('chat', () => {
     if (conversationId !== currentId.value || recoveryOwner !== conversationId) return
     // Only a fresh preview may start; a conflict/failed plan must not be force-applied.
     if (!preview || !conversationId) return
-    if (recoveryPhase.value !== 'confirming' && recoveryPhase.value !== 'previewing') return
+    if (recoveryPhase.value !== 'confirming') return
     recoveryPhase.value = 'running'
     try {
       const job = await recoveryApi.startRecovery(

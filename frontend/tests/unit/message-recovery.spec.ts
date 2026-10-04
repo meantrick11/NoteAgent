@@ -94,6 +94,24 @@ beforeEach(() => {
 })
 
 describe('message recovery flow', () => {
+  it('state-only preview waits for explicit confirmation without changing messages or sending', async () => {
+    const stub = makeStub({
+      '/conversations/c-1/recoveries/preview': () => jsonResponse({
+        ...PREVIEW, requires_confirmation: false, file_changes: [], folder_changes: [],
+      }),
+    })
+    const chat = await readyWithMessage(stub)
+    const original = JSON.stringify(chat.messages)
+    chat.beginEdit(chat.messages[0])
+    chat.updateEditingText('edited')
+    await chat.submitEdit()
+    expect(chat.recoveryPhase).toBe('confirming')
+    expect(JSON.stringify(chat.messages)).toBe(original)
+    expect(stub.calls.some(c => c.url.endsWith('/recoveries') || c.url === '/chat')).toBe(false)
+    chat.cancelRecovery()
+    expect(JSON.stringify(chat.messages)).toBe(original)
+  })
+
   it('reload restores a failed durable recovery job', async () => {
     const failed = { ...JOB, status: 'failed', error: 'index unavailable', prepared_turn_id: null }
     const stub = makeStub({ '/conversations/c-1': () => jsonResponse({

@@ -20,6 +20,20 @@ async def seed_edit(app):
     app.container.mutations.apply(MutationCommand(kind=CREATE, file_name="A.md", content="owned"),
         Origin(kind="conversation", conversation_id=conv.id), "owned",
         retrieval=app.container.model_runtime.snapshot().retrieval)
+    app.container.mutations.apply(MutationCommand(kind=CREATE, file_name="B.md", content="keep library change"),
+        Origin.library(), "library-kept",
+        retrieval=app.container.model_runtime.snapshot().retrieval)
+
+    @app.client.app.get("/review-evidence")
+    async def review_evidence():
+        retrieval = app.container.model_runtime.snapshot().retrieval
+        state = await app.service.get_state(conv.id)
+        return {
+            "revision": app.service.get(conv.id).revision,
+            "users": [m["content"] for m in state.values["ui_messages"] if m["role"] == "user"],
+            "a_chunks": retrieval._store.chunks_for_file("A.md"),
+            "b_chunks": retrieval._store.chunks_for_file("B.md"),
+        }
 
 
 async def seed(app):

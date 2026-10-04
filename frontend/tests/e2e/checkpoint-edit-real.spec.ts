@@ -48,6 +48,9 @@ test('fresh streamed message becomes editable without reloading', async ({ page 
 })
 
 test('real checkpoint edit confirms file rollback and persists regenerated reply', async ({ page }) => {
+  const before = await (await fetch(`${backend}/review-evidence`)).json()
+  expect(before.a_chunks.length).toBeGreaterThan(0)
+  expect(before.b_chunks.length).toBeGreaterThan(0)
   await page.route((url) => ['/chat', '/notes'].includes(url.pathname) || url.pathname.startsWith('/conversations') || url.pathname.startsWith('/recoveries') || url.pathname.startsWith('/model-settings'), async (route) => {
     const original = new URL(route.request().url())
     const response = await route.fetch({ url: `${backend}${original.pathname}${original.search}`, headers: { ...route.request().headers(), origin: backend } })
@@ -62,6 +65,8 @@ test('real checkpoint edit confirms file rollback and persists regenerated reply
   await page.getByRole('button', { name: '重新生成', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '确认整体回退' })
   await expect(dialog).toContainText('A.md')
+  // Preview does not publish state, mutate notes, or update index chunks.
+  expect(await (await fetch(`${backend}/review-evidence`)).json()).toEqual(before)
   await dialog.getByRole('button', { name: '确认回退并重新生成' }).click()
   await expect(page.locator('.msg-row.assistant')).toContainText('Recomputed reply')
   await page.reload()
@@ -71,5 +76,10 @@ test('real checkpoint edit confirms file rollback and persists regenerated reply
   await expect(page.locator('.msg-row.assistant')).toContainText('Recomputed reply')
   const response = await fetch(`${backend}/notes`)
   const notes = await response.json()
-  expect(notes.files).toHaveLength(0)
+  expect(notes.files).toHaveLength(1)
+  const after = await (await fetch(`${backend}/review-evidence`)).json()
+  expect(after.users).toEqual(['edited question'])
+  expect(after.revision).toBeGreaterThan(before.revision)
+  expect(after.a_chunks).toEqual([])
+  expect(after.b_chunks).toEqual(before.b_chunks)
 })

@@ -70,6 +70,25 @@ const JOB = {
   stage: 'succeeded', prepared_turn_id: 'run-9', error: null, retryable: true, plan: {},
 }
 
+test('state-only edit waits for confirmation after keyboard submission', async ({ page }) => {
+  const calls = await stubApi(page)
+  await page.route(url => url.pathname.endsWith('/recoveries/preview'), route => route.fulfill({
+    json: { ...PREVIEW, requires_confirmation: false, file_changes: [], folder_changes: [] },
+  }))
+  await page.goto('/assistant')
+  await page.getByRole('button', { name: '编辑这条消息' }).click()
+  const box = page.getByRole('textbox', { name: '编辑这条消息' })
+  await box.fill('state-only edited question')
+  await box.press('Control+Enter')
+  const dialog = page.getByRole('dialog', { name: '确认整体回退' })
+  await expect(dialog.getByRole('button', { name: '确认回退并重新生成' })).toBeEnabled()
+  await expect(dialog).toContainText('没有文件改动')
+  expect(calls.some(c => c.url.endsWith('/recoveries') || c.url.endsWith('/chat'))).toBe(false)
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(page.locator('.msg-row.user')).toContainText('原始问题')
+  expect(calls.some(c => c.url.endsWith('/recoveries') || c.url.endsWith('/chat'))).toBe(false)
+})
+
 async function stubApi(page: Page, options: { conflict?: boolean } = {}) {
   const calls: Array<{ url: string; body: unknown }> = []
   const record = (url: string, postData: string | null) => {
