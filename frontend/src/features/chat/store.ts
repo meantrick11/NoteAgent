@@ -535,6 +535,8 @@ export const useChatStore = defineStore('chat', () => {
       await alertDialog('无法保存', '草稿正文不能为空。')
       return false
     }
+    const previousBusy = current.busy
+    patchPanel(threadId, { busy: true })
     try {
       const result = await api.saveDraftContent(threadId, content, current.draftRevision ?? revisions.value[threadId] ?? 0,
         current.draft.action === 'create' ? current.draft.file_name : undefined)
@@ -547,6 +549,8 @@ export const useChatStore = defineStore('chat', () => {
       // 失败保留编辑文本与未保存状态，可重试；409 说明版本已过期。
       await reportError('保存失败', error)
       return false
+    } finally {
+      patchPanel(threadId, { busy: previousBusy })
     }
   }
 

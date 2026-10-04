@@ -23,7 +23,7 @@ async function beginRename(): Promise<void> {
   nameInput.value?.select()
 }
 function commitRename(): void {
-  if (!renaming.value) return
+  if (!renaming.value || panel.value.busy) return
   const value = name.value.trim()
   if (!value) return
   if (value !== panel.value.draft?.file_name) chat.renameDraft(value)
@@ -79,6 +79,7 @@ watch(
 )
 
 function save(): void {
+  if (panel.value.busy) return
   if (renaming.value) commitRename()
   if (inDraftMode.value) void chat.saveDraftContent()
   else void chat.saveCitation()
@@ -105,6 +106,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocumentKeydown)
     <div class="cite-pane-head">
       <span class="cite-pane-badge">{{ inDraftMode ? '待审批草稿' : '引用' }}</span>
       <input v-if="renaming" ref="nameInput" v-model="name" class="cite-pane-title name-input"
+        :disabled="panel.busy"
         aria-label="草稿笔记名" @keydown.enter.stop.prevent="commitRename"
         @keydown.esc.stop.prevent="renaming = false" @blur="commitRename" />
       <button v-else-if="canRename" type="button" class="cite-pane-title name-button"
@@ -126,7 +128,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocumentKeydown)
       class="cite-pane-text"
       aria-label="面板正文"
       :value="panel.text"
-      :disabled="panel.textDisabled"
+      :disabled="panel.textDisabled || panel.busy"
       @input="onInput"
       @select="rememberSelection"
       @scroll="rememberSelection"

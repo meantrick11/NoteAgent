@@ -54,6 +54,29 @@ beforeEach(() => {
 })
 
 describe('checkpoint recovery and draft ownership', () => {
+  it('draft save blocks renaming until its response and releases the panel', async () => {
+    let finish!: (response: Response) => void
+    const stub = routeFetch([
+      ['/chat/draft', () => new Promise<Response>(resolve => { finish = resolve })],
+    ])
+    vi.stubGlobal('fetch', stub.fetch)
+    const chat = useChatStore()
+    chat.currentId = 'A'
+    await chat.openDraft({ ...draft, action: 'create', file_name: 'Original.md' })
+    const saving = chat.saveDraftContent()
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    expect(chat.panel.busy).toBe(true)
+    expect(chat.panelSaveDisabled).toBe(true)
+    chat.renameDraft('Lost.md')
+    expect(chat.panel.draft?.file_name).toBe('Original.md')
+    finish(jsonResponse({ pending_draft: { ...draft, action: 'create', file_name: 'Original.md' }, state_revision: 3 }))
+    expect(await saving).toBe(true)
+    expect(chat.panel.busy).toBe(false)
+    chat.renameDraft('Next.md')
+    expect(chat.panel.draft?.file_name).toBe('Next.md')
+    expect(chat.panel.dirty).toBe(true)
+  })
+
   it('draft SSE preserves unsaved text and its revision', async () => {
     await ready([
       ['/chat', () => sseResponse([['draft', { ...draft, content: 'new proposal' }], ['answer', 'done'], ['turn_complete', { status: 'completed', state_revision: 9 }]])],
