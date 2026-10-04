@@ -536,7 +536,8 @@ export const useChatStore = defineStore('chat', () => {
       return false
     }
     try {
-      const result = await api.saveDraftContent(threadId, content, current.draftRevision ?? revisions.value[threadId] ?? 0)
+      const result = await api.saveDraftContent(threadId, content, current.draftRevision ?? revisions.value[threadId] ?? 0,
+        current.draft.action === 'create' ? current.draft.file_name : undefined)
       const revision = result.state_revision ?? current.draftRevision ?? 0
       revisions.value[threadId] = revision
       patchPanel(threadId, { draft: result.pending_draft, dirty: false, draftRevision: revision })
@@ -938,6 +939,12 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function renameDraft(fileName: string): void {
+    const current = panel.value
+    if (current.draft?.action !== 'create' || current.busy || !fileName.trim()) return
+    patchActivePanel({ draft: { ...current.draft, file_name: fileName.trim() }, dirty: true })
+  }
+
   /** Read server-owned recovery eligibility after a streamed turn is persisted. */
   async function refreshMessageCapabilities(owner: string): Promise<void> {
     if (owner === CITE_PENDING_KEY || currentId.value !== owner) return
@@ -1055,6 +1062,7 @@ export const useChatStore = defineStore('chat', () => {
     loadMessages,
     newChat,
     renameConversation,
+    renameDraft,
     removeConversation,
     // 面板
     patchActivePanel,

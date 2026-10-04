@@ -44,6 +44,42 @@ def _sabotage_legacy_writes(app) -> None:
     app.history.append_tool_stub = boom
 
 
+def test_rename_create_draft_persists_without_writing_note(tmp_path):
+    from langchain_core.messages import AIMessage
+    proposal = AIMessage(content="", tool_calls=[{
+        "name": "propose_note", "args": {"action": "create", "file_name": "Old.md", "content": "body"}, "id": "rename",
+    }])
+    app = build_checkpoint_app(tmp_path, reply_batches=[[proposal, "ok"]])
+    response = app.client.post('/chat', json={'question': 'create note'})
+    conv = _event(_parse_sse(response.text), 'conversation')[0]['id']
+    detail = app.client.get(f'/conversations/{conv}').json()
+    response = app.client.put('/chat/draft', json={
+        'thread_id': conv, 'content': 'body', 'file_name': 'Renamed.md',
+        'expected_revision': detail['state_revision'],
+    })
+    assert response.status_code == 200
+    detail = app.client.get(f'/conversations/{conv}').json()
+    assert detail['pending_draft']['file_name'] == 'Renamed.md'
+    assert not app.notes.path_of('Renamed.md').exists()
+    invalid = app.client.put('/chat/draft', json={
+        'thread_id': conv, 'content': 'body', 'file_name': '../escape.md',
+        'expected_revision': detail['state_revision'],
+    })
+    assert invalid.status_code == 422
+    assert app.client.get(f'/conversations/{conv}').json()['pending_draft']['file_name'] == 'Renamed.md'
+    stale = app.client.put('/chat/draft', json={
+        'thread_id': conv, 'content': 'body', 'file_name': 'Stale.md',
+        'expected_revision': detail['state_revision'] - 1,
+    })
+    assert stale.status_code == 409
+    approved = app.client.post('/chat/review', json={
+        'thread_id': conv, 'action': 'approve', 'expected_revision': detail['state_revision'],
+    })
+    assert approved.json()['status'] == 'written'
+    assert app.notes.path_of('Renamed.md').exists()
+    assert not app.notes.path_of('Old.md').exists()
+
+
 def test_http_chat_uses_checkpoint_without_legacy_message_writes(tmp_path):
     app = build_checkpoint_app(tmp_path, reply_batches=[["你好呀"]])
     _sabotage_legacy_writes(app)

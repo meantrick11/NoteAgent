@@ -515,9 +515,10 @@ class ConversationService:
         return view.values.get("pending_draft")
 
     async def update_pending_draft(
-        self, conversation_id: str, content: str, *, expected_revision: int | None = None
+        self, conversation_id: str, content: str, *, expected_revision: int | None = None,
+        file_name: str | None = None,
     ) -> dict | None:
-        """Rewrite only the pending draft body, publishing a new head via CAS.
+        """Edit the pending draft body/create target, publishing a new head via CAS.
 
         Returns None when there is no draft. The publish is pinned to the head this
         method read, and refused outright while a turn owns the conversation, so a
@@ -530,6 +531,10 @@ class ConversationService:
         revision = self._require_expected_revision(conversation_id, expected_revision)
         updated = dict(draft)
         updated["content"] = content
+        if file_name is not None:
+            if draft.get("action") != "create":
+                raise ValueError("only a create draft can be renamed")
+            updated["file_name"] = file_name
         await self._republish_state(
             conversation_id, view, {"pending_draft": updated}, revision
         )

@@ -35,16 +35,18 @@ export async function deleteConversation(id: string): Promise<void> {
   await requestJson<null>(`/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
-/** PUT /chat/draft —— 只改待审草稿正文，不写正式笔记。 */
+/** PUT /chat/draft —— 保存待审草稿正文与新建目标名，不写正式笔记。 */
 export function saveDraftContent(
   threadId: string,
   content: string,
   expectedRevision?: number,
+  fileName?: string,
 ): Promise<{ status: string; pending_draft: PendingDraft; state_revision?: number }> {
   return jsonRequest('/chat/draft', 'PUT', {
     thread_id: threadId,
     content,
     expected_revision: expectedRevision,
+    ...(fileName === undefined ? {} : { file_name: fileName }),
   })
 }
 

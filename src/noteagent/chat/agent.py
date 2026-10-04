@@ -134,16 +134,20 @@ class ChatAgent:
         return bool(record is not None and record.state_backend == "checkpoint")
 
     async def update_draft_content(
-        self, conversation_id: str, content: str, *, expected_revision: int | None = None
+        self, conversation_id: str, content: str, *, expected_revision: int | None = None,
+        file_name: str | None = None,
     ) -> dict:
         """Save edits to the pending draft. Only the conversation state changes."""
         if self._is_checkpoint(conversation_id):
             draft = await self._service.update_pending_draft(
-                conversation_id, content, expected_revision=expected_revision
+                conversation_id, content, expected_revision=expected_revision,
+                file_name=self._notes.normalize(file_name) if file_name is not None else None,
             )
             if draft is None:
                 return {"error": "no pending draft"}
             return {"status": "updated", "pending_draft": draft}
+        if file_name is not None:
+            raise ValueError("migrate the conversation before renaming a draft")
         draft = self._legacy_drafts.update_content(conversation_id, content)
         if draft is None:
             return {"error": "no pending draft"}

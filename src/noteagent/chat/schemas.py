@@ -30,10 +30,11 @@ class ReviewRequest(BaseModel):
 
 
 class DraftContentRequest(BaseModel):
-    """JSON body for PUT /chat/draft: the edited body of the pending draft only."""
+    """Edited draft body and optional target name; never a note write."""
 
     thread_id: str
     content: str
+    file_name: str | None = None
     expected_revision: int | None = None
 
     @field_validator("content")

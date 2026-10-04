@@ -364,7 +364,10 @@ async def update_chat_draft(
             require.thread_id,
             require.content,
             expected_revision=require.expected_revision,
+            **({"file_name": require.file_name} if require.file_name is not None else {}),
         )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     except StaleConversation:
         raise HTTPException(status_code=409, detail="conversation revision changed")
     except ConversationBusy:
