@@ -79,19 +79,49 @@
 
 已知遗留（未在本次修复，属 B 范围）：批准正文后清 checkpoint 草稿，若 saver／DB 失败则正文已改、索引未更新；B3／B4 的持久 mutation、幂等与索引维修必须覆盖它。
 
-## 阶段 B：笔记、RAG 与整体回退 —— 待执行
+## 阶段 B：笔记、RAG 与整体回退 —— 进行中
 
-B1—B9 未开始。以下范围与计划一致，尚无实现、无测试、无提交：
+| 任务 | 提交 | 状态 |
+|---|---|---|
+| B1 持久台账与跨进程工作区门禁 | `19b5fdc` | 完成 |
+| B2 真实影子 Git 与初始笔记版本 | `9351044` | 完成 |
+| B3 统一正式笔记写入 | — | 待执行 |
+| B4 可靠的单文件 RAG 更新与维修 | — | 待执行 |
+| B5 纯预览计划与共享修改冲突 | — | 待执行 |
+| B6 整体恢复状态机 | — | 待执行 |
+| B7 恢复 API 与 prepared-turn 重推理 | — | 待执行 |
+| B8 编辑、确认弹窗、冲突和进度 UI | — | 待执行 |
+| B9 真实恢复演练与文档同步 | — | 待执行 |
 
-- B1 持久台账与跨进程工作区门禁（`recovery/` 基础 + Alembic revision + advisory lock）。
-- B2 真实影子 Git 与初始笔记版本（`notes/versions.py`、`NOTES_HISTORY_DIR`）。
-- B3 所有正式笔记写入归一并关联 checkpoint（`notes/mutations.py`）。
-- B4 可靠的单文件 RAG 更新与维修（`retrieval/repairs.py`）。
-- B5 纯预览计划与共享修改冲突（`recovery/planner.py`）。
-- B6 整体恢复状态机、幂等重启和最后发布（`recovery/service.py`）。
-- B7 恢复 API 与 prepared-turn 重推理（`recovery/router.py`）。
-- B8 用户消息编辑、确认弹窗、冲突和进度 UI。
-- B9 真实恢复演练、部署持久化及文档同步 + G01—G16 逐条证据。
+### B1 `feat(recovery): add durable workspace gate and journals`
 
-因此当前**不能视为整体迁移完成**：编辑入口保持禁用，未对任何用户 notes 做回撤。
-后续按 A→B 顺序续做，合并／推送作为后续用户指令执行。
+- 改动：新增 `recovery/{__init__,models,schemas,gate}.py`、Alembic `e7b1c2f4a903`；
+  `db/__init__.py` 注册模型；`bootstrap/app.py` 构造门禁并注入
+  `ModelRuntimeService`；`model_management/service.py` 在重建 worker 内以独占门禁包裹。
+- 机制：`workspace_state`（seq／current_commit／maintenance）、`mutation_records`（operation_id 唯一）、
+  `recovery_previews`、`recovery_jobs`、`index_repairs`。PostgreSQL 用专用连接的会话级
+  advisory lock（read/chat 共享，mutate/recovery/model_rebuild 独占，`pg_try_*` 快速返回）
+  加持久 maintenance 行；进程死亡释放锁后 maintenance 仍阻断；SQLite 走进程内读写锁。
+- 命令与结果：`pytest tests/integration/test_workspace_gate_pg.py -q` → **6 passed**；
+  全量后端 **576 passed**；Alembic 临时 schema upgrade/downgrade/upgrade 通过。
+- 遗留：门禁尚未接入 chat/notes 路由的读写门（B3、B6 落地时接入）。
+
+### B2 `feat(notes): persist note versions in isolated shadow git`
+
+- 改动：新增 `notes/versions.py`、`tests/integration/test_notes_versions.py`；
+  `settings.py` 增 `NOTES_HISTORY_DIR`（默认 `var/notes_history`，相对项目根）；
+  `app.py` 启动时构建并 best-effort 初始化版本仓库（Git 不可用为 None）；
+  `.gitignore` 显式忽略 `var/notes_history/`。
+- 机制：独立 bare 仓库，`hash-object`/`mktree`/`commit-tree` 全走 argv 且 `shell=False`，
+  按原始 bytes 建 blob→tree→commit；`refs/versions/<operation_id>` 保留每个操作提交，
+  manifest blob（含空文件夹）经 `refs/manifests/<commit>` 读取；无差异复用父提交；
+  路径／提交校验拒绝 `..`、绝对路径、非 40-hex 提交与隐藏路径；symlink 不跟踪。
+- 命令与结果：`pytest tests/integration/test_notes_versions.py -q` → **7 passed, 1 skipped**
+  （symlink 用例在无权限平台跳过）；全量后端 **583 passed, 1 skipped**。
+- 遗留：`snapshot/read_blob` 已具备，尚未被写入路径调用（B3 接入）。
+
+### B3—B9 待执行
+
+B3 统一写入、B4 逐文件索引维修、B5 预览冲突、B6 恢复协调、B7 恢复 API、B8 编辑 UI、
+B9 演练与文档同步均未开始，尚无实现、无测试、无提交。
+
