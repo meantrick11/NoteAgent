@@ -214,4 +214,3 @@ def pg_checkpoint_app(pg_target, tmp_path):
 async def _probe(profile: ChatProfile) -> ChatProbeResult:
     """Always-successful probe so activation never touches the network."""
     return ChatProbeResult(streaming=True, tool_calling=True)
-
