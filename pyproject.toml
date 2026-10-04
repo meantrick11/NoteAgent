@@ -82,7 +82,7 @@ dependencies = [
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["src", "tests"]
+pythonpath = [".", "src", "tests"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 
