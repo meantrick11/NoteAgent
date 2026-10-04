@@ -28,6 +28,7 @@ from noteagent.model_management.service import (
 )
 from noteagent.model_management.store import ModelSettingsStore
 from noteagent.notes.repository import FileNoteRepository
+from noteagent.notes.versions import NoteVersionError, NoteVersionStore
 from noteagent.recovery.gate import WorkspaceGate, is_postgres_url
 from noteagent.retrieval.service import RetrievalService
 from noteagent.web import DIST_DIR, STATIC_DIR
@@ -51,6 +52,8 @@ class AppContainer:
     checkpoints: CheckpointRuntime | None = None
     # 跨进程工作区门禁：read/chat 共享，mutate/recovery/model_rebuild 独占。
     workspace: WorkspaceGate | None = None
+    # 影子 Git 版本仓库；Git 不可用时为 None（B3 必须拒绝无历史保护的写入）。
+    versions: NoteVersionStore | None = None
 
     @property
     def retrieval(self) -> RetrievalService | None:
@@ -85,6 +88,13 @@ def build_container(settings: Settings) -> AppContainer:
         session_factory,
         libpq_dsn=postgres_uri(settings.database_url) if is_postgres_url(settings.database_url) else None,
     )
+    # 影子 Git 版本仓库：与 notes_dir、代码仓库 .git 隔离。Git 不可用时不阻断启动，
+    # 但版本存储为 None，正式写入必须据此拒绝（无历史保护的写入不允许）。
+    try:
+        versions = NoteVersionStore(settings.notes_history_dir, settings.notes_dir)
+    except Exception as exc:  # noqa: BLE001 - 启动不因缺少 Git 而失败
+        _logger.error("shadow note repository unavailable: %s", exc)
+        versions = None
 
     # 装配器是 bootstrap 与 model_management 之间唯一的接口，避免两边互相导入。
     # 它拿到共享的会话服务与 checkpointer：切换模型只重建图运行对象，不换状态存储。
@@ -110,6 +120,7 @@ def build_container(settings: Settings) -> AppContainer:
         conversations=conversations,
         checkpoints=checkpoints,
         workspace=workspace,
+        versions=versions,
     )   ##返回一个AppContainer对象，包含所有初始化好的组件
 
 
@@ -122,6 +133,8 @@ async def lifespan(app: FastAPI):
     try:
         if container.workspace is not None:
             container.workspace.ensure_row()
+        if container.versions is not None:
+            container.versions.init()
         if container.conversations is not None:
             container.conversations.reconcile_expired_runs()
         yield
