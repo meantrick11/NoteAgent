@@ -2,7 +2,7 @@
 
 个人学习笔记助手。本机 Web · Docker 或 uv · 人审后写 Markdown。
 
-产品远景是把对话、网页、视频与会议等内容整理为可复用材料；当前交付以聊天笔记闭环为起点。业务边界见 [产品与业务架构](../NoteAgent-docs/docs/01-business/BIZ-001-业务愿景与材料管理.md)，未来能力与验收见 [版本路线](../NoteAgent-docs/docs/02-requirements/REQ-CATALOG-产品能力与验收要求.md)。
+产品远景是把对话、网页、视频与会议等内容整理为可复用材料；当前交付以聊天笔记闭环为起点。业务语言见 [业务术语](CONTEXT.md)，当前能力见 [功能说明](#功能说明)，实施证据见 [验收记录](docs/05-records/plans/2026-10-04-checkpoint-shadow-git-completion-results.md)。
 
 在浏览器里对话，把值得保留的内容整理成 Markdown 草稿，**你点同意之后**才写入本地 `notes/`，并按该文件重建检索索引。单用户、单进程；聊天模型走外网（默认 DeepSeek）；笔记是普通 `.md`，可以自己打开、搬家。
 
@@ -47,7 +47,7 @@
 
 ### 待审草稿
 
-模型认为该记笔记时，会调用 `propose_note`，右侧面板切到「待审批草稿」：正文可编辑并「保存草稿」（只改待审状态），确认后「同意追加/覆盖/删除/新建」或「拒绝」。`create`、`append` 可以改目标文件或改成新建。只有 `POST /chat/review` 成功后才写 `notes/`。拒绝则丢弃该草稿，不改磁盘、不改向量。
+模型认为该记笔记时，会调用 `propose_note`，右侧面板切到「待审批草稿」：正文可编辑并「保存草稿」（只改待审状态），确认后「同意追加/覆盖/删除/新建」或「拒绝」。新建草稿点击顶部笔记名更名；底部直接提供同意、拒绝和追加到笔记，追加需选择目标再确认。只有 `POST /chat/review` 成功后才写 `notes/`。拒绝则丢弃该草稿，不改磁盘、不改向量。
 
 ### Library（原 Documents）
 
@@ -143,12 +143,12 @@ npm --prefix frontend run test:e2e
 
 | 操作 | 说明 |
 |------|------|
-| 顶部五项 | Home / Assistant / Records / Library / Settings；默认 Home（`GET /`），旧地址 `/documents` 落到 Library |
+| 主导航与设置 | Home / Assistant / Records / Library 四个入口；Settings 从右上角齿轮进入。默认 Home（`GET /`），旧地址 `/documents` 落到 Library |
 | 新对话 | 聊天左栏底部 |
 | 会话三点 | 重命名（行内）、删除（确认框） |
 | Enter | 发送；流式进行中不能连发 |
 | Shift+Enter | 换行 |
-| 右侧草稿面板 | 编辑正文并保存草稿；同意写入 / 拒绝丢弃；create、append 可改目标文件 |
+| 右侧草稿面板 | 顶部点击新建笔记名更名；保存草稿只保存状态，同意才写入；追加到笔记单独选择目标 |
 | 新建笔记 / 新建文件夹 | Library 左栏底；选中文件夹则笔记建在其下 |
 | 点树中一篇 | 打开编辑 + 预览 |
 | 保存 | 工具条，或 Ctrl+S / Cmd+S |
@@ -165,13 +165,14 @@ npm --prefix frontend run test:e2e
 | 位置 | 用途 |
 |------|------|
 | `notes/` | 正式知识，Markdown 事实源；Docker 时与宿主机 bind |
-| PostgreSQL | 会话与气泡；`DATABASE_URL` 前缀须为 `postgresql+psycopg://` |
+| PostgreSQL | checkpoint 完整历史、压缩摘要、草稿与执行状态，以及会话元数据和恢复日志；`DATABASE_URL` 前缀须为 `postgresql+psycopg://` |
+| `var/notes_history` | 独立影子 Git，记录笔记材料版本；消息回退通过选择性恢复保留无关改动 |
 | `chromadb_persist` | 派生向量；丢了可按文件重建 |
 | `var/logs` | Agent / 索引日志；完整 prompt 在这里，不进聊天表 |
 | `var/model_settings/settings.json` | 界面上保存的聊天配置与向量选择。**界面上填写的 API Key 明文在这里**（未加密，`chmod 600` 尽力而为）；`.env` 的 Key 不被复制进来 |
 | `.env` | 密钥与路径；不要提交。从 `.env.example` 复制 |
 
-备份或迁移：直接备份 `var/model_settings` 目录（连同 `notes/` 与 Chroma 目录）。移除某条凭据只有两条路——界面上「清除已保存的 Key」或删除该配置；删除配置是唯一会连凭据一起移除的操作。Docker 下该目录必须挂持久卷，否则容器重建等于丢凭据。
+备份或迁移：备份 PostgreSQL（含 checkpoint）、`notes/`、`var/notes_history` 和 `var/model_settings`；Chroma 可按正文重建。移除某条凭据只有两条路——界面上「清除已保存的 Key」或删除该配置；删除配置是唯一会连凭据一起移除的操作。Docker 下该目录必须挂持久卷，否则容器重建等于丢凭据。
 
 不记录你在笔记以外的按键内容。没有账号系统，数据默认只在本机（或你自己的 Docker 卷）。卷说明见 [本机开发](docs/00-overview/local-dev.md)。
 
@@ -184,9 +185,10 @@ npm --prefix frontend run test:e2e
 | [零基础（Docker）](docs/04-ops/getting-started.md) | 从零打开浏览器 |
 | [本机开发](docs/00-overview/local-dev.md) | uv、Postgres、测试、环境变量 |
 | [架构说明书](docs/01-architecture/architecture.md) | **现行系统的阅读主线**：模块、数据流、关键决策与代码落点 |
-| [产品与业务架构](../NoteAgent-docs/docs/01-business/BIZ-001-业务愿景与材料管理.md) | 记录与复用场景、业务对象、整理方案及目标边界 |
-| [版本路线](../NoteAgent-docs/docs/02-requirements/REQ-CATALOG-产品能力与验收要求.md) | 分阶段交付、当前证据缺口与验收要求 |
-| [产品与技术设计](../NoteAgent-docs/README.md) | 上层设计、技术决策与状态口径 |
+| [业务术语](CONTEXT.md) | 来源、记录任务、笔记材料等业务概念 |
+| [会话持久化与续接](docs/03-modules/chat/checkpoint-resume.md) | PostgreSQL checkpoint、草稿保存、执行续接及版本冲突 |
+| [笔记与整体回退](docs/03-modules/recovery/recovery.md) | 影子 Git、共享冲突拦截与按文件 RAG 修复 |
+| [本轮验收记录](docs/05-records/plans/2026-10-04-checkpoint-shadow-git-completion-results.md) | 已验证行为、测试结果、故障演练及剩余限制 |
 | [实现计划与执行记录](docs/05-records/plans/README.md) | 某一版怎么做、做到哪一步；计划里的“待实现”不是现状 |
 | [评测准则与报告](evals/README.md) | 准则在 `evals/criteria/`，报告与复盘在 `evals/reports/`，黄金集与运行结果在同目录 |
 | [归档设计](docs/05-records/archive/README.md) | 已被替代的旧设计：屏幕采集、入库 Job 设想及其画布 |
@@ -228,4 +230,4 @@ NoteAgent/
     └── web/                # 页面路由、SPA 产物与旧模板（回退用）
 ```
 
-`var/` 是运行时数据，不入库。业务、需求、目标架构及 CR/ADR 在同级 [NoteAgent-docs](../NoteAgent-docs/README.md) 独立维护；代码内实现说明随代码 Tag。
+`var/` 是运行时数据，不入库。业务、需求、目标架构及 CR/ADR 在独立的 `NoteAgent-docs` 本地仓库维护，尚未发布到远端；此处不提供只能在本机打开的目录链接。本仓库实现说明随代码 Tag，入口见 [文档目录](docs/README.md)。
