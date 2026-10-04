@@ -149,14 +149,15 @@ async def test_run_case_scripted_propose(tmp_path: Path):
             AIMessage(content="已提交草稿"),
         ]
     )
-    agent, notes, history, drafts = build_eval_agent(
+    agent, notes, history, drafts, service = build_eval_agent(
         tmp_path / "notes",
         model=model,
         prompt_path=_PROMPT,
         settings=_settings(),
     )
     run = await run_case(
-        case, seq=1, agent=agent, notes=notes, history=history, drafts=drafts
+        case, seq=1, agent=agent, notes=notes, history=history, drafts=drafts,
+        service=service,
     )
     assert run.draft is not None
     assert run.draft["file_name"] == "For.md"
@@ -183,14 +184,15 @@ async def test_seed_files_and_behavior_search(tmp_path: Path):
             AIMessage(content="以前笔记说参数在 sys.argv。"),
         ]
     )
-    agent, notes, history, drafts = build_eval_agent(
+    agent, notes, history, drafts, service = build_eval_agent(
         tmp_path / "notes",
         model=model,
         prompt_path=_PROMPT,
         settings=_settings(),
     )
     run = await run_case(
-        case, seq=4, agent=agent, notes=notes, history=history, drafts=drafts
+        case, seq=4, agent=agent, notes=notes, history=history, drafts=drafts,
+        service=service,
     )
     assert notes.exists("Python.md")
     assert "argv" in notes.read("Python.md")
@@ -233,7 +235,7 @@ async def test_run_case_calls_scripted_judge_for_learning_draft(tmp_path: Path):
             AIMessage(content="已提交草稿"),
         ]
     )
-    agent, notes, history, drafts = build_eval_agent(
+    agent, notes, history, drafts, service = build_eval_agent(
         tmp_path / "notes", model=model, prompt_path=_PROMPT, settings=_settings()
     )
 
@@ -244,6 +246,7 @@ async def test_run_case_calls_scripted_judge_for_learning_draft(tmp_path: Path):
         notes=notes,
         history=history,
         drafts=drafts,
+        service=service,
         judge_model=ScriptedJudge(
             _verifiable_semantic_payload("Source fact.", "学习笔记")
         ),
@@ -286,7 +289,7 @@ async def test_learning_behavior_failure_keeps_completed_semantic_audit(tmp_path
             AIMessage(content="已提交草稿"),
         ]
     )
-    agent, notes, history, drafts = build_eval_agent(
+    agent, notes, history, drafts, service = build_eval_agent(
         tmp_path / "notes", model=model, prompt_path=_PROMPT, settings=_settings()
     )
 
@@ -297,6 +300,7 @@ async def test_learning_behavior_failure_keeps_completed_semantic_audit(tmp_path
         notes=notes,
         history=history,
         drafts=drafts,
+        service=service,
         judge_model=ScriptedJudge(
             _verifiable_semantic_payload("Source fact.", "学习笔记")
         ),

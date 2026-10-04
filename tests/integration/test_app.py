@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessage
 
 from noteagent.bootstrap.app import AppContainer, create_app
 from noteagent.bootstrap.settings import Settings
@@ -12,6 +13,7 @@ from noteagent.model_management.service import ModelRuntimeService
 from noteagent.model_management.store import ModelSettingsStore
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.web import read_home_html
+from support.webapp import build_checkpoint_app
 
 
 class FakeAgent:
@@ -19,7 +21,8 @@ class FakeAgent:
         yield {"event": "token", "data": f"echo:{question}"}
         yield {"event": "assistant_final", "data": f"echo:{question}"}
 
-    def review(self, thread_id: str, action: str, write_action=None, file_name=None):
+    async def review(self, thread_id: str, action: str, write_action=None, file_name=None,
+                     *, expected_revision=None):
         return {"status": "rejected"} if action == "reject" else {"status": "written", "file_name": "Go.md"}
 
 
@@ -109,13 +112,14 @@ class RealDraftAgent(FakeAgent):
         self._notes = notes
         self._drafts = drafts
 
-    def update_draft_content(self, thread_id: str, content: str) -> dict:
+    async def update_draft_content(self, thread_id: str, content: str, *, expected_revision=None) -> dict:
         draft = self._drafts.update_content(thread_id, content)
         if draft is None:
             return {"error": "no pending draft"}
         return {"status": "updated", "pending_draft": draft.as_dict()}
 
-    def review(self, thread_id: str, action: str, write_action=None, file_name=None):
+    async def review(self, thread_id: str, action: str, write_action=None, file_name=None,
+                     *, expected_revision=None):
         return commit_review(
             self._notes, self._drafts, thread_id, action, write_action, file_name,
         )
@@ -187,46 +191,52 @@ def test_documents_route_serves_same_template(tmp_path: Path):
     assert read_home_html() == response.text
 
 
+def _conversation_id(text: str) -> str:
+    events = _parse_sse(text)
+    return json.loads(next(data for event, data in events if event == "conversation"))["id"]
+
+
 def test_chat_and_review_routes(tmp_path: Path):
-    client, history = _client(tmp_path)
-    record = history.create("t")
-    chat = client.post("/chat", json={"question": "你好", "thread_id": record.id})
+    app = build_checkpoint_app(tmp_path, reply_batches=[["echo:你好"]])
+    chat = app.client.post("/chat", json={"question": "你好"})
     assert chat.status_code == 200
     assert chat.headers["content-type"].startswith("text/event-stream")
-    assert "event: conversation" in chat.text
-    assert "event: answer" in chat.text
+    events = _parse_sse(chat.text)
+    assert any(event == "conversation" for event, _ in events)
+    assert any(event == "user_message" for event, _ in events)
+    assert any(event == "answer" for event, _ in events)
     assert _collect_tokens(chat.text) == "echo:你好"
 
-    review = client.post(
-        "/chat/review",
-        json={"thread_id": record.id, "action": "reject"},
+    conv_id = _conversation_id(chat.text)
+    review = app.client.post(
+        "/chat/review", json={"thread_id": conv_id, "action": "reject"},
     )
     assert review.status_code == 200
     assert review.json()["status"] == "rejected"
 
 
 def test_chat_persists_messages(tmp_path: Path):
-    client, _ = _client(tmp_path)
+    app = build_checkpoint_app(
+        tmp_path, reply_batches=[["echo:你好", "echo:第二轮"]]
+    )
 
-    chat = client.post("/chat", json={"question": "你好"})
+    chat = app.client.post("/chat", json={"question": "你好"})
     assert chat.status_code == 200
-    events = _parse_sse(chat.text)
-    conv_data = next(data for event, data in events if event == "conversation")
-    conv_id = json.loads(conv_data)["id"]
+    conv_id = _conversation_id(chat.text)
 
-    messages = client.get(f"/conversations/{conv_id}/messages").json()
+    messages = app.client.get(f"/conversations/{conv_id}/messages").json()
     assert [m["role"] for m in messages] == ["user", "assistant"]
     assert "echo:你好" in messages[1]["content"]
 
-    chat = client.post(
+    chat = app.client.post(
         "/chat",
         json={"question": "x", "conversation_id": "00000000-0000-0000-0000-000000000001"},
     )
     assert chat.status_code == 404
 
-    chat = client.post("/chat", json={"question": "第二轮", "thread_id": conv_id})
+    chat = app.client.post("/chat", json={"question": "第二轮", "thread_id": conv_id})
     assert chat.status_code == 200
-    messages = client.get(f"/conversations/{conv_id}/messages").json()
+    messages = app.client.get(f"/conversations/{conv_id}/messages").json()
     assert len(messages) == 4
 
 
@@ -265,61 +275,42 @@ def test_messages_api_hides_tool_stubs(tmp_path: Path):
 
 
 def test_chat_persists_final_assistant_not_tool_hop_tokens(tmp_path: Path):
-    class FakeToolHopAgent:
-        async def stream(self, question: str, thread_id: str, turn_id: str | None = None):
-            yield {"event": "token", "data": "calling-tool"}
-            yield {"event": "assistant_final", "data": "done"}
-
-        def review(self, thread_id: str, action: str, write_action=None, file_name=None):
-            return {"status": "rejected"}
-
-    settings = Settings(
-        notes_dir=tmp_path,
-        chroma_dir=tmp_path / "chroma",
-        model_settings_dir=tmp_path / "model_settings",
+    tool_call = AIMessage(
+        content="", tool_calls=[{"name": "list_files", "args": {}, "id": "c1"}]
     )
-    engine, history = _sqlite_history()
-    container = _container(
-        settings, FileNoteRepository(tmp_path), engine, history, FakeToolHopAgent()
-    )
-    client = TestClient(create_app(container))
-    chat = client.post("/chat", json={"question": "hi"})
+    app = build_checkpoint_app(tmp_path, reply_batches=[[tool_call, "done"]])
+    chat = app.client.post("/chat", json={"question": "hi"})
     assert chat.status_code == 200
-    events = _parse_sse(chat.text)
-    conv_data = next(data for event, data in events if event == "conversation")
-    conv_id = json.loads(conv_data)["id"]
-    messages = client.get(f"/conversations/{conv_id}/messages").json()
+    conv_id = _conversation_id(chat.text)
+    messages = app.client.get(f"/conversations/{conv_id}/messages").json()
     assert messages[1]["content"] == "done"
-    assert _collect_tokens(chat.text) == "calling-tool"
+    assert messages[1]["tool_steps"][0]["name"] == "list_files"
 
 
 def test_chat_sse_forwards_multiple_token_events(tmp_path: Path):
-    class FakeChunkAgent:
-        async def stream(self, question: str, thread_id: str, turn_id: str | None = None):
-            yield {"event": "thinking", "data": "thinking"}
-            yield {"event": "token", "data": "Hel"}
-            yield {"event": "token", "data": "lo"}
-            yield {"event": "assistant_final", "data": "Hello"}
+    from langchain_core.messages import AIMessageChunk
 
-        def review(self, thread_id: str, action: str, write_action=None, file_name=None):
-            return {"status": "rejected"}
+    class ChunkModel:
+        """Yields one token chunk per scripted piece, like a real stream."""
 
-    settings = Settings(
-        notes_dir=tmp_path,
-        chroma_dir=tmp_path / "chroma",
-        model_settings_dir=tmp_path / "model_settings",
+        def __init__(self, chunks: list[str]) -> None:
+            self._chunks = chunks
+
+        def bind_tools(self, tools):
+            return self
+
+        async def astream(self, messages, config=None):
+            for chunk in self._chunks:
+                yield AIMessageChunk(content=chunk)
+
+    app = build_checkpoint_app(
+        tmp_path, reply_batches=[ChunkModel(["Hel", "lo"])]
     )
-    engine, history = _sqlite_history()
-    container = _container(
-        settings, FileNoteRepository(tmp_path), engine, history, FakeChunkAgent()
-    )
-    client = TestClient(create_app(container))
-    chat = client.post("/chat", json={"question": "hi"})
+    chat = app.client.post("/chat", json={"question": "hi"})
     tokens = [data for event, data in _parse_sse(chat.text) if event == "token"]
     assert [json.loads(t) for t in tokens] == ["Hel", "lo"]
-    events = _parse_sse(chat.text)
-    conv_id = json.loads(next(data for event, data in events if event == "conversation"))["id"]
-    messages = client.get(f"/conversations/{conv_id}/messages").json()
+    conv_id = _conversation_id(chat.text)
+    messages = app.client.get(f"/conversations/{conv_id}/messages").json()
     assert messages[1]["content"] == "Hello"
 
 
@@ -450,7 +441,8 @@ def test_review_clears_pending_draft(tmp_path: Path):
     drafts = DraftStore(history)
 
     class ReviewAgent(FakeAgent):
-        def review(self, thread_id: str, action: str, write_action=None, file_name=None):
+        async def review(self, thread_id: str, action: str, write_action=None, file_name=None,
+                         *, expected_revision=None):
             return commit_review(
                 notes, drafts, thread_id, action, write_action, file_name,
             )

@@ -1,5 +1,6 @@
 # 前端路由模块，主要的前端交互路由接口，通过FastAPI进行实现
 import logging
+import uuid
 from collections.abc import AsyncIterator
 from typing import Annotated
 
@@ -7,9 +8,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from noteagent.chat.history import (
-    ConversationRecord,
     conversation_title_from_question,
-    start_turn,
 ) #对话的创建和获取titile
 from noteagent.chat.schemas import (
     CitationOut,
@@ -22,6 +21,12 @@ from noteagent.chat.schemas import (
     ReviewRequest,
     ToolStepOut,
 )       #获取对应的路由请求体或者响应体的pydantic模型
+from noteagent.conversations.contracts import (
+    ConversationBusy,
+    PreparedTurn,
+    StaleConversation,
+    TurnAlreadyClaimed,
+)
 from noteagent.model_management.router import (
     chat_lease,
     require_same_origin,
@@ -49,21 +54,29 @@ async def list_conversations(request: Request) -> list[ConversationOut]:
 
 @router.get("/conversations/{conversation_id}")
 async def get_conversation(conversation_id: str, request: Request) -> ConversationDetailOut:
-    """Return one conversation and its pending draft, or 404 if missing."""
-    history = request.app.state.container.history
-    record = history.get(conversation_id)
+    """Return one conversation and its pending draft, or 404 if missing.
+
+    The pending draft is projected from the active checkpoint for migrated
+    conversations, and from the legacy row until A1 imports them.
+    """
+    container = request.app.state.container
+    record = container.history.get(conversation_id)
     if record is None:
         raise HTTPException(status_code=404, detail="conversation not found")
+    pending = record.pending_draft
+    if record.state_backend == "checkpoint" and container.conversations is not None:
+        pending = await container.conversations.get_pending_draft(conversation_id)
     _logger.info(
-        "get conversation=%s pending_draft=%s",
+        "get conversation=%s backend=%s pending_draft=%s",
         conversation_id,
-        bool(record.pending_draft),
+        record.state_backend,
+        bool(pending),
     )
     return ConversationDetailOut(
         id=record.id,
         title=record.title,
         updated_at=record.updated_at,
-        pending_draft=record.pending_draft,
+        pending_draft=pending,
     )
 
 
@@ -71,8 +84,14 @@ async def get_conversation(conversation_id: str, request: Request) -> Conversati
 @router.get("/conversations/{conversation_id}/messages")
 async def list_messages(conversation_id: str, request: Request) -> list[MessageOut]:
     """Return the messages of one conversation, or 404 if missing."""
-    history = request.app.state.container.history
-    records = history.list_messages(conversation_id)
+    container = request.app.state.container
+    record = container.history.get(conversation_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    if record.state_backend == "checkpoint" and container.conversations is not None:
+        records = await container.conversations.list_messages(conversation_id)
+    else:
+        records = container.history.list_messages(conversation_id)
     if records is None:
         raise HTTPException(status_code=404, detail="conversation not found")
     _logger.info("list messages conversation=%s count=%d", conversation_id, len(records))
@@ -119,78 +138,96 @@ async def delete_conversation(conversation_id: str, request: Request) -> None:
     _logger.info("delete conversation=%s", conversation_id)
 
 
-async def resolve_conversation(
-    require: Annotated[RequestModel, Body()],
+async def claim_turn(
     request: Request,
+    require: Annotated[RequestModel, Body()],
     snapshot: Annotated[RuntimeSnapshot, Depends(chat_lease)],
-) -> ConversationRecord:
-    """Resolve or create the target conversation; 404 on an unknown id.
+) -> tuple[ConversationOut, PreparedTurn]:
+    """Resolve the conversation and durably accept the user message before SSE.
 
-    Runs as a dependency so both the maintenance check and the 404 happen before SSE
-    streaming starts, which is why the lease is required here.
+    Running as a dependency is what lets a duplicate request, a missing conversation,
+    or a busy claim be answered with a real status code instead of a broken stream.
+    The message is persisted here, so the browser's ``user_message`` event carries a
+    server identity that already exists in the checkpoint.
     """
-    history = request.app.state.container.history
+    container = request.app.state.container
+    conversations = container.conversations
+    if conversations is None:
+        raise HTTPException(status_code=503, detail="conversation service unavailable")
+
     conv_id = require.conversation_id or require.thread_id
     if conv_id:
-        record = history.get(conv_id)
+        record = conversations.get(conv_id)
         if record is None:
             raise HTTPException(status_code=404, detail="conversation not found")
-        return record
-    return history.create(conversation_title_from_question(require.question))
+        if record.state_backend != "checkpoint":
+            raise HTTPException(
+                status_code=409,
+                detail="conversation history is not migrated to checkpoints yet",
+            )
+    else:
+        record = await conversations.create_conversation(
+            conversation_title_from_question(require.question)
+        )
+
+    request_id = require.request_id or uuid.uuid4().hex
+    try:
+        prepared = await snapshot.chat_agent.prepare(
+            record.id,
+            require.question,
+            request_id,
+            expected_revision=require.expected_revision,
+        )
+    except TurnAlreadyClaimed:
+        raise HTTPException(status_code=409, detail="request already accepted")
+    except ConversationBusy:
+        raise HTTPException(status_code=409, detail="conversation has a running turn")
+    except StaleConversation:
+        raise HTTPException(status_code=409, detail="conversation revision changed")
+    return (
+        ConversationOut(id=record.id, title=record.title, updated_at=record.updated_at),
+        prepared,
+    )
+
 
 # 普通的/chat路由，当用户在聊天框输入消息的时候，会激活此路由，然后添加进对应的会话历史消息中，并进行Agent的stream回复
 @router.post("/chat", response_class=EventSourceResponse)
 async def chat_with(
     request: Request,
     require: Annotated[RequestModel, Body()],
-    record: Annotated[ConversationRecord, Depends(resolve_conversation)],
+    claimed: Annotated[tuple[ConversationOut, PreparedTurn], Depends(claim_turn)],
     snapshot: Annotated[RuntimeSnapshot, Depends(chat_lease)],
 ) -> AsyncIterator[ServerSentEvent]:
-    """Persist user/assistant messages and stream chat tokens."""
-    history = request.app.state.container.history
-    turn_id = start_turn()
-    history.append_message(record.id, "user", require.question, turn_id=turn_id)
-
+    """Run the graph turn for an already-claimed request and stream its events."""
+    record, prepared = claimed
     yield ServerSentEvent(
         event="conversation",
         data={"id": record.id, "title": record.title},
     )
+    yield ServerSentEvent(
+        event="user_message",
+        data={
+            "message_id": prepared.user_message_id,
+            "turn_id": prepared.turn_id,
+            "run_id": prepared.run_id,
+            "state_revision": prepared.generation,
+        },
+    )
 
-    # 这一轮固定用获取租约时拿到的 Agent：期间切换模型也不会把旧轮换到新对象。
-    agent = snapshot.chat_agent
     _logger.info("[conversation=%s] SSE request: %.80s", record.id, require.question)
-    assistant_text = ""
-    final_text: str | None = None
-    citations: list | None = None
-    async for item in agent.stream(require.question, thread_id=record.id, turn_id=turn_id):
+    agent = snapshot.chat_agent
+    async for item in agent.run(prepared):
         event = str(item.get("event") or "token")
         data = item.get("data")
         if data is None or data == "":
             continue
-        if event == "token" and isinstance(data, str):
-            assistant_text += data
-        elif event == "assistant_final" and isinstance(data, str):
-            final_text = data
-            # Browser gets remumbered full text; assistant_final itself stays internal.
+        if event == "assistant_final" and isinstance(data, str):
+            # Browser gets the full text; assistant_final itself stays internal.
             yield ServerSentEvent(event="answer", data=data)
             continue
-        elif event == "sources" and isinstance(data, list):
-            citations = data
         yield ServerSentEvent(event=event, data=data)
 
-    persist = final_text if final_text is not None else assistant_text
-    if persist:
-        history.append_message(
-            record.id, "assistant", persist, turn_id=turn_id, citations=citations,
-        )
-        _logger.info(
-            "persist assistant conversation=%s turn=%s citations=%d",
-            record.id,
-            turn_id,
-            len(citations or []),
-        )
 
-# 
 @router.put("/chat/draft", dependencies=[Depends(require_same_origin)])
 async def update_chat_draft(
     request: Request,
@@ -199,7 +236,7 @@ async def update_chat_draft(
 ) -> dict:
     """Save edits to the pending draft's body.
 
-    Only conversations.pending_draft changes here: no note is written and no
+    Only the conversation's pending draft changes here: no note is written and no
     vector is touched. Approval still goes through POST /chat/review.
     """
     history = request.app.state.container.history
@@ -209,7 +246,14 @@ async def update_chat_draft(
     _logger.info(
         "[thread=%s] draft update chars=%d", require.thread_id, len(require.content)
     )
-    result = agent.update_draft_content(require.thread_id, require.content)
+    try:
+        result = await agent.update_draft_content(
+            require.thread_id,
+            require.content,
+            expected_revision=require.expected_revision,
+        )
+    except StaleConversation:
+        raise HTTPException(status_code=409, detail="conversation revision changed")
     if "error" in result:
         raise HTTPException(status_code=409, detail=result["error"])
     return result
@@ -225,6 +269,8 @@ async def chat_review(
 
     Approval writes notes and reindexes them, so it is gated like any other write.
     """
+    if request.app.state.container.history.get(require.thread_id) is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
     agent = snapshot.chat_agent
     _logger.info(
         "[thread=%s] review action=%s write_action=%s file=%s",
@@ -233,9 +279,13 @@ async def chat_review(
         require.write_action,
         require.file_name,
     )
-    return agent.review(
-        require.thread_id,
-        require.action,
-        write_action=require.write_action,
-        file_name=require.file_name,
-    )
+    try:
+        return await agent.review(
+            require.thread_id,
+            require.action,
+            write_action=require.write_action,
+            file_name=require.file_name,
+            expected_revision=require.expected_revision,
+        )
+    except StaleConversation:
+        raise HTTPException(status_code=409, detail="conversation revision changed")

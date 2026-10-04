@@ -221,10 +221,70 @@ class ConversationService:
             return None
         return [record_from_ui(item) for item in view.values.get("ui_messages", [])]
 
+    # ---- pending draft (checkpoint-backed) --------------------------------
+
+    async def get_pending_draft(self, conversation_id: str) -> dict | None:
+        """The active head's pending draft, or None when there is none."""
+        try:
+            view = await self.get_state(conversation_id)
+        except ConversationNotFound:
+            return None
+        return view.values.get("pending_draft")
+
+    async def update_pending_draft(
+        self, conversation_id: str, content: str, *, expected_revision: int | None = None
+    ) -> dict | None:
+        """Rewrite only the pending draft body, publishing a new head via CAS.
+
+        Returns None when there is no draft. ``expected_revision`` guards against a
+        tab whose conversation state was replaced (recovery, fork) since it loaded.
+        """
+        view = await self.get_state(conversation_id)
+        draft = view.values.get("pending_draft")
+        if not draft:
+            return None
+        self._require_revision(view, conversation_id, expected_revision)
+        updated = dict(draft)
+        updated["content"] = content
+        await self._republish_state(conversation_id, view, {"pending_draft": updated})
+        return updated
+
+    async def clear_pending_draft(
+        self, conversation_id: str, *, expected_revision: int | None = None
+    ) -> bool:
+        """Drop the pending draft, publishing a new head via CAS. False when absent."""
+        view = await self.get_state(conversation_id)
+        if not view.values.get("pending_draft"):
+            return False
+        self._require_revision(view, conversation_id, expected_revision)
+        await self._republish_state(conversation_id, view, {"pending_draft": None})
+        return True
+
+    def _require_revision(self, view: StateView, conversation_id: str, expected: int | None) -> None:
+        """Refuse a write whose expected revision no longer matches the head."""
+        if expected is not None and int(view.values.get("generation", 0) or 0) != expected:
+            raise StaleConversation(conversation_id)
+
+    async def _republish_state(
+        self, conversation_id: str, view: StateView, changes: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Write one new state version from the current head and publish it."""
+        values = dict(view.values)
+        values.update(changes)
+        branch_id = str(values.get("branch_id") or self.active_branch_id(conversation_id))
+        return await self.write_state(
+            conversation_id,
+            values,
+            branch_id=branch_id,
+            parent_checkpoint_id=checkpoint_id_of(view.config),
+            publish=True,
+        )
+
     # ---- turns ------------------------------------------------------------
 
     async def prepare_turn(
-        self, conversation_id: str, question: str, request_id: str
+        self, conversation_id: str, question: str, request_id: str,
+        *, expected_revision: int | None = None,
     ) -> PreparedTurn:
         """Claim the run and write the user message before any model call.
 
@@ -242,6 +302,8 @@ class ConversationService:
             session.execute(select(Conversation.id).where(
                 Conversation.id == conversation.id).with_for_update())
             session.refresh(conversation)
+            if expected_revision is not None and int(conversation.generation or 0) != expected_revision:
+                raise StaleConversation(conversation_id)
             branch = self._branch(session, conversation)
             before_checkpoint_id = branch.head_checkpoint_id
             if before_checkpoint_id is None:
@@ -522,4 +584,6 @@ def _to_conversation(row: Conversation) -> ConversationRecord:
             else None
         ),
         pending_draft=dict(row.pending_draft) if row.pending_draft else None,
+        state_backend=row.state_backend,
+        generation=int(row.generation or 0),
     )

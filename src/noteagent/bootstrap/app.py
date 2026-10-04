@@ -73,8 +73,17 @@ def build_container(settings: Settings) -> AppContainer:
     notes = FileNoteRepository(settings.notes_dir)  #Notes repository initialization
     drafts = DraftStore(history)
 
+    # 只构造，不连接：异步 saver 必须由 lifespan 打开，否则没有地方关闭它。
+    checkpoints = CheckpointRuntime.from_conn_string(postgres_uri(settings.database_url))
+    conversations = ConversationService(
+        create_session_factory(engine), checkpoints
+    )
+
     # 装配器是 bootstrap 与 model_management 之间唯一的接口，避免两边互相导入。
-    assembler = BootstrapAssembler(settings, notes, drafts, history)
+    # 它拿到共享的会话服务与 checkpointer：切换模型只重建图运行对象，不换状态存储。
+    assembler = BootstrapAssembler(
+        settings, notes, drafts, history, conversations, checkpoints
+    )
     model_runtime = ModelRuntimeService(
         settings=settings,
         store=ModelSettingsStore(settings.model_settings_dir),
@@ -83,12 +92,6 @@ def build_container(settings: Settings) -> AppContainer:
     )
     # 持久化的 active 选择决定本次启动用哪个聊天模型与向量 collection。
     model_runtime.initialize()
-
-    # 只构造，不连接：异步 saver 必须由 lifespan 打开，否则没有地方关闭它。
-    checkpoints = CheckpointRuntime.from_conn_string(postgres_uri(settings.database_url))
-    conversations = ConversationService(
-        create_session_factory(engine), checkpoints
-    )
 
     return AppContainer(
         settings=settings,

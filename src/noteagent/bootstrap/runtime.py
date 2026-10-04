@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from noteagent.chat.agent import ChatAgent
 from noteagent.chat.context_budget import ContextBudget, budget_from_settings
+from noteagent.chat.session import build_graph_agent
 from noteagent.chat.tools import build_chat_tools
 from noteagent.llm.factory import create_chat_model_from_config
 from noteagent.retrieval.chunker import MarkdownChunker
@@ -25,10 +27,14 @@ if TYPE_CHECKING:
     from noteagent.bootstrap.settings import Settings
     from noteagent.chat.drafts import DraftStore
     from noteagent.chat.history import ConversationStore
+    from noteagent.conversations.checkpoints import CheckpointRuntime
+    from noteagent.conversations.service import ConversationService
     from noteagent.model_management.schemas import ChatProfile
     from noteagent.notes.repository import FileNoteRepository
 
 _logger = logging.getLogger(__name__)
+
+SYSTEM_PROMPT_PATH = Path(__file__).resolve().parents[1] / "chat" / "prompts" / "system.txt"
 
 # 用户显式选择"无需认证"时给 SDK 的占位值：部分客户端要求非空字符串才肯构造。
 NO_AUTH_PLACEHOLDER = "no-auth-required"
@@ -67,11 +73,15 @@ class BootstrapAssembler:
         notes: FileNoteRepository,
         drafts: DraftStore,
         history: ConversationStore,
+        conversations: ConversationService | None = None,
+        checkpoints: CheckpointRuntime | None = None,
     ):
         self._settings = settings
         self._notes = notes
         self._drafts = drafts
         self._history = history
+        self._conversations = conversations
+        self._checkpoints = checkpoints
 
     def build_chat_model(self, profile: ChatProfile) -> BaseChatModel:
         """Build the chat client for one profile without logging its credential."""
@@ -124,18 +134,24 @@ class BootstrapAssembler:
     def build_agent(
         self, *, profile: ChatProfile, retrieval: RetrievalService | None
     ) -> ChatAgent:
-        """Build an agent whose model, tools, and budget all belong to one profile.
+        """Build a graph-backed agent bound to the shared checkpoint service.
 
         Tools are rebuilt together with the retrieval object because their closures
         capture it; patching a private attribute on the old agent would silently keep
-        searching the old index.
+        searching the old index. The conversation service and checkpointer are shared
+        across model switches, so a switch never orphans the persisted history.
         """
-        return ChatAgent(
-            model=self.build_chat_model(profile),
+        if self._conversations is None or self._checkpoints is None:
+            raise RuntimeError("assembler needs the conversation service and checkpointer")
+        model = self.build_chat_model(profile)
+        return build_graph_agent(
+            model=model,
             tools=build_chat_tools(self._notes, retrieval, self._drafts),
             notes=self._notes,
             drafts=self._drafts,
-            history=self._history,
             budget=budget_for_window(self._settings, profile.context_window),
+            system_prompt=SYSTEM_PROMPT_PATH.read_text(encoding="utf-8"),
+            service=self._conversations,
+            checkpoints=self._checkpoints,
             retrieval=retrieval,
         )

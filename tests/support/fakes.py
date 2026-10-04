@@ -96,6 +96,12 @@ class FakeRetrieval:
     def verify_index(self) -> bool:
         return True
 
+    def index_note(self, file_name: str) -> int:
+        return 0
+
+    def delete_note(self, file_name: str) -> None:
+        return None
+
 
 class FakeChatModel:
     """Scripted chat model: one queued reply per hop, streamed like a real one.

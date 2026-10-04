@@ -94,6 +94,10 @@ class ConversationRecord:
     running_summary: str | None
     summary_watermark_turn_id: str | None
     pending_draft: dict | None = None
+    # "legacy" (message tables) or "checkpoint" (active LangGraph head). Read paths
+    # branch on this so un-migrated histories keep working until A1 imports them.
+    state_backend: str = "legacy"
+    generation: int = 0
 
 
 @dataclass(slots=True)

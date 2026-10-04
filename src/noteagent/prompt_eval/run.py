@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,8 +14,14 @@ from noteagent.bootstrap.settings import Settings
 from noteagent.chat.agent import ChatAgent
 from noteagent.chat.context_budget import budget_from_settings
 from noteagent.chat.drafts import DraftStore
-from noteagent.chat.history import ConversationStore, start_turn
+from noteagent.chat.history import ConversationStore
+from noteagent.chat.session import (
+    build_graph_agent,
+    conversation_tool_steps,
+    local_checkpoints,
+)
 from noteagent.chat.tools import build_chat_tools
+from noteagent.conversations.service import ConversationService
 from noteagent.db import Base, create_engine_from_url, create_session_factory
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.prompt_eval.cases import EvalCase, case_rubric_version
@@ -67,24 +74,28 @@ def build_eval_agent(
     model,
     prompt_path: Path,
     settings: Settings,
-) -> tuple[ChatAgent, FileNoteRepository, ConversationStore, DraftStore]:
+) -> tuple[ChatAgent, FileNoteRepository, ConversationStore, DraftStore, ConversationService]:
     """Temp notes + sqlite memory + fake retriever. Same four tools as production."""
     notes = FileNoteRepository(notes_root)
     engine = create_engine_from_url("sqlite:///:memory:")
     Base.metadata.create_all(engine)
-    history = ConversationStore(create_session_factory(engine))
+    factory = create_session_factory(engine)
+    history = ConversationStore(factory)
     drafts = DraftStore(history)
     tools = build_chat_tools(notes, _FakeRetrieval(), drafts)
-    agent = ChatAgent(
+    checkpoints = local_checkpoints()
+    service = ConversationService(factory, checkpoints)
+    agent = build_graph_agent(
         model=model,
         tools=tools,
         notes=notes,
         drafts=drafts,
-        history=history,
         budget=budget_from_settings(settings),
-        prompt_path=prompt_path,
+        system_prompt=prompt_path.read_text(encoding="utf-8"),
+        service=service,
+        checkpoints=checkpoints,
     )
-    return agent, notes, history, drafts
+    return agent, notes, history, drafts, service
 
 
 def seed_notes(notes: FileNoteRepository, seed_files: dict[str, str]) -> None:
@@ -103,6 +114,7 @@ async def run_case(
     notes: FileNoteRepository,
     history: ConversationStore,
     drafts: DraftStore,
+    service: ConversationService,
     judge_model=None,
     judge_model_name: str | None = None,
     judge_prompt_path: Path = JUDGE_PROMPT_PATH,
@@ -110,21 +122,20 @@ async def run_case(
     """One user turn: seed files, stream, collect tools/draft, score. No review."""
     _logger.info("eval case start id=%s seq=%02d", case.id, seq)
     seed_notes(notes, case.seed_files)
-    record = history.create(case.id)
-    turn_id = start_turn()
-    history.append_message(record.id, "user", case.user, turn_id=turn_id)
+    record = await service.create_conversation(case.id)
     assistant_final: str | None = None
     error: str | None = None
     try:
-        async for item in agent.stream(case.user, thread_id=record.id, turn_id=turn_id):
+        async for item in agent.stream(
+            case.user, record.id, request_id=uuid.uuid4().hex
+        ):
             if item.get("event") == "assistant_final" and isinstance(item.get("data"), str):
                 assistant_final = item["data"]
     except Exception as exc:
         error = str(exc)
         _logger.exception("eval case failed id=%s", case.id)
-    pending = drafts.get(record.id)
-    draft = pending.as_dict() if pending is not None else None
-    tools = _collect_tools(history, record.id)
+    draft = await service.get_pending_draft(record.id)
+    tools = await _collect_tools(service, record.id)
     semantic_result = None
     judge_error: str | None = None
     if case.task_mode == "learning_note" and draft is not None and judge_model is not None:
@@ -196,7 +207,7 @@ async def run_eval(
     runs: list[CaseRun] = []
     for seq, case in enumerate(cases, start=1):
         with TemporaryDirectory(prefix=f"noteagent-eval-{case.id}-") as tmp:
-            agent, notes, history, drafts = build_eval_agent(
+            agent, notes, history, drafts, service = build_eval_agent(
                 Path(tmp) / "notes",
                 model=model,
                 prompt_path=prompt_path,
@@ -209,6 +220,7 @@ async def run_eval(
                 notes=notes,
                 history=history,
                 drafts=drafts,
+                service=service,
                 judge_model=judge_model,
                 judge_model_name=effective_judge_name if judge_model is not None else None,
                 judge_prompt_path=judge_prompt_path,
@@ -266,23 +278,18 @@ async def run_eval(
     return runs
 
 
-def _collect_tools(history: ConversationStore, conversation_id: str) -> list[ToolHop]:
-    """Tool stubs in created_at order. Names are the behavior-gate sequence.
-
-    ``list_messages`` is UI-only (user/assistant). Stubs live as role=tool rows
-    and are returned by ``list_persistent_after_watermark``.
-    """
-    messages = history.list_persistent_after_watermark(conversation_id)
+async def _collect_tools(
+    service: ConversationService, conversation_id: str
+) -> list[ToolHop]:
+    """Tool steps in turn order, projected from the checkpointed assistant bubbles."""
     hops: list[ToolHop] = []
-    for record in messages:
-        if record.role != "tool" or not record.tool_name:
-            continue
+    for step in await conversation_tool_steps(service, conversation_id):
         hops.append(
             ToolHop(
-                name=record.tool_name,
-                arguments=record.tool_arguments or "",
-                output_preview=record.output_preview or "",
-                status=record.status,
+                name=str(step.get("name") or ""),
+                arguments=str(step.get("arguments") or ""),
+                output_preview=str(step.get("preview") or ""),
+                status=step.get("status"),
             )
         )
     return hops

@@ -9,6 +9,10 @@ class RequestModel(BaseModel):
     question: str
     conversation_id: str | None = None
     thread_id: str | None = None
+    # Client-supplied idempotency key; a duplicate is accepted at most once.
+    request_id: str | None = None
+    # Optional guard: refuse the turn when the conversation revision has moved on.
+    expected_revision: int | None = None
 
 # 
 class ReviewRequest(BaseModel):
@@ -18,6 +22,7 @@ class ReviewRequest(BaseModel):
     action: str
     write_action: str | None = None
     file_name: str | None = None
+    expected_revision: int | None = None
 
 
 class DraftContentRequest(BaseModel):
@@ -25,6 +30,7 @@ class DraftContentRequest(BaseModel):
 
     thread_id: str
     content: str
+    expected_revision: int | None = None
 
     @field_validator("content")
     @classmethod

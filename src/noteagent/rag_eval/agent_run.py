@@ -13,6 +13,7 @@ import logging
 import re
 import shutil
 import time
+import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,8 +22,15 @@ from noteagent.bootstrap.settings import Settings
 from noteagent.chat.agent import ChatAgent
 from noteagent.chat.context_budget import budget_from_settings
 from noteagent.chat.drafts import WRITE_ACTIONS, DraftStore
-from noteagent.chat.history import ConversationStore, start_turn
+from noteagent.chat.history import ConversationStore
+from noteagent.chat.session import (
+    build_graph_agent,
+    conversation_tool_steps,
+    local_checkpoints,
+    seed_dialogue,
+)
 from noteagent.chat.tools import build_chat_tools
+from noteagent.conversations.service import ConversationService
 from noteagent.db import Base, create_engine_from_url, create_session_factory
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.rag_eval.dataset import AgentCase, Corpus, QueryCase
@@ -180,7 +188,7 @@ def build_sandbox(
     model,
     settings: Settings,
     prompt_path: Path,
-) -> tuple[ChatAgent, DraftStore, ConversationStore, FileNoteRepository, RecordingRetrieval]:
+) -> tuple[ChatAgent, DraftStore, ConversationStore, FileNoteRepository, RecordingRetrieval, ConversationService]:
     """Create an isolated agent for one case: own notes, own index, own history."""
     notes_root = case_dir / "notes"
     _copy_corpus_notes(corpus, notes_root)
@@ -209,39 +217,42 @@ def build_sandbox(
     retrieval = RecordingRetrieval(service, lookup, corpus)
     engine = create_engine_from_url("sqlite:///:memory:")
     Base.metadata.create_all(engine)
-    history = ConversationStore(create_session_factory(engine))
+    factory = create_session_factory(engine)
+    history = ConversationStore(factory)
     drafts = DraftStore(history)
-    agent = ChatAgent(
+    checkpoints = local_checkpoints()
+    conversations = ConversationService(factory, checkpoints)
+    agent = build_graph_agent(
         model=model,
         tools=build_chat_tools(notes, retrieval, drafts),
         notes=notes,
         drafts=drafts,
-        history=history,
         budget=budget_from_settings(settings),
+        system_prompt=prompt_path.read_text(encoding="utf-8"),
+        service=conversations,
+        checkpoints=checkpoints,
         retrieval=retrieval,
-        prompt_path=prompt_path,
     )
-    return agent, drafts, history, notes, retrieval
+    return agent, drafts, history, notes, retrieval, conversations
 
 
-def attach_tool_stubs(outcome: CaseOutcome, history: ConversationStore, conversation_id: str) -> None:
-    """Use the persisted tool rows as the trajectory of record.
+def attach_tool_stubs(outcome: CaseOutcome, steps: list[dict]) -> None:
+    """Use the checkpointed tool steps as the trajectory of record.
 
     The stream's ``tool`` event fires while the model is still emitting arguments, so it
-    can carry ``{}``; the stub is written after execution with the full arguments and the
-    real status. Names must agree, otherwise it is a harness bug and is recorded as one.
+    can carry ``{}``; the persisted step is written after execution with the full
+    arguments and the real status. Names must agree, otherwise it is a harness bug and
+    is recorded as one.
     """
-    stubs: list[ToolStub] = []
-    for record in history.list_persistent_after_watermark(conversation_id):
-        if record.role != "tool" or not record.tool_name:
-            continue
-        stubs.append(
-            ToolStub(
-                name=record.tool_name,
-                arguments=record.tool_arguments or "",
-                status=record.status,
-            )
+    stubs: list[ToolStub] = [
+        ToolStub(
+            name=str(step.get("name") or ""),
+            arguments=str(step.get("arguments") or ""),
+            status=step.get("status"),
         )
+        for step in steps
+        if step.get("name")
+    ]
     if not stubs:
         if outcome.tools:
             outcome.error = "harness: tool events seen but no tool stub persisted"
@@ -287,26 +298,25 @@ async def run_case(
         scenario=case.scenario,
         repeat_index=repeat_index,
     )
-    agent, drafts, history, notes, retrieval = build_sandbox(
+    agent, drafts, history, notes, retrieval, conversations = build_sandbox(
         case_dir=case_dir, corpus=corpus, model=model, settings=settings, prompt_path=prompt_path
     )
-    record = history.create(case.id)
-    # 前置对话按「一问一答一个 turn」写入，turn_id 必须是真实 UUID，否则短记忆打包会拒绝。
-    for index in range(0, len(case.pre_dialogue), 2):
-        pre_turn = start_turn()
-        for role, content in case.pre_dialogue[index : index + 2]:
-            history.append_message(record.id, role, content, turn_id=pre_turn)
-    turn_id = start_turn()
-    history.append_message(record.id, "user", case.user, turn_id=turn_id)
+    record = await conversations.create_conversation(case.id)
+    # 前置对话按「一问一答一个 turn」写入 checkpoint；turn_id 由 seed 生成为 UUID，
+    # 否则短记忆打包会拒绝。
+    if case.pre_dialogue:
+        await seed_dialogue(conversations, record.id, list(case.pre_dialogue))
 
     loop = asyncio.get_running_loop()
     last_activity = loop.time()
     try:
-        async for event in agent.stream(case.user, thread_id=record.id, turn_id=turn_id):
+        async for event in agent.stream(
+            case.user, record.id, request_id=uuid.uuid4().hex
+        ):
             kind = event.get("event")
             data = event.get("data")
             if kind == "tool" and isinstance(data, dict):
-                # 流式阶段的 tool 事件可能只带部分参数，真正的参数以落库的 stub 为准。
+                # 流式阶段的 tool 事件可能只带部分参数，真正的参数以落库的 step 为准。
                 outcome.tools.append(str(data.get("name") or ""))
             elif kind == "assistant_final" and isinstance(data, str):
                 outcome.final_answer = data
@@ -322,15 +332,15 @@ async def run_case(
         outcome.error = f"{type(exc).__name__}: {exc}"
         _logger.exception("agent case failed id=%s repeat=%d", case.id, repeat_index)
 
-    pending = drafts.get(record.id)
+    pending = await conversations.get_pending_draft(record.id)
     if pending is not None and outcome.draft is None:
-        outcome.draft = pending.as_dict()
-    if pending is not None and pending.action in WRITE_ACTIONS:
-        result = agent.review(record.id, "approve")
+        outcome.draft = dict(pending)
+    if pending is not None and pending.get("action") in WRITE_ACTIONS:
+        result = await agent.review(record.id, "approve")
         outcome.committed = result.get("status") == "written"
         _logger.info("case %s draft applied result=%s", case.id, result)
 
-    attach_tool_stubs(outcome, history, record.id)
+    attach_tool_stubs(outcome, await conversation_tool_steps(conversations, record.id))
     attach_searches(outcome, retrieval)
     outcome.checks = evaluate_checks(
         case,

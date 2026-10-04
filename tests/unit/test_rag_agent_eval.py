@@ -328,35 +328,19 @@ def test_attach_searches_flags_a_harness_mismatch():
 
 
 def test_attach_tool_stubs_prefers_the_persisted_arguments():
-    from noteagent.chat.history import ConversationStore, start_turn
-    from noteagent.db import Base, create_engine_from_url, create_session_factory
-
     from noteagent.rag_eval.agent_run import attach_tool_stubs
 
-    engine = create_engine_from_url("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    history = ConversationStore(create_session_factory(engine))
-    conv = history.create("t")
-    turn = start_turn()
-    history.append_tool_stub(
-        conv.id,
-        turn_id=turn,
-        tool_name="read_file",
-        arguments='{"file_name": "Alpha.md"}',
-        output="{}",
-        status="ok",
-        stub_preview_tokens=100,
-        args_preview_chars=100,
-    )
+    steps = [
+        {"name": "read_file", "arguments": '{"file_name": "Alpha.md"}', "status": "ok"}
+    ]
     outcome = _outcome(tools=["read_file"])
-    attach_tool_stubs(outcome, history, conv.id)
+    attach_tool_stubs(outcome, steps)
     assert outcome.tools == ["read_file"]
     assert '"Alpha.md"' in outcome.tool_arguments[0]
     assert outcome.error is None
 
     orphan = _outcome(tools=["read_file"])
-    empty = history.create("empty")
-    attach_tool_stubs(orphan, history, empty.id)
+    attach_tool_stubs(orphan, [])
     assert "harness" in (orphan.error or "")
 
 
