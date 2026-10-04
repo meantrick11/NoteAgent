@@ -117,7 +117,11 @@ Chat 的会话删除 overlay（`.modal-overlay` + `deleteOverlay`）与 Document
 
 进页 `GET /conversations`；点会话 `GET /conversations/{id}/messages` 画气泡，再 `GET /conversations/{id}` 把 `pending_draft` 送进右侧面板的草稿模式。发一句立刻画 user 气泡和空 assistant。读 SSE：`conversation` → `thinking` / `think` / `tool` / `tool_done` / `generating`（过程排 live 也可展开；当前步英文闪烁）→ `token`（marked，并把该条消息内的 `[[cite:N]]` 绘成蓝色上标 ①，编号按该条首次出现为 1..n）→ 可选 `sources` / `draft`。结束后有工具则为 `Explored 2 files, 1 search` 这类英文汇总 + ▼；无工具不留过程排。点 ① 时聊天区收窄，右侧 textarea 打开该笔记（无预览）；检索片段用选区定位。切到另一个会话时侧栏按 `conversation_id` 快照（含未保存缓冲），互不顶替；关页或进 Documents 时若有未保存出处再确认。保存/Ctrl+S 走 `PUT /notes/{path}`，与 Documents 一样先删旧向量再整篇索引。关闭、Escape、切到 Documents 时若未保存先确认。无删除。`isStreaming` 时不能连发。
 
-审批区在同一个右侧面板里，不占用聊天气泡。`draft` SSE 与恢复会话都打开面板的草稿模式：徽标「待审批草稿」，标题为「动作 · 目标文件」，同一个 textarea 显示并编辑草稿正文，textarea 下方是确认语与常驻的 保存草稿 / 同意追加·覆盖·删除·新建 / 更多操作 / 拒绝。覆盖方式收进「更多操作」菜单（追加到笔记、新建笔记），选中后只渲染那一种表单（追加的目标选择或新建的文件名输入），两个表单不会同时占位；菜单用 `aria-haspopup` / `aria-expanded`，打开时焦点进菜单，Escape 只收菜单并把焦点还给触发器，不会顺手关掉面板。create 与 append 才有「更多操作」，replace 与 delete 没有（与改动前的卡片一致，没有静默移除入口）；delete 无正文，正文为空时保存按钮禁用。草稿编辑只改 `conversations.pending_draft`（`PUT /chat/draft`），**不写 Markdown**；批准/拒绝时若正文未保存，先保存成功再 `POST /chat/review`，保存失败不审批旧版本。审批或拒绝成功后清掉该会话的草稿模式：本会话没有引用内容就关闭面板，有引用则回到引用模式。两种模式共用 textarea，同一时刻只显示一种，模式与缓冲随 `conversation_id` 快照；被引用面板以外的会话收到的草稿不写可见面板，切回该会话时由 `GET /conversations/{id}` 恢复。请求进行中常驻按钮、菜单项与表单提交一起禁用，避免重复提交。
+审批区位于右侧笔记面板。`draft` SSE 与会话详情恢复都打开草稿模式，展示动作、目标文件及可编辑正文。新建草稿点击顶部笔记名更名，Enter/失焦确认本地编辑，Esc 取消；顶部“保存草稿”及审批前自动保存通过 `PUT /chat/draft` 将正文和新建目标名一起写入 checkpoint，不写 Markdown 或索引。底部直接提供同意新建（其他动作对应同意追加/覆盖/删除）、拒绝；create/append 另提供“追加到笔记”，展开目标选择后单独确认，不再提供更多操作菜单或底部新建名字表单。
+
+保存和审批期间锁住面板正文、更名、保存快捷键及动作按钮；保存结束恢复原 busy 状态，不能提前解除审批的锁。过期 revision 或运行占用拒绝写入并保留编辑内容。审批成功后清除草稿状态，必要时回到引用模式；失败保留草稿及原因。面板缓冲按 conversation_id 隔离，迟到请求不能覆盖另一会话。
+
+用户消息通过服务端 editable/reason 决定编辑资格，流式回复完成后同步真实权限。点击编辑时原消息正文与编辑区互斥显示；编辑区在原气泡中按全文及视口宽度自动展开，无内部滚动条。提交先只读预览，所有回退都等待明确确认；确认后笔记恢复、受影响 RAG 修复、活动 checkpoint 发布完成，再发送 prepared turn 重新推理。详见 [checkpoint-resume.md](../chat/checkpoint-resume.md) 和 [recovery.md](../recovery/recovery.md)。
 
 草稿字段与动作语义见 [chat-tools.md](../../02-api/chat-tools.md)。
 

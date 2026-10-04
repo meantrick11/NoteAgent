@@ -1,7 +1,7 @@
 # 聊天工具（现行契约）
 
-> 以代码为准。描述 Agent 四个 `@tool`、何时调用、参数与返回、以及人审后如何落盘。工具见 [architecture.md §5.3.2](../01-architecture/architecture.md#532-工具与系统提示)；人审落盘见 [§5.4](../01-architecture/architecture.md#54-草稿与人审)。\
-> 工具 hop、stub 截断、Runtime vs Persistent 见 [context-management.md §7.1](../03-modules/chat/context-management.md#71-工具循环与-stub-截断)。\
+> 以代码为准。描述 Agent 四个 `@tool`、何时调用、参数与返回、以及人审后如何落盘。执行装配见 [architecture.md](../01-architecture/architecture.md)，人审与恢复见 [recovery.md](../03-modules/recovery/recovery.md)。\
+> 工具 hop、stub 截断、Runtime vs Persistent 见 [context-management.md](../03-modules/chat/context-management.md)。\
 > 切块、Chroma 点、审批后同步见 [retrieval.md](../03-modules/retrieval/retrieval.md)。
 
 > 关联文档：行为门与判定口径 [evals/prompt/README.md](../../evals/prompt/README.md)；生成提示词准则 [note-quality.md](../../evals/criteria/note-quality.md)；工具使用问题的取证见 [rag-v1-report.md](../../evals/reports/rag-v1-report.md) §4。
@@ -9,7 +9,7 @@
 | 项 | 内容 |
 |---|---|
 | 装配 | [`build_chat_tools`](../../src/noteagent/chat/tools.py) → `ChatAgent` `bind_tools` |
-| 落盘 | 仅 [`commit_review`](../../src/noteagent/chat/drafts.py)；工具函数不 `open()` 笔记 |
+| 落盘 | 正式审批经 `ChatAgent.review` → `NoteMutationService`；commit_review 仅兼容路径，工具不写 notes |
 | 意图门 | [`prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt) Task；无单独分类器服务 |
 
 ---
@@ -20,9 +20,9 @@
 
 - LLM 只出提案或问答；禁止在回复里声称已经写入或删除文件。
 - `list_files` / `read_file` / `search_relative_from_chromadb` **只读**。
-- `propose_note` 只把一份 [`NoteDraft`](../../src/noteagent/chat/drafts.py) 写入该会话的 [`DraftStore`](../../src/noteagent/chat/drafts.py)（`conversations.pending_draft`），**不写磁盘、不写 Chroma**。
-- 磁盘只在用户审批后的 `commit_review` → `_write_draft`：`FileNoteRepository.create` / `write` / `delete`。
-- 审批写盘成功后同步该文件的 Chroma 点（先删旧再索引；`delete` 只删向量）。失败不回滚 Markdown。手动 [`scripts/index_notes.py`](../../scripts/index_notes.py) 仍可用。
+- `propose_note` 在 graph 工具节点的 DraftWorkspace 中生成提案，再保存为 checkpoint 的 pending_draft；不写正文或 Chroma。
+- 正式审批由 ChatAgent.review 和 ConversationService 校验运行占用及版本，走统一 NoteMutationService 记录前像、写盘、影子 Git 与索引维修，清稿发布前保留 approval 维护记录。
+- 索引由 IndexRepairService 按文件维修，检索校验正文哈希和当前索引配置，拒绝陈旧片段。故障与重启处理见 recovery.md；不能把正文已写当作索引已完成。
 
 路径规则在 [`FileNoteRepository._resolve`](../../src/noteagent/notes/repository.py)：拒绝空名、绝对路径、`..`、两层以上目录；允许一层 `Folder/Note.md`。工具侧把异常收成 `{error: str}`。
 
@@ -32,37 +32,20 @@
 
 ```mermaid
 flowchart TD
-  user[用户 POST /chat]
-  hop[bind_tools astream]
-  noTool{有 tool_calls?}
-  invoke[tool.ainvoke]
-  propose{是 propose_note?}
-  draft[DraftStore.put]
-  reply[token 与 assistant_final]
-  sse[SSE draft]
-  pane[Assistant 引用面板草稿模式]
-  review[POST /chat/review]
-  disk[_write_draft 写 notes/]
-  user --> hop --> noTool
-  noTool -->|否| reply
-  noTool -->|是| invoke --> propose
-  propose -->|否 只读工具| hop
-  propose -->|是| draft --> hop
-  hop -->|本 Turn 结束且有 pending| sse --> card --> review
-  review -->|approve 或 override| disk
-  disk --> chroma[按 file_name 同步 Chroma]
-  review -->|reject| drop[不写盘不改向量]
+  U[用户 POST /chat] --> G[LangGraph 上下文打包与压缩]
+  G --> M[模型调用]
+  M -->|只读工具| T[工具节点] --> G
+  M -->|提案| D[DraftWorkspace 提案] --> C[checkpoint 保存草稿]
+  C --> P[右侧面板编辑正文与新建目标名]
+  P -->|保存草稿| C
+  P -->|拒绝| R[发布清稿 checkpoint 不写正文]
+  P -->|同意或追加确认| V[校验 revision 与运行占用]
+  V --> W[统一 mutation 写正文及影子 Git]
+  W --> I[按文件索引维修]
+  I --> H[清稿发布与维修状态反馈]
 ```
 
-实现要点（[`agent.py`](../../src/noteagent/chat/agent.py) `stream`）：
-
-- 每 hop：`pack_now()` → 可选压缩 → 未用过工具则 `thinking` 否则 `generating` → `bound.astream`。无 `tool_calls` 则吐 token 并结束。
-- 有调用则 `astream` 中带 name 即推 `tool`，再 `tool_map[name].ainvoke(args)`，结果 `json.dumps` 进 Runtime `ToolMessage`，并立刻 `append_tool_stub`。
-- 工具轮数 ≥ `ContextBudget.max_tool_hops`（环境 `CHAT_MAX_TOOL_HOPS`，默认 8）则打断。细节见 context-management §7.1。
-- 循环结束后若 `drafts.get(thread_id)` 非空，yield SSE `event: draft`，data 为 `NoteDraft.as_dict()`。
-- `propose_note` 依赖 `current_thread_id`（`stream` 入口写入）。无 thread 则工具返回 `{error: "no thread_id"}`，不放草稿。
-
-前端不把 tool stub 画成独立气泡。过程排在助手气泡外：live 可展开；进行中 ing，完成后 Thought / Read / Searched；有工具则标题 Explored 汇总，无工具结束藏排。Thought 可展开该 hop 过渡文字（不入库）。主气泡只有最终 assistant。
+图执行节点见 chat/session.py 和 chat/nodes.py。完整 UI 历史与压缩工作上下文分别保存；工具存根作为助手的 tool_steps 展示，不读旧消息表作为正式状态。每次模型调用前打包上下文，必要时压缩；max_tool_hops 限制保持不变。工具节点在 DraftWorkspace 中执行提案并在继续模型调用前持久保存。
 
 ---
 
@@ -119,7 +102,7 @@ flowchart TD
 
 **片段始终自带定位信息**：`file_name`、`heading_path`、`start_char`/`end_char` 来自向量点 metadata（见 [retrieval.md](../03-modules/retrieval/retrieval.md) §4），与 registry 是否存在无关——模型不必解析 `source_id` 去猜文件名或章节。`source_id` 反过来仍然只是服务端编号，用来把答案里的 `[[cite:N]]` 映射回 `file_name` / `chunk_index` / `quote`。
 
-未索引或空库时 fragments 可为空列表，不算工具实现错误；**空结果是"没检索到"，与工具执行错误（`{error}`）是两种状态**。点上的 `file_name` / `distance` 与审批后如何写入见 [retrieval.md](../03-modules/retrieval/retrieval.md)。最终答案里真正出现的引用才写入该条 assistant 的 `messages.citations`，编号按该条正文首次出现重排为 1..n。渲染见 [frontend.md](../03-modules/frontend/frontend.md)。
+未索引或空库时 fragments 可为空列表，不算工具实现错误；**空结果是"没检索到"，与工具执行错误（`{error}`）是两种状态**。点上的 `file_name` / `distance` 与审批后如何写入见 [retrieval.md](../03-modules/retrieval/retrieval.md)。最终答案里真正出现的引用才写入该条 assistant 的 checkpoint 展示消息 citations，编号按该条正文首次出现重排为 1..n。渲染见 [frontend.md](../03-modules/frontend/frontend.md)。
 
 ### 4.4 `propose_note`
 
@@ -148,11 +131,11 @@ flowchart TD
 
 ## 5. `action` 与落盘
 
-审批通过后 `_write_draft`（仍不调 LLM）：
+审批通过后由 NoteMutationService 按动作写入（不调 LLM，操作有持久身份、前像及影子版本）：
 
 | action | 提案时文件 | content | 落盘 |
 |--------|------------|---------|------|
-| `create` | 必须不存在 | 必填；不要一级标题（`create` 会先写 `#` + 无扩展名的文件名） | `notes.create` 然后 `write(append=True)` |
+| `create` | 必须不存在 | 必填；不要一级标题（`create` 会先写 `#` + 无扩展名的文件名） | CREATE mutation，写标题和正文，异常按前像补偿 |
 | `append` | 必须存在 | 必填；不要一级标题 | `write(append=True)` |
 | `replace` | 必须存在 | 必填；整份新正文，含原有一级标题 | `write(append=False)` |
 | `delete` | 必须存在 | 可空 | `notes.delete`（`unlink`） |
@@ -163,33 +146,19 @@ flowchart TD
 
 ## 6. 人审
 
-HTTP：`POST /chat/review`，body [`ReviewRequest`](../../src/noteagent/chat/schemas.py)：`thread_id`、`action`；override 时再加 `write_action`、`file_name`。路由转到 `ChatAgent.review` → `commit_review`。
+HTTP：`POST /chat/review` 接收 thread_id、action、expected_revision；override 再提供 write_action 和 file_name。正式 checkpoint 会话走 ChatAgent.review → ConversationService.review_pending_draft → NoteMutationService；生产 legacy 会话须先迁移，不能旁路写盘。
 
-`commit_review` 先 `store.pop`：
+| action | 行为 |
+|---|---|
+| reject | 发布清稿 checkpoint，返回 rejected，不写 notes/向量 |
+| approve | 使用已保存草稿的 action 和 file_name，经统一写入口落盘 |
+| override | 校验 write_action/file_name；当前 UI 仅用于追加到所选笔记 |
 
-| `action` | 行为 |
-|----------|------|
-| `reject` | `{status: "rejected"}`，不写盘 |
-| `approve` | 用草稿的 `action` 与 `file_name` |
-| `override` | `write_action` 必须 ∈ `WRITE_ACTIONS` 且带 `file_name`；否则把 draft 放回，`{error: "override requires write_action and file_name"}` |
-| 其它 | 放回 draft，`{error: "unknown action ..."}` |
+PUT /chat/draft 接收 thread_id、content、expected_revision，可选 file_name（仅 create），只编辑 checkpoint 草稿。文件名按仓库路径规则规范化；非法路径/非 create 更名返回 422，过期版本或运行占用返回 409。保存不写正文，批准后才写入新名。
 
-写盘失败（`OSError`，含 `PermissionError` / `FileNotFoundError` / `FileExistsError`；以及 `ValueError`，含 `NotePathError`）同样放回 draft，返回 `{error}`。草稿一定保留在 `pending_draft`，但不保证文件原子性：`create` 先建标题再追加正文，中途失败会残留标题文件。
+右侧面板：顶部新建笔记名可点击编辑；底部同意、拒绝、追加到笔记直接可见，追加需选择目标再确认。replace/delete 没有追加入口。保存/审批锁住编辑和快捷键，审批前先保存未提交正文及文件名，失败不审批旧版本。成功清稿，失败保留内容和原因，异步响应按会话隔离。
 
-成功：`{status: "written", action: target_action, file_name}`（delete 也用 `written`，不是另起 status）。
-
-前端 Assistant 引用面板的草稿模式（[`DraftActions.vue`](../../frontend/src/features/chat/DraftActions.vue)）：
-
-- `append` / `create`：同意追加/新建、改为追加到所选文件、改为新建文件、拒绝。
-- `replace`：同意覆盖、拒绝；无 override 按钮。
-- `delete`：同意删除、拒绝；无正文，正文为空时「保存草稿」禁用。
-- 保存草稿：`PUT /chat/draft` 只改 `conversations.pending_draft` 的正文，成功后用响应里的 canonical 草稿刷新面板；失败保留编辑内容与未保存状态。
-- `sendReview`：`status === "written"` 且 `action === "delete"` 显示「已删除」，否则「已写入」；成功后清掉该会话的草稿模式。正文有未保存修改时先保存成功再审批，保存失败不审批旧版本。
-- 打开会话时 `GET /conversations/{id}` 若有 `pending_draft` 就打开草稿模式；同会话已有的未保存缓冲优先，不被服务端旧快照覆盖。
-
-后端 override 虽允许 `write_action` 为 replace/delete，当前面板不会发出这两种 override。
-
-`DraftStore` 写 `conversations.pending_draft`。重启或切会话后未审稿仍在；已审批列为空，不再进草稿模式。
+正文写入、Git、应用数据库、saver 与 Chroma 不组成单个事务；以持久操作记录、approval 维护与索引维修协调。Git 失败恢复前像；已写正文但清稿发布中断时启动流程补完同一审批；索引故障记录维修且阻止陈旧检索。详细状态与重试见 [recovery.md](../03-modules/recovery/recovery.md)，不能沿用旧 commit_review“先 pop、失败 put 回、可能残留标题”的描述。
 
 ---
 
@@ -207,7 +176,9 @@ HTTP：`POST /chat/review`，body [`ReviewRequest`](../../src/noteagent/chat/sch
 |------|------|
 | [`chat/tools.py`](../../src/noteagent/chat/tools.py) | 四个工具 |
 | [`chat/drafts.py`](../../src/noteagent/chat/drafts.py) | schema、DraftStore、`commit_review` |
-| [`chat/agent.py`](../../src/noteagent/chat/agent.py) | hop 循环、SSE draft、`review` |
+| [`chat/agent.py`](../../src/noteagent/chat/agent.py) | 正式图执行 facade、checkpoint 草稿审批 |
+| [`chat/session.py`](../../src/noteagent/chat/session.py)、[`chat/nodes.py`](../../src/noteagent/chat/nodes.py) | 图装配、上下文、模型和工具节点 |
+| [`notes/mutations.py`](../../src/noteagent/notes/mutations.py) | 正式正文写入与持久操作 |
 | [`chat/router.py`](../../src/noteagent/chat/router.py) | `GET /conversations/{id}`、`POST /chat`、`PUT /chat/draft`、`POST /chat/review` |
 | [`chat/schemas.py`](../../src/noteagent/chat/schemas.py) | `ReviewRequest`、`DraftContentRequest`、`ConversationDetailOut` |
 | [`prompts/system.txt`](../../src/noteagent/chat/prompts/system.txt) | 意图门与七条质量约束（现行 v9） |
