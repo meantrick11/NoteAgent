@@ -78,6 +78,14 @@ export interface ChatMessage {
   traceLabel: string
   /** 这一轮归属的会话键；新会话拿到正式 id 后会就地改写。 */
   ownerKey: string
+  /** 服务端消息 id；乐观行为 null，收到 user_message 后换成正式 id。 */
+  id: string | null
+  turnId: string | null
+  /** 客户端幂等键，用于把乐观行替换成服务端身份（不按文本或下标匹配）。 */
+  requestId: string | null
+  /** 可回退编辑能力；阶段 B 未完成前始终为 false。 */
+  editable: boolean
+  editUnavailableReason: string | null
 }
 
 let messageSeq = 0
@@ -93,7 +101,26 @@ function newMessage(role: 'user' | 'assistant', content: string): ChatMessage {
     live: false,
     traceLabel: '',
     ownerKey: '',
+    id: null,
+    turnId: null,
+    requestId: null,
+    editable: false,
+    editUnavailableReason: null,
   }
+}
+
+/** 编辑入口的禁用原因；可编辑时返回 null。 */
+export function editUnavailableMessage(message: ChatMessage): string | null {
+  if (message.editable) return null
+  return message.editUnavailableReason ?? '历史消息暂不支持编辑'
+}
+
+/** 一轮请求的幂等键；服务端原样回传，用来替换乐观行的身份。 */
+function newRequestId(): string {
+  const cryptoObj = globalThis.crypto
+  if (cryptoObj && typeof cryptoObj.randomUUID === 'function') return cryptoObj.randomUUID()
+  messageSeq += 1
+  return `req-${Date.now()}-${messageSeq}`
 }
 
 /** 提交审批动作的中文名。 */
@@ -259,6 +286,10 @@ export const useChatStore = defineStore('chat', () => {
 
   function fromServerMessage(item: Message): ChatMessage {
     const message = newMessage(item.role === 'user' ? 'user' : 'assistant', item.content ?? '')
+    message.id = item.id
+    message.turnId = item.turn_id ?? null
+    message.editable = item.editable === true
+    message.editUnavailableReason = item.edit_unavailable_reason ?? null
     message.citations = item.citations ?? []
     message.toolSteps = (item.tool_steps ?? []).map((step) => ({
       name: step.name,
@@ -625,13 +656,17 @@ export const useChatStore = defineStore('chat', () => {
     turn.live = true
     turn.traceLabel = 'Thinking...'
     turn.ownerKey = citePaneKey(currentId.value)
-    messages.value = [...messages.value, newMessage('user', text)]
+    const requestId = newRequestId()
+    const userRow = newMessage('user', text)
+    userRow.requestId = requestId
+    userRow.ownerKey = turn.ownerKey
+    messages.value = [...messages.value, userRow]
     liveTurn.value = turn
     const accumulator = new TurnAccumulator()
 
     let outcome: SendOutcome = 'sent'
     try {
-      const response = await api.openChatStream(text, currentId.value)
+      const response = await api.openChatStream(text, currentId.value, requestId)
       if (!response.ok) {
         const payload = await readJsonBody(response)
         const detail =
@@ -677,6 +712,19 @@ export const useChatStore = defineStore('chat', () => {
       else stashDraftForConversation(turn.ownerKey, event.draft)
       return
     }
+    if (event.type === 'user_message') {
+      // 按客户端幂等键替换乐观行，不靠文本或下标匹配。
+      const requestId = event.requestId
+      if (requestId) {
+        messages.value = messages.value.map((item) =>
+          item.requestId === requestId
+            ? { ...item, id: event.messageId, turnId: event.turnId }
+            : item,
+        )
+      }
+      return
+    }
+    if (event.type === 'turn_complete') return
     if (event.type === 'unknown') return
 
     accumulator.apply(event)

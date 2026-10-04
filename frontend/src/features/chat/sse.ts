@@ -95,10 +95,28 @@ export type ChatStreamEvent =
   | { type: 'sources'; citations: Citation[] }
   | { type: 'answer'; text: string }
   | { type: 'token'; text: string }
+  | {
+      type: 'user_message'
+      messageId: string
+      turnId: string
+      runId: string
+      requestId: string
+      stateRevision: number | null
+    }
+  | {
+      type: 'turn_complete'
+      status: string | null
+      checkpointId: string | null
+      stateRevision: number | null
+    }
   | { type: 'unknown'; event: string }
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : ''
+}
+
+function asNumberOrNull(value: unknown): number | null {
+  return typeof value === 'number' ? value : null
 }
 
 /**
@@ -146,6 +164,27 @@ export function decodeChatEvent(raw: RawSseEvent): ChatStreamEvent {
       return typeof data === 'string'
         ? { type: 'token', text: data }
         : { type: 'unknown', event }
+    case 'user_message': {
+      const record = isRecord(data) ? data : {}
+      if (typeof record.message_id !== 'string') return { type: 'unknown', event }
+      return {
+        type: 'user_message',
+        messageId: record.message_id,
+        turnId: asString(record.turn_id),
+        runId: asString(record.run_id),
+        requestId: asString(record.request_id),
+        stateRevision: asNumberOrNull(record.state_revision),
+      }
+    }
+    case 'turn_complete': {
+      const record = isRecord(data) ? data : {}
+      return {
+        type: 'turn_complete',
+        status: typeof record.status === 'string' ? record.status : null,
+        checkpointId: typeof record.checkpoint_id === 'string' ? record.checkpoint_id : null,
+        stateRevision: asNumberOrNull(record.state_revision),
+      }
+    }
     default:
       return { type: 'unknown', event }
   }

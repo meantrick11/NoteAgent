@@ -5,10 +5,14 @@ import type { Citation } from '@/shared/api/types'
 import { citationMap, localizeCitations, renderAssistantHtml } from './citations'
 import type { ChatMessage } from './store'
 import ToolTrace from './ToolTrace.vue'
+import UserMessageActions from './UserMessageActions.vue'
 
 const props = defineProps<{ messages: ChatMessage[]; welcome: boolean }>()
 
-const emit = defineEmits<{ (event: 'cite', payload: Citation): void }>()
+const emit = defineEmits<{
+  (event: 'cite', payload: Citation): void
+  (event: 'edit', message: ChatMessage): void
+}>()
 
 /**
  * 每条消息都有自己的编号空间，所以引用表要按消息算。
@@ -67,6 +71,11 @@ function onBodyClick(message: ChatMessage, index: number, event: MouseEvent): vo
           ></div>
           <div v-else class="msg-body">{{ message.content }}</div>
         </div>
+        <UserMessageActions
+          v-if="message.role === 'user'"
+          :message="message"
+          @edit="(target) => emit('edit', target)"
+        />
       </div>
     </div>
   </div>

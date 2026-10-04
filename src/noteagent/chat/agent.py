@@ -94,6 +94,7 @@ class ChatAgent:
                 "message_id": prepared.user_message_id,
                 "turn_id": prepared.turn_id,
                 "run_id": prepared.run_id,
+                "request_id": prepared.request_id,
                 "state_revision": prepared.generation,
             },
         }

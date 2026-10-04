@@ -348,7 +348,7 @@ class ConversationService:
             return await self._accept_turn(
                 conversation_id, question, branch_id, generation, run_id,
                 turn_id, user_message_id, before_checkpoint_id,
-                lease_token,
+                lease_token, request_id,
             )
         except BaseException:
             # An unpublished candidate is harmless history. Only remove a claim
@@ -364,7 +364,8 @@ class ConversationService:
             raise
 
     async def _accept_turn(self, conversation_id, question, branch_id, generation,
-                           run_id, turn_id, user_message_id, before_checkpoint_id, lease_token):
+                           run_id, turn_id, user_message_id, before_checkpoint_id,
+                           lease_token, request_id):
         before_config = thread_config(conversation_id, before_checkpoint_id)
         values = dict((await self.read_state(before_config)).values)
         user_record = MessageRecord(
@@ -440,6 +441,7 @@ class ConversationService:
             user_message_id=str(user_message_id),
             generation=generation,
             run_id=run_id,
+            request_id=request_id,
             before_config=before_config,
             config=saved,
             head_config=saved,
@@ -478,7 +480,7 @@ class ConversationService:
             prepared = PreparedTurn(
                 conversation_id=str(run.conversation_id), branch_id=str(run.branch_id),
                 turn_id=str(run.turn_id), user_message_id=str(run.user_message_id),
-                generation=run.generation, run_id=run_id,
+                generation=run.generation, run_id=run_id, request_id=run.request_id,
                 before_config=thread_config(str(run.conversation_id), boundary.before_checkpoint_id),
                 config=thread_config(str(run.conversation_id), run.checkpoint_id),
                 head_config=thread_config(str(run.conversation_id), branch.head_checkpoint_id),

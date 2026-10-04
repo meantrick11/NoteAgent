@@ -80,8 +80,13 @@ class MessageOut(BaseModel):
     role: str
     content: str
     created_at: datetime
+    turn_id: str | None = None
     citations: list[CitationOut] = Field(default_factory=list)
     tool_steps: list[ToolStepOut] = Field(default_factory=list)
+    # Editable only when a recoverable boundary exists; until phase B lands this is
+    # always false and edit_unavailable_reason explains why.
+    editable: bool = False
+    edit_unavailable_reason: str | None = None
 
 
 class RenameConversation(BaseModel):

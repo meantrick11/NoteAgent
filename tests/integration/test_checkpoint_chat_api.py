@@ -145,6 +145,28 @@ def test_switch_model_keeps_same_checkpoint_service(tmp_path):
     assert [m["content"] for m in messages] == ["q1", "reply-1", "q2", "reply-2"]
 
 
+def test_message_list_exposes_identity_and_edit_reasons(tmp_path):
+    app = build_checkpoint_app(
+        tmp_path, reply_batches=[["same answer", "same answer"]]
+    )
+    first = app.client.post("/chat", json={"question": "重复"})
+    conv_id = _event(_parse_sse(first.text), "conversation")[0]["id"]
+    app.client.post("/chat", json={"question": "重复", "conversation_id": conv_id})
+
+    messages = app.client.get(f"/conversations/{conv_id}/messages").json()
+    users = [m for m in messages if m["role"] == "user"]
+    assert [m["content"] for m in users] == ["重复", "重复"]
+    # Identical text still gets two distinct server identities.
+    assert len({m["id"] for m in users}) == 2
+    assert all(m["turn_id"] for m in users)
+    # Phase B is not implemented yet, so editing is disabled with a reason.
+    assert all(m["editable"] is False for m in users)
+    assert all(m["edit_unavailable_reason"] for m in users)
+
+    refreshed = app.client.get(f"/conversations/{conv_id}/messages").json()
+    assert [m["id"] for m in refreshed] == [m["id"] for m in messages]
+
+
 def test_chat_rejects_unmigrated_legacy_conversation(tmp_path):
     app = build_checkpoint_app(tmp_path, reply_batches=[])
     legacy = app.history.create("legacy")

@@ -46,8 +46,12 @@ export interface Message {
   role: string
   content: string
   created_at: string
+  turn_id?: string | null
   citations: Citation[]
   tool_steps: ToolStep[]
+  /** 可回退编辑需要持久化的安全边界；阶段 B 未完成前一律为 false。 */
+  editable?: boolean
+  edit_unavailable_reason?: string | null
 }
 
 export interface ReviewRequest {

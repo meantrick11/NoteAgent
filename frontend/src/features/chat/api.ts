@@ -49,11 +49,19 @@ export function reviewDraft(body: ReviewRequest): Promise<ReviewResult> {
 }
 
 /** POST /chat —— 返回原始响应，由调用方读取 SSE 流。 */
-export async function openChatStream(question: string, conversationId: string | null) {
+export async function openChatStream(
+  question: string,
+  conversationId: string | null,
+  requestId?: string,
+) {
   const response = await fetch('/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, conversation_id: conversationId }),
+    body: JSON.stringify({
+      question,
+      conversation_id: conversationId,
+      request_id: requestId,
+    }),
   })
   return response
 }

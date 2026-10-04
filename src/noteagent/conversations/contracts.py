@@ -40,6 +40,9 @@ class PreparedTurn:
     user_message_id: str
     generation: int
     run_id: str
+    # Idempotency key chosen for this turn; echoed to the client so an optimistic row
+    # can be replaced by the durable server identity.
+    request_id: str
     before_config: dict[str, Any]
     config: dict[str, Any]
     head_config: dict[str, Any]

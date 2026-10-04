@@ -80,6 +80,29 @@ async def get_conversation(conversation_id: str, request: Request) -> Conversati
     )
 
 
+# 消息可回退编辑需要持久化的安全边界；阶段 B 未完成前一律禁用并给出原因。
+EDIT_RECOVERY_UNAVAILABLE = "recovery_not_available"
+EDIT_NOT_MIGRATED = "history_not_migrated"
+
+
+def _message_out(message) -> MessageOut:
+    """Project one stored record into the HTTP contract, including editability."""
+    reason = None
+    if message.role == "user":
+        reason = message.edit_unavailable_reason or EDIT_RECOVERY_UNAVAILABLE
+    return MessageOut(
+        id=message.id,
+        role=message.role,
+        content=message.content,
+        created_at=message.created_at,
+        turn_id=message.turn_id,
+        citations=[CitationOut.model_validate(item) for item in (message.citations or [])],
+        tool_steps=[ToolStepOut.model_validate(item) for item in (message.tool_steps or [])],
+        editable=False,
+        edit_unavailable_reason=reason,
+    )
+
+
 #如果点击对应的对话，会触发此加载对应的聊天历史的消息
 @router.get("/conversations/{conversation_id}/messages")
 async def list_messages(conversation_id: str, request: Request) -> list[MessageOut]:
@@ -92,20 +115,13 @@ async def list_messages(conversation_id: str, request: Request) -> list[MessageO
         records = await container.conversations.list_messages(conversation_id)
     else:
         records = container.history.list_messages(conversation_id)
+        for item in records or []:
+            if item.role == "user":
+                item.edit_unavailable_reason = EDIT_NOT_MIGRATED
     if records is None:
         raise HTTPException(status_code=404, detail="conversation not found")
     _logger.info("list messages conversation=%s count=%d", conversation_id, len(records))
-    return [
-        MessageOut(
-            id=m.id,
-            role=m.role,
-            content=m.content,
-            created_at=m.created_at,
-            citations=[CitationOut.model_validate(item) for item in (m.citations or [])],
-            tool_steps=[ToolStepOut.model_validate(item) for item in (m.tool_steps or [])],
-        )
-        for m in records
-    ]
+    return [_message_out(m) for m in records]
 
 # 更改路由，如果点击重命名会到此路由，进行对话的重命名路由操作
 @router.patch("/conversations/{conversation_id}")
@@ -210,6 +226,7 @@ async def chat_with(
             "message_id": prepared.user_message_id,
             "turn_id": prepared.turn_id,
             "run_id": prepared.run_id,
+            "request_id": prepared.request_id,
             "state_revision": prepared.generation,
         },
     )
