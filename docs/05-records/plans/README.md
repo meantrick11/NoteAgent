@@ -19,7 +19,8 @@
 
 | 文件 | 状态 | 说明 |
 |---|---|---|
-| [2026-10-01-checkpoint-shadow-git-rollback.md](2026-10-01-checkpoint-shadow-git-rollback.md) | 待执行（交给 Qoder） | A：checkpoint/历史/压缩迁移与复制；B：影子 Git、统一正文写入、按文件 RAG 恢复、用户消息编辑重推理。包含模块分区、文件变化确认及共享冲突拦截 |
+| [2026-10-04-checkpoint-shadow-git-completion.md](2026-10-04-checkpoint-shadow-git-completion.md) | 阶段 A 已完成，阶段 B 待执行 | 执行记录见 [results](2026-10-04-checkpoint-shadow-git-completion-results.md)：A1—A3 提交 `deab0a7`／`730ac9f`／`fe44f3c`；后端 559、前端 130 单测 / 56 e2e、构建通过。B1—B9 未开始，编辑入口保持禁用 |
+| [2026-10-01-checkpoint-shadow-git-rollback.md](2026-10-01-checkpoint-shadow-git-rollback.md) | 部分完成，剩余执行见 2026-10-04 计划 | 原始两阶段范围与接口合同；基础及验收修复已合并，正式聊天切换与影子 Git 等尚未完成，不能视为整体已验收 |
 | [2026-09-10-learning-note-quality.md](2026-09-10-learning-note-quality.md) | 部分完成（持续） | 学习型笔记 v0.2 准则、语义 Judge、Prompt 迭代留痕已交付；l01 的加工维度仍未达合格线（现行 prompt 见 [note-quality.md](../../../evals/criteria/note-quality.md)） |
 
 V2.7 前端初始化计划的实现部分已完成（见下方"已完成"表），Tasks 1–8 逐项有验证证据。
