@@ -205,3 +205,47 @@ def test_interrupted_run_resumes_over_http_without_duplicate_user(tmp_path):
     assert messages[0]["content"] == "q"
     assert messages[1]["content"] == "answer"
     assert app.client.get(f"/conversations/{conv.id}").json()["active_run"] is None
+
+
+def test_wrong_conversation_resume_does_not_claim_run(tmp_path):
+    import asyncio
+    app = build_checkpoint_app(tmp_path, reply_batches=[["answer"]])
+    a = asyncio.run(app.service.create_conversation("A"))
+    b = asyncio.run(app.service.create_conversation("B"))
+    prepared = asyncio.run(app.service.prepare_turn(a.id, "q", "wrong-resume"))
+    app.service.interrupt_run(prepared)
+    refused = app.client.post("/chat", json={"run_id": prepared.run_id, "conversation_id": b.id})
+    assert refused.status_code == 404
+    assert app.service.get_active_run(a.id)["status"] == "interrupted"
+    resumed = app.client.post("/chat", json={"run_id": prepared.run_id, "conversation_id": a.id})
+    assert resumed.status_code == 200
+
+
+def test_stale_revision_resume_does_not_claim_run(tmp_path):
+    import asyncio
+    app = build_checkpoint_app(tmp_path, reply_batches=[["answer"]])
+    conv = asyncio.run(app.service.create_conversation("A"))
+    prepared = asyncio.run(app.service.prepare_turn(conv.id, "q", "stale-resume"))
+    app.service.interrupt_run(prepared)
+    response = app.client.post("/chat", json={
+        "run_id": prepared.run_id, "conversation_id": conv.id,
+        "expected_revision": app.service.current_revision(conv.id) - 1,
+    })
+    assert response.status_code == 409
+    assert app.service.get_active_run(conv.id)["status"] == "interrupted"
+
+
+def test_detail_reconciles_a_run_that_expired_after_startup(tmp_path):
+    import asyncio
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import update
+    from noteagent.conversations.models import ConversationRun
+    app = build_checkpoint_app(tmp_path, reply_batches=[["answer"]])
+    conv = asyncio.run(app.service.create_conversation("A"))
+    prepared = asyncio.run(app.service.prepare_turn(conv.id, "q", "expires-later"))
+    with app.service._session_factory() as session:
+        session.execute(update(ConversationRun).values(lease_expires_at=datetime.now(timezone.utc) - timedelta(seconds=1)))
+        session.commit()
+    detail = app.client.get(f"/conversations/{conv.id}").json()
+    assert detail["active_run"]["run_id"] == prepared.run_id
+    assert detail["active_run"]["status"] == "interrupted"

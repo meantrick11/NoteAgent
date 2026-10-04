@@ -10,9 +10,10 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Mapping
+from collections.abc import Callable
 
 from sqlalchemy import select, update, delete
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from noteagent.conversations.checkpoints import (
@@ -207,6 +208,7 @@ class ConversationService:
         additionally rejects a publisher whose read head is already stale.
         """
         parsed = uuid.UUID(conversation_id)
+        self._lock_conversation(session, conversation_id)
         if require_no_active_run and self._has_active_run(session, parsed):
             raise ConversationBusy(conversation_id)
         conditions = [
@@ -236,6 +238,60 @@ class ConversationService:
             ConversationRun.conversation_id == conversation_id,
             ConversationRun.status.in_(("prepared", "running", "interrupted")),
         )) is not None
+
+    def _lock_conversation(self, session: Session, conversation_id: str) -> Conversation:
+        """Serialize publishers and claimers without blocking the async event loop."""
+        try:
+            row = session.scalar(select(Conversation).where(
+                Conversation.id == uuid.UUID(conversation_id)
+            ).with_for_update(nowait=True).execution_options(populate_existing=True))
+        except OperationalError as exc:
+            if getattr(exc.orig, "sqlstate", None) == "55P03":
+                raise ConversationBusy(conversation_id) from None
+            raise
+        if row is None:
+            raise ConversationNotFound(conversation_id)
+        return row
+
+    async def review_pending_draft(
+        self, conversation_id: str, apply: Callable[[dict], dict],
+        *, expected_revision: int | None = None, allow_absent: bool = False,
+    ) -> dict:
+        """Hold the conversation row through validation, side effects and publication.
+
+        Persist the invisible cleared candidate before calling the note writer. All
+        claimers and publishers use this same nonblocking row lock. Full durable file
+        compensation on a database failure remains the notes-mutation phase's job.
+        """
+        with self._session_factory() as session:
+            conversation = self._lock_conversation(session, conversation_id)
+            if self._has_active_run(session, conversation.id):
+                raise ConversationBusy(conversation_id)
+            revision = int(conversation.revision or 0)
+            if expected_revision is not None and expected_revision != revision:
+                raise StaleConversation(conversation_id)
+            branch = self._branch(session, conversation)
+            head = branch.head_checkpoint_id
+            view = await self.read_state(thread_config(conversation_id, head))
+            draft = view.values.get("pending_draft")
+            if not draft:
+                if allow_absent:
+                    return {**apply({}), "state_revision": revision}
+                return {"error": "no pending draft"}
+            values = {**view.values, "pending_draft": None}
+            saved = await self.write_state(
+                conversation_id, values, branch_id=str(branch.id),
+                parent_checkpoint_id=head, publish=False,
+            )
+            result = apply(dict(draft))
+            if "error" in result:
+                return result
+            self._publish(
+                session, conversation_id, str(branch.id), checkpoint_id_of(saved),
+                head, conversation.generation, revision, True,
+            )
+            session.commit()
+            return {**result, "state_revision": revision + 1}
 
     async def list_messages(self, conversation_id: str) -> list[MessageRecord] | None:
         """Project the active checkpoint's display history; None when unknown."""
@@ -349,6 +405,7 @@ class ConversationService:
         Exposed on the detail endpoint so a client that lost its stream can resume the
         exact run instead of re-sending the question (which would be rejected).
         """
+        self.reconcile_expired_runs()
         try:
             parsed = uuid.UUID(conversation_id)
         except ValueError:
@@ -386,12 +443,7 @@ class ConversationService:
         lease_token = str(uuid.uuid4())
         self.reconcile_expired_runs()
         with self._session_factory() as session:
-            conversation = self._load(session, conversation_id)
-            # Serialize claimers on PostgreSQL; the partial unique index also
-            # excludes other workers and supports SQLite test/evaluation mode.
-            session.execute(select(Conversation.id).where(
-                Conversation.id == conversation.id).with_for_update())
-            session.refresh(conversation)
+            conversation = self._lock_conversation(session, conversation_id)
             if expected_revision is not None and int(conversation.revision or 0) != expected_revision:
                 raise StaleConversation(conversation_id)
             branch = self._branch(session, conversation)
@@ -538,15 +590,27 @@ class ConversationService:
             lease_token=lease_token,
         )
 
-    def resume_turn(self, run_id: str) -> PreparedTurn:
+    def resume_turn(
+        self, run_id: str, *, conversation_id: str | None = None,
+        expected_revision: int | None = None,
+    ) -> PreparedTurn:
         """Explicitly claim an interrupted run; never automatically call the model."""
         self.reconcile_expired_runs()
         with self._session_factory() as session:
+            try:
+                parsed_run = uuid.UUID(run_id)
+            except ValueError:
+                raise ConversationNotFound(run_id) from None
+            run = session.get(ConversationRun, parsed_run)
+            if run is None or (conversation_id is not None and str(run.conversation_id) != conversation_id):
+                raise ConversationNotFound(run_id)
+            conversation = self._lock_conversation(session, str(run.conversation_id))
+            if expected_revision is not None and conversation.revision != expected_revision:
+                raise StaleConversation(str(run.conversation_id))
             run = session.scalar(select(ConversationRun).where(
-                ConversationRun.id == uuid.UUID(run_id)).with_for_update())
+                ConversationRun.id == parsed_run).with_for_update().execution_options(populate_existing=True))
             if run is None:
                 raise ConversationNotFound(run_id)
-            conversation = self._load(session, str(run.conversation_id))
             branch = self._branch(session, conversation)
             if run.branch_id != branch.id or run.generation != conversation.generation:
                 raise StaleConversation(str(run.conversation_id))

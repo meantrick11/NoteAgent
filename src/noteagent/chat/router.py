@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from noteagent.chat.history import (
@@ -138,7 +139,7 @@ async def rename_conversation(
     """Rename a conversation. 404 if missing; 400 if title empty or too long."""
     history = request.app.state.container.history
     try:
-        record = history.rename(conversation_id, require.title)
+        record = await run_in_threadpool(history.rename, conversation_id, require.title)
     except KeyError:
         raise HTTPException(status_code=404, detail="conversation not found")
     except ValueError as exc:
@@ -153,7 +154,7 @@ async def delete_conversation(conversation_id: str, request: Request) -> None:
     """Delete a conversation and its messages (CASCADE). 404 if missing."""
     history = request.app.state.container.history
     try:
-        history.delete(conversation_id)
+        await run_in_threadpool(history.delete, conversation_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="conversation not found")
     _logger.info("delete conversation=%s", conversation_id)
@@ -226,7 +227,11 @@ def _claim_resume(
             status_code=422, detail="run_id and question are mutually exclusive"
         )
     try:
-        prepared = agent.resume(require.run_id)
+        prepared = agent.resume(
+            require.run_id,
+            conversation_id=require.conversation_id or require.thread_id,
+            expected_revision=require.expected_revision,
+        )
     except ConversationBusy:
         raise HTTPException(status_code=409, detail="conversation has a running turn")
     except TurnAlreadyClaimed:

@@ -53,6 +53,104 @@ beforeEach(() => {
   setActivePinia(createPinia())
 })
 
+describe('checkpoint recovery and draft ownership', () => {
+  it('draft SSE preserves unsaved text and its revision', async () => {
+    await ready([
+      ['/chat', () => sseResponse([['draft', { ...draft, content: 'new proposal' }], ['answer', 'done'], ['turn_complete', { status: 'completed', state_revision: 9 }]])],
+    ])
+    const chat = useChatStore()
+    chat.currentId = 'A'
+    await chat.openDraft(draft)
+    chat.patchActivePanel({ text: 'unsaved original', dirty: true, draftRevision: 4 })
+    await chat.send('q')
+    expect(chat.panel.text).toBe('unsaved original')
+    expect(chat.panel.dirty).toBe(true)
+    expect(chat.panel.draftRevision).toBe(4)
+  })
+  it('an approval response cannot clear a later selected dirty draft', async () => {
+    let finish!: (response: Response) => void
+    const stub = await ready([
+      ['/chat/review', () => new Promise<Response>((resolve) => { finish = resolve })],
+      ['/notes', () => jsonResponse([])],
+    ])
+    const chat = useChatStore()
+    chat.currentId = 'A'
+    await chat.openDraft(draft)
+    const approval = chat.reviewDraft({ action: 'approve' })
+    while (!stub.calls.some((c) => c.url === '/chat/review')) await Promise.resolve()
+    chat.currentId = 'B'
+    await chat.openDraft({ ...draft, content: 'B original' })
+    chat.patchActivePanel({ text: 'B unsaved', dirty: true })
+    finish(jsonResponse({ status: 'written', action: 'create', file_name: draft.file_name, state_revision: 3 }))
+    await approval
+    expect(chat.currentId).toBe('B')
+    expect(chat.panel.text).toBe('B unsaved')
+    expect(chat.panel.dirty).toBe(true)
+    expect(chat.panels.A?.draft).toBeNull()
+    expect(chat.panels.A?.busy).toBe(false)
+  })
+
+  it('a delayed conversation SSE never takes selection away from a newer conversation', async () => {
+    let finish!: (response: Response) => void
+    await ready([
+      ['/chat', () => new Promise<Response>((resolve) => { finish = resolve })],
+      ['/conversations/B/messages', () => jsonResponse([])],
+      ['/conversations/B', () => jsonResponse({ id: 'B', pending_draft: null })],
+      ['/conversations', () => jsonResponse([])],
+    ])
+    const chat = useChatStore()
+    chat.currentId = 'A'
+    const sending = chat.send('q')
+    while (!finish) await Promise.resolve()
+    await chat.openConversation('B')
+    finish(sseResponse([['conversation', { id: 'A', title: 'A' }], ['answer', 'A reply']]))
+    await sending
+    expect(chat.currentId).toBe('B')
+    expect(chat.messages.some((m) => m.content === 'A reply')).toBe(false)
+  })
+  it('keeps the revision of dirty text when returning to a changed conversation', async () => {
+    let revision = 10
+    const stub = await ready([
+      ['/conversations/c-1/messages', () => jsonResponse([])],
+      ['/conversations/c-1', () => jsonResponse({ id: 'c-1', state_revision: revision, pending_draft: { ...draft, content: 'server text' } })],
+      ['/conversations/c-2/messages', () => jsonResponse([])],
+      ['/conversations/c-2', () => jsonResponse({ id: 'c-2', state_revision: 90, pending_draft: null })],
+      ['/chat/draft', () => jsonResponse({ detail: 'conversation revision changed' }, 409)],
+    ])
+    const chat = useChatStore()
+    await chat.openConversation('c-1')
+    chat.patchActivePanel({ text: 'local unsaved', dirty: true })
+    await chat.openConversation('c-2')
+    revision = 11
+    await chat.openConversation('c-1')
+    expect(chat.panel.text).toBe('local unsaved')
+    expect(chat.panel.draft?.content).toBe('server text')
+    expect(await chat.saveDraftContent()).toBe(false)
+    const request = stub.calls.find((c) => c.url === '/chat/draft')!
+    expect(bodyOf(request).expected_revision).toBe(10)
+    expect(chat.panel.dirty).toBe(true)
+  })
+
+  it('loads an interrupted run without auto-generating and resumes only on demand', async () => {
+    let complete = false
+    const stub = await ready([
+      ['/conversations/c-1/messages', () => jsonResponse(messages)],
+      ['/conversations/c-1', () => jsonResponse({ id: 'c-1', state_revision: 7, pending_draft: null, active_run: complete ? null : { run_id: 'run-1', status: 'interrupted' } })],
+      ['/conversations', () => jsonResponse([])],
+      ['/chat', () => { complete = true; return sseResponse([['answer', 'resumed'], ['turn_complete', { status: 'completed', state_revision: 8 }]]) }],
+    ])
+    const chat = useChatStore()
+    await chat.openConversation('c-1')
+    expect(stub.calls.some((c) => c.url === '/chat')).toBe(false)
+    expect(chat.activeRun?.run_id).toBe('run-1')
+    expect(await chat.send('must not accept new question')).toBe('refused')
+    expect(await chat.resumeRun()).toBe('sent')
+    const request = stub.calls.find((c) => c.url === '/chat')!
+    expect(bodyOf(request)).toEqual({ conversation_id: 'c-1', run_id: 'run-1', expected_revision: 7 })
+    expect(chat.activeRun).toBeNull()
+  })
+})
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })

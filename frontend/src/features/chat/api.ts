@@ -70,3 +70,12 @@ export async function openChatStream(
   })
   return response
 }
+
+/** Continue an accepted turn without accepting another user message. */
+export function openResumeStream(conversationId: string, runId: string, expectedRevision: number) {
+  return fetch('/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversation_id: conversationId, run_id: runId, expected_revision: expectedRevision }),
+  })
+}

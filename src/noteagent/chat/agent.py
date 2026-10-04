@@ -24,7 +24,7 @@ from noteagent.chat.execution import execute_turn
 from noteagent.chat.graph import build_chat_graph
 from noteagent.chat.nodes import GraphRuntime
 from noteagent.conversations.checkpoints import CheckpointRuntime, checkpoint_id_of
-from noteagent.conversations.contracts import PreparedTurn, StaleConversation
+from noteagent.conversations.contracts import PreparedTurn
 from noteagent.conversations.service import ConversationService
 from noteagent.notes.repository import FileNoteRepository
 from noteagent.retrieval.service import RetrievalService
@@ -63,9 +63,12 @@ class ChatAgent:
             conversation_id, question, request_id, expected_revision=expected_revision
         )
 
-    def resume(self, run_id: str) -> PreparedTurn:
+    def resume(self, run_id: str, *, conversation_id: str | None = None,
+               expected_revision: int | None = None) -> PreparedTurn:
         """Explicitly claim an interrupted run; the user message is not re-accepted."""
-        return self._service.resume_turn(run_id)
+        return self._service.resume_turn(
+            run_id, conversation_id=conversation_id, expected_revision=expected_revision,
+        )
 
     async def run(self, prepared: PreparedTurn, *, resume: bool = False) -> AsyncIterator[dict]:
         """Run the compiled graph for an already-prepared turn and emit its events."""
@@ -150,46 +153,27 @@ class ChatAgent:
                 retrieval=self._retrieval,
             )
 
-        draft = await self._service.get_pending_draft(conversation_id)
-        # Reject a stale tab *before* any disk write, so a refused review has no effect.
-        if expected_revision is not None:
-            if self._service.current_revision(conversation_id) != expected_revision:
-                raise StaleConversation(conversation_id)
-        if action == "reject":
-            await self._service.clear_pending_draft(
-                conversation_id, expected_revision=expected_revision
-            )
-            _logger.info("draft rejected conversation=%s", conversation_id)
-            return {"status": "rejected"}
-        if draft is None:
-            return {"error": "no pending draft"}
-        if action == "override":
-            if write_action not in WRITE_ACTIONS or not file_name:
-                return {"error": "override requires write_action and file_name"}
-            target_action, target_name = write_action, markdown_name(file_name)
-        elif action == "approve":
-            target_action, target_name = draft.get("action"), draft.get("file_name")
-        else:
-            return {"error": f"unknown action {action}"}
+        def apply(draft: dict) -> dict:
+            if action == "reject":
+                return {"status": "rejected"}
+            if action == "override":
+                if write_action not in WRITE_ACTIONS or not file_name:
+                    return {"error": "override requires write_action and file_name"}
+                target_action, target_name = write_action, markdown_name(file_name)
+            elif action == "approve":
+                target_action, target_name = draft.get("action"), draft.get("file_name")
+            else:
+                return {"error": f"unknown action {action}"}
+            try:
+                _write_draft(self._notes, target_action, target_name, draft.get("content") or "")
+            except (OSError, ValueError) as exc:
+                return {"error": str(exc)}
+            return {"status": "written", "action": target_action, "file_name": target_name}
 
-        try:
-            _write_draft(
-                self._notes, target_action, target_name, draft.get("content") or ""
-            )
-        except (OSError, ValueError) as exc:
-            # The checkpoint draft is left untouched so the user can retry approval.
-            _logger.warning(
-                "draft write failed conversation=%s action=%s file=%s error=%s",
-                conversation_id, target_action, target_name, exc,
-            )
-            return {"error": str(exc)}
-
-        await self._service.clear_pending_draft(
-            conversation_id, expected_revision=expected_revision
+        result = await self._service.review_pending_draft(
+            conversation_id, apply, expected_revision=expected_revision,
+            allow_absent=action == "reject",
         )
-        _logger.info(
-            "draft committed conversation=%s action=%s file=%s",
-            conversation_id, target_action, target_name,
-        )
-        _sync_index(self._retrieval, target_action, target_name)
-        return {"status": "written", "action": target_action, "file_name": target_name}
+        if result.get("status") == "written":
+            _sync_index(self._retrieval, result["action"], result["file_name"])
+        return result

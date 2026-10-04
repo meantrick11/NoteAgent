@@ -140,3 +140,19 @@ def test_stale_tab_approval_is_rejected_with_real_revisions(tmp_path):
     assert ok.status_code == 200
     assert ok.json()["status"] == "written"
     assert "tabB body" in app.notes.read("N.md")
+
+
+def test_busy_approval_has_no_file_or_draft_side_effect(tmp_path):
+    import asyncio
+    app = _app_with_draft(tmp_path)
+    conv_id = _proposal_draft(app)
+    prepared = asyncio.run(app.service.prepare_turn(conv_id, "next", "busy-approve"))
+    before = asyncio.run(app.service.get_pending_draft(conv_id))
+    response = app.client.post("/chat/review", json={
+        "thread_id": conv_id, "action": "approve",
+        "expected_revision": app.service.current_revision(conv_id),
+    })
+    assert response.status_code == 409
+    assert not app.notes.exists("N.md")
+    assert asyncio.run(app.service.get_pending_draft(conv_id)) == before
+    assert app.service.get_active_run(conv_id)["run_id"] == prepared.run_id

@@ -126,9 +126,13 @@ async def test_stale_completion_cannot_overwrite_a_new_resume_lease(postgres_har
         run.lease_expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
         session.commit()
     resumed = []
+    interleaved = False
     def steal_lease(connection, cursor, statement, parameters, context, executemany):
-        bound = context.compiled_parameters[0] if context.compiled_parameters else {}
-        if not resumed and statement.startswith("UPDATE conversation_runs") and bound.get("status") == "completed":
+        nonlocal interleaved
+        # Resume before completion obtains the shared conversation lock. Once
+        # held, that lock deliberately refuses competing claims rather than waiting.
+        if not interleaved and statement.startswith("SELECT conversations.") and "FOR UPDATE NOWAIT" in statement:
+            interleaved = True
             h.service.reconcile_expired_runs()
             resumed.append(h.service.resume_turn(prepared.run_id))
     event.listen(h._engine, "before_cursor_execute", steal_lease)

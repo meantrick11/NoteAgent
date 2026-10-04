@@ -19,6 +19,7 @@ function message(overrides: Partial<ChatMessage>): ChatMessage {
     requestId: null,
     editable: false,
     editUnavailableReason: null,
+    selectionAtStart: 0,
     ...overrides,
   }
 }

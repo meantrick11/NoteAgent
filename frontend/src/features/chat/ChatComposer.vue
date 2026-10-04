@@ -11,7 +11,7 @@ const text = ref('')
 const box = ref<HTMLTextAreaElement | null>(null)
 
 /** 发送按钮的禁用状态 = 空输入 或 维护窗口，两者都不能被对方覆盖。 */
-const sendDisabled = () => !models.canSend || text.value.trim().length === 0
+const sendDisabled = () => !models.canSend || !!chat.activeRun || text.value.trim().length === 0
 
 function resize(): void {
   const el = box.value
@@ -51,6 +51,12 @@ function onKeydown(event: KeyboardEvent): void {
 
 <template>
   <div class="input-area">
+    <div v-if="chat.activeRun && !chat.streaming" class="resume-bar" role="status">
+      <span>{{ chat.activeRun.status === 'interrupted' ? '上一条回复已中断，可继续生成。' : '上一条回复仍在处理中。' }}</span>
+      <button v-if="chat.activeRun.status === 'interrupted'" type="button"
+        :disabled="!models.canSend" @click="chat.resumeRun()">继续生成</button>
+      <button v-else type="button" @click="chat.currentId && chat.loadMessages(chat.currentId)">刷新状态</button>
+    </div>
     <div class="input-inner">
       <textarea
         ref="box"
@@ -92,6 +98,15 @@ function onKeydown(event: KeyboardEvent): void {
   background: var(--surface);
   border-top: 1px solid var(--border);
   padding: var(--space-4) var(--space-5);
+}
+
+.resume-bar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
 }
 
 .input-inner {

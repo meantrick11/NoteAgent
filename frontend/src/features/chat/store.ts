@@ -15,7 +15,7 @@ import { defineStore } from 'pinia'
 import { ApiError, extractErrorMessage, readJsonBody } from '@/shared/api/http'
 import { alertDialog, confirmDialog, reportError } from '@/shared/ui/confirm'
 import { showSaveToast } from '@/shared/ui/toast'
-import type { Citation, Conversation, Message, PendingDraft } from '@/shared/api/types'
+import type { Citation, Conversation, ConversationDetail, Message, PendingDraft } from '@/shared/api/types'
 // 引用面板读写的是正式笔记，所以走 notes 的接口而不是 chat 的。
 import { readNote, writeNote } from '@/features/notes/api'
 import { useNotesStore } from '@/features/notes/store'
@@ -48,6 +48,8 @@ export interface PanelSnapshot {
   selEnd: number
   scrollTop: number
   busy: boolean
+  /** Revision of the draft buffer; dirty text retains its original token. */
+  draftRevision: number | null
 }
 
 export function blankPanel(): PanelSnapshot {
@@ -64,6 +66,7 @@ export function blankPanel(): PanelSnapshot {
     selEnd: 0,
     scrollTop: 0,
     busy: false,
+    draftRevision: null,
   }
 }
 
@@ -86,6 +89,7 @@ export interface ChatMessage {
   /** 可回退编辑能力；阶段 B 未完成前始终为 false。 */
   editable: boolean
   editUnavailableReason: string | null
+  selectionAtStart: number
 }
 
 let messageSeq = 0
@@ -106,6 +110,7 @@ function newMessage(role: 'user' | 'assistant', content: string): ChatMessage {
     requestId: null,
     editable: false,
     editUnavailableReason: null,
+    selectionAtStart: 0,
   }
 }
 
@@ -188,7 +193,10 @@ export const useChatStore = defineStore('chat', () => {
    */
   const selectionVersion = ref(0)
   /** 当前会话活动 head 的 revision；草稿保存／审批要原样回传做 stale 校验。 */
-  const stateRevision = ref(0)
+  const revisions = ref<Record<string, number>>({})
+  const runs = ref<Record<string, ConversationDetail['active_run']>>({})
+  const stateRevision = computed(() => revisions.value[citePaneKey(currentId.value)] ?? 0)
+  const activeRun = computed(() => runs.value[citePaneKey(currentId.value)] ?? null)
 
   /** 当前会话的面板；不存在时返回默认值，写操作一律走 patchPanel。 */
   const panel = computed<PanelSnapshot>(
@@ -280,8 +288,9 @@ export const useChatStore = defineStore('chat', () => {
       if (currentId.value !== requested) return
       messages.value = (Array.isArray(list) ? list : []).map((item) => fromServerMessage(item))
       if (detail) {
-        applyServerDraft(requested, detail.pending_draft)
-        stateRevision.value = detail.state_revision ?? 0
+        revisions.value[requested] = detail.state_revision ?? 0
+        runs.value[requested] = detail.active_run ?? null
+        applyServerDraft(requested, detail.pending_draft, detail.state_revision ?? 0)
       }
     } catch {
       if (currentId.value !== requested) return
@@ -342,18 +351,20 @@ export const useChatStore = defineStore('chat', () => {
   // ---------- 面板：引用模式 ----------
 
   /** 服务端草稿进快照；本地未保存的编辑缓冲优先保留。 */
-  function applyServerDraft(id: string, draft: PendingDraft | null): void {
+  function applyServerDraft(id: string, draft: PendingDraft | null, revision = revisions.value[id] ?? 0): void {
     const key = citePaneKey(id)
     const existing = panels.value[key]
+    if (existing?.mode === 'draft' && existing.dirty) {
+      if (existing.draftRevision !== revision) {
+        patchPanel(key, { hintLocate: '草稿已在其他页面更新，本地编辑已保留；请重新核对后再保存。' })
+      }
+      return
+    }
     if (!draft) {
       if (existing?.mode === 'draft') {
         // 草稿已在别处完成（批准／拒绝），本会话的草稿模式作废。
         patchPanel(key, { mode: 'citation', draft: null, dirty: false, text: '' })
       }
-      return
-    }
-    if (existing?.mode === 'draft' && existing.dirty) {
-      patchPanel(key, { draft })
       return
     }
     // 有待审草稿就该让人看见：只有"用户主动收起过这份快照"才维持隐藏。
@@ -364,6 +375,7 @@ export const useChatStore = defineStore('chat', () => {
       dirty: false,
       text: draft.content || '',
       textDisabled: false,
+      draftRevision: revision,
     })
   }
 
@@ -457,6 +469,10 @@ export const useChatStore = defineStore('chat', () => {
     if (!draft || typeof draft !== 'object') return
     const key = citePaneKey(currentId.value)
     const existing = panels.value[key]
+    if (existing?.mode === 'draft' && existing.dirty) {
+      patchPanel(key, { hintLocate: '服务器草稿已更新，本地未保存编辑已保留。' })
+      return
+    }
     if (existing?.mode === 'citation' && existing.dirty) {
       const ok = await confirmDialog({
         title: '未保存修改',
@@ -479,17 +495,24 @@ export const useChatStore = defineStore('chat', () => {
       textDisabled: false,
       dirty: false,
       hintLocate: '',
+      draftRevision: revisions.value[key] ?? 0,
     })
   }
 
   /** 草稿属于别的会话时只进它自己的快照，不动可见面板。 */
   function stashDraftForConversation(id: string, draft: PendingDraft): void {
+    const existing = panels.value[citePaneKey(id)]
+    if (existing?.mode === 'draft' && existing.dirty) {
+      patchPanel(id, { hintLocate: '服务器草稿已更新，本地未保存编辑已保留。' })
+      return
+    }
     patchPanel(citePaneKey(id), {
       mode: 'draft',
       draft,
       dirty: false,
       text: draft.content ?? '',
       textDisabled: false,
+      draftRevision: revisions.value[id] ?? 0,
     })
   }
 
@@ -504,9 +527,10 @@ export const useChatStore = defineStore('chat', () => {
       return false
     }
     try {
-      const result = await api.saveDraftContent(threadId, content, stateRevision.value)
-      patchActivePanel({ draft: result.pending_draft, dirty: false })
-      if (typeof result.state_revision === 'number') stateRevision.value = result.state_revision
+      const result = await api.saveDraftContent(threadId, content, current.draftRevision ?? revisions.value[threadId] ?? 0)
+      const revision = result.state_revision ?? current.draftRevision ?? 0
+      revisions.value[threadId] = revision
+      patchPanel(threadId, { draft: result.pending_draft, dirty: false, draftRevision: revision })
       showSaveToast()
       return true
     } catch (error) {
@@ -526,59 +550,60 @@ export const useChatStore = defineStore('chat', () => {
     const current = panel.value
     const threadId = currentId.value
     if (!current.draft || !threadId) return
-    patchActivePanel({ busy: true })
+    const notice = (text: string) => { if (currentId.value === threadId) pushNotice(text) }
+    patchPanel(threadId, { busy: true })
     try {
       if (current.dirty && !(await saveDraftContent())) return
       const draft = current.draft
       const result = await api.reviewDraft({
         thread_id: threadId,
         ...body,
-        expected_revision: stateRevision.value,
+        expected_revision: panels.value[threadId]?.draftRevision ?? revisions.value[threadId] ?? 0,
       })
-      if (typeof result.state_revision === 'number') stateRevision.value = result.state_revision
+      if (typeof result.state_revision === 'number') revisions.value[threadId] = result.state_revision
       if (result.status === 'written') {
         const text =
           result.action === 'delete'
             ? `已删除 ${result.file_name}`
             : `已写入 ${result.file_name}`
-        clearDraft()
-        pushNotice(text)
+        clearDraft(threadId)
+        notice(text)
         /* 批准会写盘并重建向量：目录与索引状态都要跟着更新。 */
         await notes.refreshAfterExternalChange()
       } else if (result.status === 'rejected') {
-        clearDraft()
-        pushNotice('已取消写入')
+        clearDraft(threadId)
+        notice('已取消写入')
       } else {
         // 失败保留草稿、正文与动作选择，按钮恢复后可重试。
         const reason = result.error ?? '未知原因'
-        patchActivePanel({
+        patchPanel(threadId, {
           draft,
           hintLocate: `审批失败：${reason}，可修正后重试。`,
         })
-        pushNotice(`审批失败：${reason}`)
+        notice(`审批失败：${reason}`)
       }
     } catch (error) {
       const reason = (error as Error).message
-      patchActivePanel({ hintLocate: `审批失败：${reason}，可修正后重试。` })
-      pushNotice(`审批失败：${reason}`)
+      patchPanel(threadId, { hintLocate: `审批失败：${reason}，可修正后重试。` })
+      notice(`审批失败：${reason}`)
     } finally {
-      patchActivePanel({ busy: false })
+      patchPanel(threadId, { busy: false })
     }
   }
 
   /** 审批完成后丢弃草稿状态；没有引用内容就关掉面板。 */
-  function clearDraft(): void {
-    const current = panel.value
+  function clearDraft(owner = citePaneKey(currentId.value)): void {
+    const current = panels.value[owner] ?? blankPanel()
     const keepCitation = !current.hidden && !!current.fileName
-    patchActivePanel({
+    patchPanel(owner, {
       draft: null,
       mode: 'citation',
       dirty: false,
       text: '',
       hintLocate: '',
     })
-    if (!keepCitation) patchActivePanel({ hidden: true })
-    else void reloadPanel(currentId.value)
+    if (!keepCitation) patchPanel(owner, { hidden: true })
+    else if (currentId.value === owner) void reloadPanel(owner)
   }
 
   /** 未保存提示的文案：草稿与引用的后果不同，不共用一句话。 */
@@ -643,10 +668,24 @@ export const useChatStore = defineStore('chat', () => {
    * `refused` 是维护窗口，`failed` 是请求没发出去。
    */
   async function send(question: string): Promise<SendOutcome> {
+    if (activeRun.value) return 'refused'
+    return runStream(question)
+  }
+
+  async function resumeRun(): Promise<SendOutcome> {
+    const run = activeRun.value
+    if (!run || run.status !== 'interrupted' || !currentId.value) return 'refused'
+    return runStream('', run.run_id)
+  }
+
+  async function runStream(question: string, resumeId?: string): Promise<SendOutcome> {
     // 同步门闩：必须在任何 await 之前置位。
     if (streaming.value) return 'refused'
     const text = question.trim()
-    if (!text) return 'refused'
+    if (!text && !resumeId) return 'refused'
+    const owner = citePaneKey(currentId.value)
+    const revision = revisions.value[owner] ?? 0
+    const selectedAtStart = selectionVersion.value
 
     streaming.value = true
     models.setStreaming(true)
@@ -657,6 +696,8 @@ export const useChatStore = defineStore('chat', () => {
       // 刷新失败不影响发送本身：后端仍会按维护状态拒绝。
     }
     if (!models.canSend) {
+      streaming.value = false
+      models.setStreaming(false)
       pushNotice('向量索引重建中，暂时不能发送消息；已有内容仍可查看。')
       return 'refused'
     }
@@ -666,18 +707,21 @@ export const useChatStore = defineStore('chat', () => {
     const turn = reactive(newMessage('assistant', ''))
     turn.live = true
     turn.traceLabel = 'Thinking...'
-    turn.ownerKey = citePaneKey(currentId.value)
+    turn.ownerKey = owner
+    turn.selectionAtStart = selectedAtStart
     const requestId = newRequestId()
     const userRow = newMessage('user', text)
     userRow.requestId = requestId
     userRow.ownerKey = turn.ownerKey
-    messages.value = [...messages.value, userRow]
+    if (!resumeId) messages.value = [...messages.value, userRow]
     liveTurn.value = turn
     const accumulator = new TurnAccumulator()
 
     let outcome: SendOutcome = 'sent'
     try {
-      const response = await api.openChatStream(text, currentId.value, requestId)
+      const response = resumeId
+        ? await api.openResumeStream(owner, resumeId, revision)
+        : await api.openChatStream(text, owner === CITE_PENDING_KEY ? null : owner, requestId)
       if (!response.ok) {
         const payload = await readJsonBody(response)
         const detail =
@@ -696,8 +740,26 @@ export const useChatStore = defineStore('chat', () => {
       finalizeTurn(turn, accumulator)
       streaming.value = false
       models.setStreaming(false)
+      if (resumeId || outcome === 'failed' || runs.value[turn.ownerKey]) {
+        await refreshRun(turn.ownerKey)
+      }
+      if (resumeId && !runs.value[turn.ownerKey] && currentId.value === turn.ownerKey) {
+        await loadMessages(turn.ownerKey)
+      }
     }
     return outcome
+  }
+
+  async function refreshRun(owner: string): Promise<void> {
+    if (owner === CITE_PENDING_KEY) return
+    try {
+      const detail = await api.getConversation(owner)
+      runs.value[owner] = detail.active_run ?? null
+      revisions.value[owner] = detail.state_revision ?? 0
+      applyServerDraft(owner, detail.pending_draft, detail.state_revision ?? 0)
+    } catch {
+      // A failed refresh must not authorize a new question over a known run.
+    }
   }
 
   /** 事件处理：归属以这一轮自己的 ownerKey 为准，不读当前选中的会话。 */
@@ -712,7 +774,7 @@ export const useChatStore = defineStore('chat', () => {
       adoptPanelKey(previous, event.id)
       // 就地改写归属：面板与这一轮都不必搬来搬去。
       turn.ownerKey = event.id
-      currentId.value = event.id
+      if (turn.selectionAtStart === selectionVersion.value) currentId.value = event.id
       void loadConversations()
       return
     }
@@ -724,6 +786,7 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
     if (event.type === 'user_message') {
+      if (event.runId) runs.value[turn.ownerKey] = { run_id: event.runId, status: 'running' }
       // 按客户端幂等键替换乐观行，不靠文本或下标匹配。
       const requestId = event.requestId
       if (requestId) {
@@ -737,8 +800,13 @@ export const useChatStore = defineStore('chat', () => {
     }
     if (event.type === 'turn_complete') {
       // The turn published a new head; keep the draft/approval token current.
-      if (typeof event.stateRevision === 'number' && turn.ownerKey === citePaneKey(currentId.value)) {
-        stateRevision.value = event.stateRevision
+      runs.value[turn.ownerKey] = null
+      if (typeof event.stateRevision === 'number') {
+        revisions.value[turn.ownerKey] = event.stateRevision
+        const snapshot = panels.value[turn.ownerKey]
+        if (snapshot?.mode === 'draft' && !snapshot.dirty) {
+          patchPanel(turn.ownerKey, { draftRevision: event.stateRevision })
+        }
       }
       return
     }
@@ -780,6 +848,7 @@ export const useChatStore = defineStore('chat', () => {
     streaming,
     selectionVersion,
     stateRevision,
+    activeRun,
     anyPanelDirty,
     // 会话
     loadConversations,
@@ -805,6 +874,7 @@ export const useChatStore = defineStore('chat', () => {
     adoptPanelKey,
     // 发送
     send,
+    resumeRun,
     pushNotice,
   }
 })
