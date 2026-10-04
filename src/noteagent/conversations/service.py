@@ -812,6 +812,44 @@ class ConversationService:
             session.commit()
             return prepared
 
+    def claim_prepared(self, run_id: str) -> PreparedTurn:
+        """Claim an accepted but not-yet-started prepared run (recovery fork).
+
+        Used after a recovery publishes its branch: the forked turn already holds the
+        edited user message, so claiming it must never re-accept the message.
+        """
+        self.reconcile_expired_runs()
+        with self._session_factory() as session:
+            run = session.scalar(select(ConversationRun).where(
+                ConversationRun.id == uuid.UUID(run_id)).with_for_update())
+            if run is None:
+                raise ConversationNotFound(run_id)
+            conversation = self._load(session, str(run.conversation_id))
+            branch = self._branch(session, conversation)
+            if run.branch_id != branch.id:
+                raise StaleConversation(str(run.conversation_id))
+            if run.accepted_checkpoint_id != branch.head_checkpoint_id:
+                raise StaleConversation(str(run.conversation_id))
+            if run.status != "prepared":
+                raise TurnAlreadyClaimed(run.request_id)
+            lease_token = str(uuid.uuid4())
+            changed = session.execute(update(ConversationRun).where(
+                ConversationRun.id == run.id, ConversationRun.status == "prepared",
+            ).values(status="running", lease_token=lease_token, lease_expires_at=expires_at()))
+            if changed.rowcount != 1:
+                raise TurnAlreadyClaimed(run.request_id)
+            config = thread_config(str(run.conversation_id), run.accepted_checkpoint_id)
+            prepared = PreparedTurn(
+                conversation_id=str(run.conversation_id), branch_id=str(run.branch_id),
+                turn_id=str(run.turn_id), user_message_id=str(run.user_message_id),
+                generation=run.generation, run_id=run_id, request_id=run.request_id,
+                before_config=config, config=config,
+                head_config=thread_config(str(run.conversation_id), branch.head_checkpoint_id),
+                lease_token=lease_token,
+            )
+            session.commit()
+            return prepared
+
     def finish_run(self, prepared: PreparedTurn, checkpoint_id: str, status: str):
         """Commit terminal state and active head together, or publish neither."""
         if status not in ("completed", "failed"):

@@ -66,15 +66,20 @@ async def get_conversation(conversation_id: str, request: Request) -> Conversati
         raise HTTPException(status_code=404, detail="conversation not found")
     pending = record.pending_draft
     active_run = None
+    recovery = None
     if record.state_backend == "checkpoint" and container.conversations is not None:
         pending = await container.conversations.get_pending_draft(conversation_id)
         active_run = container.conversations.get_active_run(conversation_id)
+        recovery_coordinator = getattr(container, "recovery", None)
+        if recovery_coordinator is not None:
+            recovery = recovery_coordinator.get_for_conversation(conversation_id)
     _logger.info(
-        "get conversation=%s backend=%s pending_draft=%s active_run=%s",
+        "get conversation=%s backend=%s pending_draft=%s active_run=%s recovery=%s",
         conversation_id,
         record.state_backend,
         bool(pending),
         bool(active_run),
+        bool(recovery),
     )
     return ConversationDetailOut(
         id=record.id,
@@ -83,6 +88,7 @@ async def get_conversation(conversation_id: str, request: Request) -> Conversati
         pending_draft=pending,
         state_revision=record.revision,
         active_run=active_run,
+        recovery=recovery,
     )
 
 
@@ -179,6 +185,8 @@ async def claim_turn(
         raise HTTPException(status_code=503, detail="conversation service unavailable")
     agent = snapshot.chat_agent
 
+    if require.prepared_turn_id:
+        return _claim_prepared_turn(conversations, require, agent)
     if require.run_id:
         return _claim_resume(conversations, require, agent)
 
@@ -215,6 +223,34 @@ async def claim_turn(
         ConversationOut(id=record.id, title=record.title, updated_at=record.updated_at),
         prepared,
         False,
+    )
+
+
+def _claim_prepared_turn(
+    conversations, require: RequestModel, agent
+) -> tuple[ConversationOut, PreparedTurn, bool]:
+    """Claim a recovery-forked prepared turn; the edited message is already accepted."""
+    if require.question:
+        raise HTTPException(
+            status_code=422, detail="prepared_turn_id and question are mutually exclusive"
+        )
+    try:
+        prepared = agent.claim_prepared(require.prepared_turn_id)
+    except ConversationBusy:
+        raise HTTPException(status_code=409, detail="conversation has a running turn")
+    except TurnAlreadyClaimed:
+        raise HTTPException(status_code=409, detail="turn already claimed")
+    except StaleConversation:
+        raise HTTPException(status_code=409, detail="conversation revision changed")
+    except KeyError:
+        raise HTTPException(status_code=404, detail="turn not found")
+    record = conversations.get(prepared.conversation_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    return (
+        ConversationOut(id=record.id, title=record.title, updated_at=record.updated_at),
+        prepared,
+        False,  # a freshly prepared turn runs from its accepted checkpoint, not resumed
     )
 
 

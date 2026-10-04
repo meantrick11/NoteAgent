@@ -13,6 +13,8 @@ class RequestModel(BaseModel):
     request_id: str | None = None
     # Explicit resume of an interrupted run; mutually exclusive with a new question.
     run_id: str | None = None
+    # A recovery-forked prepared turn: claims the accepted message, never re-prepares.
+    prepared_turn_id: str | None = None
     # Optional guard: refuse the turn when the conversation revision has moved on.
     expected_revision: int | None = None
 
@@ -60,6 +62,8 @@ class ConversationDetailOut(ConversationOut):
     state_revision: int = 0
     # The prepared/running/interrupted run, so a reconnect can resume the exact run.
     active_run: dict | None = None
+    # An in-flight or failed recovery job, so the client can show progress/continue.
+    recovery: dict | None = None
 
 
 class CitationOut(BaseModel):

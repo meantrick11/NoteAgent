@@ -231,6 +231,18 @@ class RecoveryCoordinator:
             raise RecoveryNotFound(job_id)
         return job
 
+    def get_for_conversation(self, conversation_id: str) -> dict | None:
+        """The newest non-succeeded job for a conversation, if any (for the detail view)."""
+        with self._session_factory() as session:
+            row = session.scalar(
+                select(RecoveryJob)
+                .where(RecoveryJob.conversation_id == uuid.UUID(conversation_id))
+                .where(RecoveryJob.status.in_(("prepared", "restoring_files", "reindexing",
+                                               "preparing_state", "publishing", "failed")))
+                .order_by(RecoveryJob.created_at.desc())
+            )
+            return _job_dict(row) if row is not None else None
+
     # ---- the machine ------------------------------------------------------
 
     async def _run(self, *, job_id, operation_id, plan_dict, conversation_id, message_id,

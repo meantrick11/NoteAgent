@@ -31,7 +31,8 @@ from noteagent.notes.repository import FileNoteRepository
 from noteagent.notes.mutations import NoteMutationService
 from noteagent.notes.versions import NoteVersionError, NoteVersionStore
 from noteagent.recovery.gate import WorkspaceGate, is_postgres_url
-from noteagent.recovery.service import RecoveryCoordinator
+from noteagent.recovery.router import recovery_error_handler, router as recovery_router
+from noteagent.recovery.service import RecoveryCoordinator, RecoveryError
 from noteagent.retrieval.repairs import IndexRepairService
 from noteagent.retrieval.service import RetrievalService
 from noteagent.web import DIST_DIR, STATIC_DIR
@@ -193,8 +194,10 @@ def create_app(container: AppContainer) -> FastAPI:
     # 模型管理的错误结构与参数错误脱敏统一在这里注册，覆盖所有路由。
     app.add_exception_handler(ModelManagementError, model_management_error_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
+    app.add_exception_handler(RecoveryError, recovery_error_handler)
     app.include_router(web_router)   #注册页面路由（SPA 外壳 / 旧模板）
     app.include_router(chat_router)   #注册聊天路由
     app.include_router(notes_router)
     app.include_router(model_settings_router)
+    app.include_router(recovery_router)
     return app   #返回FastAPI应用

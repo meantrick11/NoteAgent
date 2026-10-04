@@ -83,6 +83,10 @@ class ChatAgent:
             run_id, conversation_id=conversation_id, expected_revision=expected_revision,
         )
 
+    def claim_prepared(self, run_id: str) -> PreparedTurn:
+        """Claim a prepared (recovery-forked) run without re-accepting its message."""
+        return self._service.claim_prepared(run_id)
+
     async def run(self, prepared: PreparedTurn, *, resume: bool = False) -> AsyncIterator[dict]:
         """Run the compiled graph for an already-prepared turn and emit its events."""
         graph = build_chat_graph(self._runtime, self._checkpoints.saver)
