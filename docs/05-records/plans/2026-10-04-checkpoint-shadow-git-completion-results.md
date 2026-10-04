@@ -64,6 +64,21 @@
 - 旧消息导入不伪造可编辑资格：A1 `test_imported_history_is_not_falsely_editable`。
 - 旧消息表不再承担正式会话状态读写：A2 `test_http_chat_uses_checkpoint_without_legacy_message_writes`（旧写入被 sabotage 仍完成）。
 
+## 阶段 A 验收缺陷修复（回应 review）
+
+依据：[阶段 A 验收记录](2026-10-04-checkpoint-shadow-git-completion-review.md)。修复提交 `c754c66`。
+
+| 编号 | 问题 | 修复 | 测试 |
+|---|---|---|---|
+| S1 | 草稿变更绕过活动运行 claim | `_publish` 增 `require_no_active_run`：草稿发布在同一事务内检查 prepared/running/interrupted，占用即 `ConversationBusy` | `test_conversation_draft_cas.py::test_draft_edit_refused_while_a_turn_owns_the_conversation` |
+| R1 | 草稿 CAS 重新读取 head 造成丢更新 | `_republish_state` 以读取时的 checkpoint id／generation／revision 发布（`write_state(publish=False)` + 显式 `publish_head`），旧 view 被拒绝 | `test_draft_edit_from_a_stale_view_is_rejected`（断言新 summary 保留） |
+| R2 | 正式 HTTP 缺少中断续接 | `POST /chat` 支持 `run_id` 续接（不重复接受用户消息）；详情返回 `active_run`；`Agent.resume` 接入 | `test_checkpoint_chat_api.py::test_interrupted_run_resumes_over_http_without_duplicate_user` |
+| R3 | generation 被当草稿版本，stale 校验无效 | 新增 `conversations.revision`（Alembic `d4a7e1b90c22`），详情／SSE／草稿保存／审批传真实 revision | `test_checkpoint_draft_api.py::test_stale_tab_approval_is_rejected_with_real_revisions` |
+
+验证：后端 `tests/unit tests/integration` → **563 passed**；前端 `test:unit` **130 passed**、`test:e2e` **56 passed**、`build` 通过；Alembic 在临时 schema 上 upgrade／downgrade／再 upgrade 通过。
+
+已知遗留（未在本次修复，属 B 范围）：批准正文后清 checkpoint 草稿，若 saver／DB 失败则正文已改、索引未更新；B3／B4 的持久 mutation、幂等与索引维修必须覆盖它。
+
 ## 阶段 B：笔记、RAG 与整体回退 —— 待执行
 
 B1—B9 未开始。以下范围与计划一致，尚无实现、无测试、无提交：
