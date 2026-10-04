@@ -178,6 +178,7 @@ class ConversationService:
     def publish_head(
         self, conversation_id: str, branch_id: str, checkpoint_id: str, *,
         expected_checkpoint_id: str | None, expected_generation: int,
+        expected_revision: int | None = None, require_no_active_run: bool = False,
     ) -> None:
         """Point one branch's head at a checkpoint and make it the active branch.
 
@@ -186,7 +187,8 @@ class ConversationService:
         """
         with self._session_factory() as session:
             self._publish(session, conversation_id, branch_id, checkpoint_id,
-                          expected_checkpoint_id, expected_generation)
+                          expected_checkpoint_id, expected_generation,
+                          expected_revision, require_no_active_run)
             session.commit()
             logger.info(
                 "published conversation=%s branch=%s head=%s",
@@ -196,22 +198,44 @@ class ConversationService:
             )
 
     def _publish(self, session, conversation_id, branch_id, checkpoint_id,
-                 expected_checkpoint_id, expected_generation):
-        """CAS both rows in the caller's transaction; rollback on either mismatch."""
-        moved = session.execute(update(Conversation).where(
-            Conversation.id == uuid.UUID(conversation_id),
+                 expected_checkpoint_id, expected_generation,
+                 expected_revision=None, require_no_active_run=False):
+        """CAS both rows in the caller's transaction; rollback on either mismatch.
+
+        ``require_no_active_run`` makes draft mutations refuse to move the head while a
+        prepared/running/interrupted turn owns the conversation. ``expected_revision``
+        additionally rejects a publisher whose read head is already stale.
+        """
+        parsed = uuid.UUID(conversation_id)
+        if require_no_active_run and self._has_active_run(session, parsed):
+            raise ConversationBusy(conversation_id)
+        conditions = [
+            Conversation.id == parsed,
             Conversation.active_branch_id == uuid.UUID(branch_id),
             Conversation.generation == expected_generation,
-        ).values(updated_at=datetime.now(timezone.utc)))
+        ]
+        if expected_revision is not None:
+            conditions.append(Conversation.revision == expected_revision)
+        moved = session.execute(update(Conversation).where(*conditions).values(
+            updated_at=datetime.now(timezone.utc),
+            revision=Conversation.revision + 1,
+        ))
         if moved.rowcount != 1:
             raise StaleConversation(conversation_id)
         moved = session.execute(update(ConversationBranch).where(
             ConversationBranch.id == uuid.UUID(branch_id),
-            ConversationBranch.conversation_id == uuid.UUID(conversation_id),
+            ConversationBranch.conversation_id == parsed,
             ConversationBranch.head_checkpoint_id == expected_checkpoint_id,
         ).values(head_checkpoint_id=checkpoint_id))
         if moved.rowcount != 1:
             raise StaleConversation(conversation_id)
+
+    def _has_active_run(self, session: Session, conversation_id: uuid.UUID) -> bool:
+        """True when a turn still owns the conversation (caller's transaction)."""
+        return session.scalar(select(ConversationRun.id).where(
+            ConversationRun.conversation_id == conversation_id,
+            ConversationRun.status.in_(("prepared", "running", "interrupted")),
+        )) is not None
 
     async def list_messages(self, conversation_id: str) -> list[MessageRecord] | None:
         """Project the active checkpoint's display history; None when unknown."""
@@ -236,17 +260,20 @@ class ConversationService:
     ) -> dict | None:
         """Rewrite only the pending draft body, publishing a new head via CAS.
 
-        Returns None when there is no draft. ``expected_revision`` guards against a
-        tab whose conversation state was replaced (recovery, fork) since it loaded.
+        Returns None when there is no draft. The publish is pinned to the head this
+        method read, and refused outright while a turn owns the conversation, so a
+        draft edit can neither clobber a newer head nor race a running turn.
         """
         view = await self.get_state(conversation_id)
         draft = view.values.get("pending_draft")
         if not draft:
             return None
-        self._require_revision(view, conversation_id, expected_revision)
+        revision = self._require_expected_revision(conversation_id, expected_revision)
         updated = dict(draft)
         updated["content"] = content
-        await self._republish_state(conversation_id, view, {"pending_draft": updated})
+        await self._republish_state(
+            conversation_id, view, {"pending_draft": updated}, revision
+        )
         return updated
 
     async def clear_pending_draft(
@@ -256,29 +283,92 @@ class ConversationService:
         view = await self.get_state(conversation_id)
         if not view.values.get("pending_draft"):
             return False
-        self._require_revision(view, conversation_id, expected_revision)
-        await self._republish_state(conversation_id, view, {"pending_draft": None})
+        revision = self._require_expected_revision(conversation_id, expected_revision)
+        await self._republish_state(
+            conversation_id, view, {"pending_draft": None}, revision
+        )
         return True
 
-    def _require_revision(self, view: StateView, conversation_id: str, expected: int | None) -> None:
-        """Refuse a write whose expected revision no longer matches the head."""
-        if expected is not None and int(view.values.get("generation", 0) or 0) != expected:
+    def _require_expected_revision(
+        self, conversation_id: str, expected: int | None
+    ) -> int:
+        """Return the current head revision; refuse when the caller's token is stale."""
+        current = self.current_revision(conversation_id)
+        if expected is not None and expected != current:
             raise StaleConversation(conversation_id)
+        return current
+
+    def current_revision(self, conversation_id: str) -> int:
+        """The conversation row's revision, or 0 when the id is unknown."""
+        try:
+            parsed = uuid.UUID(conversation_id)
+        except ValueError:
+            raise ConversationNotFound(conversation_id) from None
+        with self._session_factory() as session:
+            conversation = session.get(Conversation, parsed)
+            if conversation is None:
+                raise ConversationNotFound(conversation_id)
+            return int(conversation.revision or 0)
 
     async def _republish_state(
-        self, conversation_id: str, view: StateView, changes: Mapping[str, Any]
+        self, conversation_id: str, view: StateView, changes: Mapping[str, Any],
+        expected_revision: int,
     ) -> dict[str, Any]:
-        """Write one new state version from the current head and publish it."""
+        """Publish one new state version pinned to the head this view was read from.
+
+        The candidate is written first, then CAS'd against ``view``'s exact checkpoint
+        id, generation and revision: a head that moved since the read is rejected
+        instead of being silently refreshed and overwritten.
+        """
         values = dict(view.values)
         values.update(changes)
         branch_id = str(values.get("branch_id") or self.active_branch_id(conversation_id))
-        return await self.write_state(
+        saved = await self.write_state(
             conversation_id,
             values,
             branch_id=branch_id,
             parent_checkpoint_id=checkpoint_id_of(view.config),
-            publish=True,
+            publish=False,
         )
+        self.publish_head(
+            conversation_id,
+            branch_id,
+            checkpoint_id_of(saved) or "",
+            expected_checkpoint_id=checkpoint_id_of(view.config),
+            expected_generation=int(values.get("generation", 0) or 0),
+            expected_revision=expected_revision,
+            require_no_active_run=True,
+        )
+        return saved
+
+    # ---- active run (explicit resume) -------------------------------------
+
+    def get_active_run(self, conversation_id: str) -> dict[str, Any] | None:
+        """The conversation's prepared/running/interrupted run, if any.
+
+        Exposed on the detail endpoint so a client that lost its stream can resume the
+        exact run instead of re-sending the question (which would be rejected).
+        """
+        try:
+            parsed = uuid.UUID(conversation_id)
+        except ValueError:
+            return None
+        with self._session_factory() as session:
+            run = session.scalar(select(ConversationRun).where(
+                ConversationRun.conversation_id == parsed,
+                ConversationRun.status.in_(("prepared", "running", "interrupted")),
+            ))
+            if run is None:
+                return None
+            return {
+                "run_id": str(run.id),
+                "status": run.status,
+                "turn_id": str(run.turn_id) if run.turn_id else None,
+                "user_message_id": str(run.user_message_id) if run.user_message_id else None,
+                "request_id": run.request_id,
+                "generation": run.generation,
+                "checkpoint_id": run.checkpoint_id,
+            }
 
     # ---- turns ------------------------------------------------------------
 
@@ -302,7 +392,7 @@ class ConversationService:
             session.execute(select(Conversation.id).where(
                 Conversation.id == conversation.id).with_for_update())
             session.refresh(conversation)
-            if expected_revision is not None and int(conversation.generation or 0) != expected_revision:
+            if expected_revision is not None and int(conversation.revision or 0) != expected_revision:
                 raise StaleConversation(conversation_id)
             branch = self._branch(session, conversation)
             before_checkpoint_id = branch.head_checkpoint_id
@@ -588,4 +678,5 @@ def _to_conversation(row: Conversation) -> ConversationRecord:
         pending_draft=dict(row.pending_draft) if row.pending_draft else None,
         state_backend=row.state_backend,
         generation=int(row.generation or 0),
+        revision=int(row.revision or 0),
     )

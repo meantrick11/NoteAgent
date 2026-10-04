@@ -47,6 +47,9 @@ class Conversation(Base):
         Uuid(as_uuid=True), nullable=True
     )
     generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 每次发布活动 head（聊天完成、草稿编辑／清除）自增；供前端 stale 校验使用。
+    # 与 generation 分开：generation 只在换分支时变，revision 每次都变。
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # legacy：消息权威源仍在旧表；checkpoint：权威源已切到 LangGraph checkpoint。
     state_backend: Mapped[str] = mapped_column(Text, nullable=False, default="legacy")
     migration_batch_id: Mapped[str | None] = mapped_column(Text, nullable=True)

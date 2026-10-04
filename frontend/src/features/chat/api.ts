@@ -39,8 +39,13 @@ export async function deleteConversation(id: string): Promise<void> {
 export function saveDraftContent(
   threadId: string,
   content: string,
-): Promise<{ status: string; pending_draft: PendingDraft }> {
-  return jsonRequest('/chat/draft', 'PUT', { thread_id: threadId, content })
+  expectedRevision?: number,
+): Promise<{ status: string; pending_draft: PendingDraft; state_revision?: number }> {
+  return jsonRequest('/chat/draft', 'PUT', {
+    thread_id: threadId,
+    content,
+    expected_revision: expectedRevision,
+  })
 }
 
 /** POST /chat/review —— 审批草稿。业务失败也是 200，必须看返回体的 status／error。 */

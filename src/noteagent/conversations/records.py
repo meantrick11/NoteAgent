@@ -98,6 +98,8 @@ class ConversationRecord:
     # branch on this so un-migrated histories keep working until A1 imports them.
     state_backend: str = "legacy"
     generation: int = 0
+    # Monotonic counter bumped on every published head change; the stale-tab token.
+    revision: int = 0
 
 
 @dataclass(slots=True)

@@ -93,7 +93,7 @@ def test_reject_clears_draft_without_writing(tmp_path):
     review = app.client.post(
         "/chat/review", json={"thread_id": conv_id, "action": "reject"}
     )
-    assert review.json() == {"status": "rejected"}
+    assert review.json()["status"] == "rejected"
     assert app.client.get(f"/conversations/{conv_id}").json()["pending_draft"] is None
     assert not app.notes.exists("N.md")
 
@@ -108,3 +108,35 @@ def test_draft_edit_without_pending_draft_is_409(tmp_path):
         "/chat/draft", json={"thread_id": conv_id, "content": "not allowed"}
     )
     assert edit.status_code == 409
+
+
+def test_stale_tab_approval_is_rejected_with_real_revisions(tmp_path):
+    app = _app_with_draft(tmp_path)
+    conv_id = _proposal_draft(app)
+    revision = app.client.get(f"/conversations/{conv_id}").json()["state_revision"]
+
+    # Tab B saves the draft first, which advances the head revision.
+    saved = app.client.put(
+        "/chat/draft",
+        json={"thread_id": conv_id, "content": "tabB body", "expected_revision": revision},
+    )
+    assert saved.status_code == 200
+    new_revision = saved.json()["state_revision"]
+    assert new_revision != revision
+
+    # Tab A approves with its now-stale revision: refused, nothing written.
+    stale = app.client.post(
+        "/chat/review",
+        json={"thread_id": conv_id, "action": "approve", "expected_revision": revision},
+    )
+    assert stale.status_code == 409
+    assert not app.notes.exists("N.md")
+
+    # With the current revision the approval succeeds and writes tab B's body.
+    ok = app.client.post(
+        "/chat/review",
+        json={"thread_id": conv_id, "action": "approve", "expected_revision": new_revision},
+    )
+    assert ok.status_code == 200
+    assert ok.json()["status"] == "written"
+    assert "tabB body" in app.notes.read("N.md")

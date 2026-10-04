@@ -64,19 +64,24 @@ async def get_conversation(conversation_id: str, request: Request) -> Conversati
     if record is None:
         raise HTTPException(status_code=404, detail="conversation not found")
     pending = record.pending_draft
+    active_run = None
     if record.state_backend == "checkpoint" and container.conversations is not None:
         pending = await container.conversations.get_pending_draft(conversation_id)
+        active_run = container.conversations.get_active_run(conversation_id)
     _logger.info(
-        "get conversation=%s backend=%s pending_draft=%s",
+        "get conversation=%s backend=%s pending_draft=%s active_run=%s",
         conversation_id,
         record.state_backend,
         bool(pending),
+        bool(active_run),
     )
     return ConversationDetailOut(
         id=record.id,
         title=record.title,
         updated_at=record.updated_at,
         pending_draft=pending,
+        state_revision=record.revision,
+        active_run=active_run,
     )
 
 
@@ -158,18 +163,23 @@ async def claim_turn(
     request: Request,
     require: Annotated[RequestModel, Body()],
     snapshot: Annotated[RuntimeSnapshot, Depends(chat_lease)],
-) -> tuple[ConversationOut, PreparedTurn]:
+) -> tuple[ConversationOut, PreparedTurn, bool]:
     """Resolve the conversation and durably accept the user message before SSE.
 
     Running as a dependency is what lets a duplicate request, a missing conversation,
     or a busy claim be answered with a real status code instead of a broken stream.
     The message is persisted here, so the browser's ``user_message`` event carries a
-    server identity that already exists in the checkpoint.
+    server identity that already exists in the checkpoint. With ``run_id`` the turn is
+    resumed instead: the accepted user message is not re-inserted.
     """
     container = request.app.state.container
     conversations = container.conversations
     if conversations is None:
         raise HTTPException(status_code=503, detail="conversation service unavailable")
+    agent = snapshot.chat_agent
+
+    if require.run_id:
+        return _claim_resume(conversations, require, agent)
 
     conv_id = require.conversation_id or require.thread_id
     if conv_id:
@@ -188,7 +198,7 @@ async def claim_turn(
 
     request_id = require.request_id or uuid.uuid4().hex
     try:
-        prepared = await snapshot.chat_agent.prepare(
+        prepared = await agent.prepare(
             record.id,
             require.question,
             request_id,
@@ -203,6 +213,38 @@ async def claim_turn(
     return (
         ConversationOut(id=record.id, title=record.title, updated_at=record.updated_at),
         prepared,
+        False,
+    )
+
+
+def _claim_resume(
+    conversations, require: RequestModel, agent
+) -> tuple[ConversationOut, PreparedTurn, bool]:
+    """Claim an interrupted run for an explicit reconnect; never re-accept the user."""
+    if require.question:
+        raise HTTPException(
+            status_code=422, detail="run_id and question are mutually exclusive"
+        )
+    try:
+        prepared = agent.resume(require.run_id)
+    except ConversationBusy:
+        raise HTTPException(status_code=409, detail="conversation has a running turn")
+    except TurnAlreadyClaimed:
+        raise HTTPException(status_code=409, detail="run is not interrupted")
+    except StaleConversation:
+        raise HTTPException(status_code=409, detail="conversation revision changed")
+    except KeyError:
+        raise HTTPException(status_code=404, detail="run not found")
+    requested = require.conversation_id or require.thread_id
+    if requested and requested != prepared.conversation_id:
+        raise HTTPException(status_code=404, detail="run not found")
+    record = conversations.get(prepared.conversation_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    return (
+        ConversationOut(id=record.id, title=record.title, updated_at=record.updated_at),
+        prepared,
+        True,
     )
 
 
@@ -211,11 +253,11 @@ async def claim_turn(
 async def chat_with(
     request: Request,
     require: Annotated[RequestModel, Body()],
-    claimed: Annotated[tuple[ConversationOut, PreparedTurn], Depends(claim_turn)],
+    claimed: Annotated[tuple[ConversationOut, PreparedTurn, bool], Depends(claim_turn)],
     snapshot: Annotated[RuntimeSnapshot, Depends(chat_lease)],
 ) -> AsyncIterator[ServerSentEvent]:
     """Run the graph turn for an already-claimed request and stream its events."""
-    record, prepared = claimed
+    record, prepared, resume = claimed
     yield ServerSentEvent(
         event="conversation",
         data={"id": record.id, "title": record.title},
@@ -231,9 +273,14 @@ async def chat_with(
         },
     )
 
-    _logger.info("[conversation=%s] SSE request: %.80s", record.id, require.question)
+    _logger.info(
+        "[conversation=%s] SSE request resume=%s: %.80s",
+        record.id,
+        resume,
+        require.question,
+    )
     agent = snapshot.chat_agent
-    async for item in agent.run(prepared):
+    async for item in agent.run(prepared, resume=resume):
         event = str(item.get("event") or "token")
         data = item.get("data")
         if data is None or data == "":
@@ -271,9 +318,20 @@ async def update_chat_draft(
         )
     except StaleConversation:
         raise HTTPException(status_code=409, detail="conversation revision changed")
+    except ConversationBusy:
+        raise HTTPException(status_code=409, detail="conversation has a running turn")
     if "error" in result:
         raise HTTPException(status_code=409, detail=result["error"])
-    return result
+    return _with_revision(request, require.thread_id, result)
+
+
+def _with_revision(request: Request, conversation_id: str, payload: dict) -> dict:
+    """Attach the fresh head revision so the client's next write token is current."""
+    container = request.app.state.container
+    record = container.history.get(conversation_id)
+    if record is not None and record.state_backend == "checkpoint" and container.conversations:
+        payload = {**payload, "state_revision": container.conversations.current_revision(conversation_id)}
+    return payload
 
 
 @router.post("/chat/review")
@@ -297,7 +355,7 @@ async def chat_review(
         require.file_name,
     )
     try:
-        return await agent.review(
+        result = await agent.review(
             require.thread_id,
             require.action,
             write_action=require.write_action,
@@ -306,3 +364,6 @@ async def chat_review(
         )
     except StaleConversation:
         raise HTTPException(status_code=409, detail="conversation revision changed")
+    except ConversationBusy:
+        raise HTTPException(status_code=409, detail="conversation has a running turn")
+    return _with_revision(request, require.thread_id, result)

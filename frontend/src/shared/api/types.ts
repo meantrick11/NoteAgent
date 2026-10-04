@@ -25,6 +25,16 @@ export interface PendingDraft {
 
 export interface ConversationDetail extends Conversation {
   pending_draft: PendingDraft | null
+  /** 活动 head 的单调版本号；草稿保存／审批必须原样回传。 */
+  state_revision?: number
+  /** 正在进行的运行（prepared/running/interrupted），重连时可据此续接。 */
+  active_run?: {
+    run_id: string
+    status: string
+    turn_id?: string | null
+    user_message_id?: string | null
+    request_id?: string
+  } | null
 }
 
 export interface Citation {
@@ -59,6 +69,7 @@ export interface ReviewRequest {
   action: string
   write_action?: string
   file_name?: string
+  expected_revision?: number
 }
 
 /**
@@ -70,6 +81,7 @@ export interface ReviewResult {
   action?: string
   file_name?: string
   error?: string
+  state_revision?: number
 }
 
 // ---------- 笔记 ----------

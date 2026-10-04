@@ -163,7 +163,7 @@ test('保存草稿只调 PUT /chat/draft，不写正式笔记', async ({ page })
 
   const draftCall = calls.find((call) => call.url.includes('/chat/draft'))
   expect(draftCall?.method).toBe('PUT')
-  expect(draftCall?.body).toEqual({ thread_id: 'c-1', content: '## 我改过的正文\n' })
+  expect(draftCall?.body).toMatchObject({ thread_id: 'c-1', content: '## 我改过的正文\n' })
   expect(calls.some((call) => call.url.includes('/chat/review'))).toBe(false)
   expect(calls.some((call) => call.method === 'PUT' && call.url.includes('/notes/'))).toBe(false)
 })
@@ -185,7 +185,7 @@ test('同意前先把未保存正文落库，再调 review 写笔记', async ({ 
   expect(reviewIndex).toBeGreaterThan(draftIndex)
 
   const review = calls[reviewIndex]
-  expect(review.body).toEqual({ thread_id: 'c-1', action: 'approve' })
+  expect(review.body).toMatchObject({ thread_id: 'c-1', action: 'approve' })
   // 审批之后草稿区收起，引用模式回到没有内容的状态。
   await expect(pane.getByText('待审批草稿')).toHaveCount(0)
 })
@@ -229,7 +229,7 @@ test('拒绝走 reject，不写笔记也不留草稿', async ({ page }) => {
 
   await expect(page.locator('.msg-body', { hasText: '已取消写入' })).toBeVisible()
   const review = calls.find((call) => call.url.includes('/chat/review'))
-  expect(review?.body).toEqual({ thread_id: 'c-1', action: 'reject' })
+  expect(review?.body).toMatchObject({ thread_id: 'c-1', action: 'reject' })
   expect(calls.some((call) => call.method === 'PUT' && call.url.includes('/notes/'))).toBe(false)
 })
 

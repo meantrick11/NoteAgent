@@ -6,11 +6,13 @@ from pydantic import BaseModel, Field, field_validator
 class RequestModel(BaseModel):
     """JSON body for /chat."""
 
-    question: str
+    question: str = ""
     conversation_id: str | None = None
     thread_id: str | None = None
     # Client-supplied idempotency key; a duplicate is accepted at most once.
     request_id: str | None = None
+    # Explicit resume of an interrupted run; mutually exclusive with a new question.
+    run_id: str | None = None
     # Optional guard: refuse the turn when the conversation revision has moved on.
     expected_revision: int | None = None
 
@@ -53,6 +55,11 @@ class ConversationDetailOut(ConversationOut):
     """One conversation plus the current pending draft, if any."""
 
     pending_draft: dict | None = None
+    # Monotonic head revision; the value draft saves/approvals must send back so a
+    # stale tab is refused instead of overwriting newer state.
+    state_revision: int = 0
+    # The prepared/running/interrupted run, so a reconnect can resume the exact run.
+    active_run: dict | None = None
 
 
 class CitationOut(BaseModel):

@@ -230,7 +230,7 @@ describe('草稿的保存与审批边界', () => {
     expect(stub.calls.some((call) => call.url.startsWith('/notes/'))).toBe(false)
     const call = stub.calls.find((item) => item.url === '/chat/draft')!
     expect(call.init.method).toBe('PUT')
-    expect(bodyOf(call)).toEqual({ thread_id: 'c-1', content: '## 新正文\n' })
+    expect(bodyOf(call)).toMatchObject({ thread_id: 'c-1', content: '## 新正文\n' })
   })
 
   it('同意前先把未保存正文落库，再调 review', async () => {
@@ -287,7 +287,7 @@ describe('草稿的保存与审批边界', () => {
     await chat.reviewDraft({ action: 'reject' })
 
     const call = stub.calls.find((item) => item.url === '/chat/review')!
-    expect(bodyOf(call)).toEqual({ thread_id: 'c-1', action: 'reject' })
+    expect(bodyOf(call)).toMatchObject({ thread_id: 'c-1', action: 'reject' })
     expect(chat.panel.mode).toBe('citation')
     expect(chat.panel.draft).toBeNull()
   })

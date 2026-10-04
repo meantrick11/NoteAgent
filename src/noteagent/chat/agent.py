@@ -63,10 +63,14 @@ class ChatAgent:
             conversation_id, question, request_id, expected_revision=expected_revision
         )
 
-    async def run(self, prepared: PreparedTurn) -> AsyncIterator[dict]:
+    def resume(self, run_id: str) -> PreparedTurn:
+        """Explicitly claim an interrupted run; the user message is not re-accepted."""
+        return self._service.resume_turn(run_id)
+
+    async def run(self, prepared: PreparedTurn, *, resume: bool = False) -> AsyncIterator[dict]:
         """Run the compiled graph for an already-prepared turn and emit its events."""
         graph = build_chat_graph(self._runtime, self._checkpoints.saver)
-        async for event in execute_turn(graph, self._service, prepared):
+        async for event in execute_turn(graph, self._service, prepared, resume=resume):
             yield event
         state = await self._service.get_state(prepared.conversation_id)
         yield {
@@ -76,7 +80,9 @@ class ChatAgent:
                 "turn_id": prepared.turn_id,
                 "status": state.values.get("run_status"),
                 "checkpoint_id": checkpoint_id_of(state.config),
-                "state_revision": state.values.get("generation"),
+                # The conversation's head revision after this publish: the token the
+                # next draft edit/approval must send back.
+                "state_revision": self._service.current_revision(prepared.conversation_id),
             },
         }
 
@@ -147,8 +153,7 @@ class ChatAgent:
         draft = await self._service.get_pending_draft(conversation_id)
         # Reject a stale tab *before* any disk write, so a refused review has no effect.
         if expected_revision is not None:
-            state = await self._service.get_state(conversation_id)
-            if int(state.values.get("generation", 0) or 0) != expected_revision:
+            if self._service.current_revision(conversation_id) != expected_revision:
                 raise StaleConversation(conversation_id)
         if action == "reject":
             await self._service.clear_pending_draft(

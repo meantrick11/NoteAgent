@@ -187,6 +187,8 @@ export const useChatStore = defineStore('chat', () => {
    * 就靠它判断并放弃自动打开，不抢用户的动作。
    */
   const selectionVersion = ref(0)
+  /** 当前会话活动 head 的 revision；草稿保存／审批要原样回传做 stale 校验。 */
+  const stateRevision = ref(0)
 
   /** 当前会话的面板；不存在时返回默认值，写操作一律走 patchPanel。 */
   const panel = computed<PanelSnapshot>(
@@ -277,7 +279,10 @@ export const useChatStore = defineStore('chat', () => {
       // 慢请求不能覆盖用户后来选中的会话。
       if (currentId.value !== requested) return
       messages.value = (Array.isArray(list) ? list : []).map((item) => fromServerMessage(item))
-      if (detail) applyServerDraft(requested, detail.pending_draft)
+      if (detail) {
+        applyServerDraft(requested, detail.pending_draft)
+        stateRevision.value = detail.state_revision ?? 0
+      }
     } catch {
       if (currentId.value !== requested) return
       messages.value = []
@@ -499,12 +504,13 @@ export const useChatStore = defineStore('chat', () => {
       return false
     }
     try {
-      const result = await api.saveDraftContent(threadId, content)
+      const result = await api.saveDraftContent(threadId, content, stateRevision.value)
       patchActivePanel({ draft: result.pending_draft, dirty: false })
+      if (typeof result.state_revision === 'number') stateRevision.value = result.state_revision
       showSaveToast()
       return true
     } catch (error) {
-      // 失败保留编辑文本与未保存状态，可重试。
+      // 失败保留编辑文本与未保存状态，可重试；409 说明版本已过期。
       await reportError('保存失败', error)
       return false
     }
@@ -524,7 +530,12 @@ export const useChatStore = defineStore('chat', () => {
     try {
       if (current.dirty && !(await saveDraftContent())) return
       const draft = current.draft
-      const result = await api.reviewDraft({ thread_id: threadId, ...body })
+      const result = await api.reviewDraft({
+        thread_id: threadId,
+        ...body,
+        expected_revision: stateRevision.value,
+      })
+      if (typeof result.state_revision === 'number') stateRevision.value = result.state_revision
       if (result.status === 'written') {
         const text =
           result.action === 'delete'
@@ -724,7 +735,13 @@ export const useChatStore = defineStore('chat', () => {
       }
       return
     }
-    if (event.type === 'turn_complete') return
+    if (event.type === 'turn_complete') {
+      // The turn published a new head; keep the draft/approval token current.
+      if (typeof event.stateRevision === 'number' && turn.ownerKey === citePaneKey(currentId.value)) {
+        stateRevision.value = event.stateRevision
+      }
+      return
+    }
     if (event.type === 'unknown') return
 
     accumulator.apply(event)
@@ -762,6 +779,7 @@ export const useChatStore = defineStore('chat', () => {
     panelOverrideAvailable: computed(() => draftOverrideAvailable(panel.value.draft)),
     streaming,
     selectionVersion,
+    stateRevision,
     anyPanelDirty,
     // 会话
     loadConversations,

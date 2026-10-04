@@ -174,3 +174,34 @@ def test_chat_rejects_unmigrated_legacy_conversation(tmp_path):
         "/chat", json={"question": "hi", "conversation_id": legacy.id}
     )
     assert response.status_code == 409
+
+
+def test_interrupted_run_resumes_over_http_without_duplicate_user(tmp_path):
+    import asyncio
+
+    app = build_checkpoint_app(tmp_path, reply_batches=[["answer"]])
+    conv = asyncio.run(app.service.create_conversation("t"))
+    prepared = asyncio.run(app.service.prepare_turn(conv.id, "q", request_id="req-x"))
+    app.service.interrupt_run(prepared)
+
+    # The detail endpoint exposes the interrupted run so a client can reconnect.
+    detail = app.client.get(f"/conversations/{conv.id}").json()
+    assert detail["active_run"]["run_id"] == prepared.run_id
+    assert detail["active_run"]["status"] == "interrupted"
+
+    # A brand-new question is refused while the interrupted run still owns the turn.
+    blocked = app.client.post(
+        "/chat", json={"question": "again", "conversation_id": conv.id}
+    )
+    assert blocked.status_code == 409
+
+    # Resuming by explicit run_id completes without re-accepting the user message.
+    resumed = app.client.post(
+        "/chat", json={"run_id": prepared.run_id, "conversation_id": conv.id}
+    )
+    assert resumed.status_code == 200
+    messages = app.client.get(f"/conversations/{conv.id}/messages").json()
+    assert [m["role"] for m in messages] == ["user", "assistant"]
+    assert messages[0]["content"] == "q"
+    assert messages[1]["content"] == "answer"
+    assert app.client.get(f"/conversations/{conv.id}").json()["active_run"] is None
