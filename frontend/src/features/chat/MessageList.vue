@@ -66,9 +66,17 @@ function onBodyClick(message: ChatMessage, index: number, event: MouseEvent): vo
           :live="message.live"
         />
         <div class="msg-bubble">
+          <MessageEditForm
+            v-if="message.role === 'user' && chat.editingKey === message.key"
+            :value="chat.editingText"
+            :busy="chat.recoveryPhase === 'previewing' || chat.recoveryPhase === 'running'"
+            @update:value="chat.updateEditingText"
+            @submit="chat.submitEdit"
+            @cancel="chat.cancelRecovery"
+          />
           <!-- 与旧页面一致：助手正文是 Markdown，先把引用标记插进去再解析。 -->
           <div
-            v-if="message.role === 'assistant'"
+            v-else-if="message.role === 'assistant'"
             class="msg-body"
             @click="onBodyClick(message, index, $event)"
             v-html="bodyHtml(message)"
@@ -77,16 +85,8 @@ function onBodyClick(message: ChatMessage, index: number, event: MouseEvent): vo
         </div>
 
         <!-- 编辑态：只允许一条消息同时编辑，提交前必须看到预览。 -->
-        <MessageEditForm
-          v-if="message.role === 'user' && chat.editingKey === message.key"
-          :value="chat.editingText"
-          :busy="chat.recoveryPhase === 'previewing' || chat.recoveryPhase === 'running'"
-          @update:value="chat.updateEditingText"
-          @submit="chat.submitEdit"
-          @cancel="chat.cancelRecovery"
-        />
         <UserMessageActions
-          v-else-if="message.role === 'user'"
+          v-if="message.role === 'user' && chat.editingKey !== message.key"
           :message="message"
           @edit="(target) => chat.beginEdit(target)"
         />

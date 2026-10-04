@@ -168,6 +168,8 @@ test('编辑消息走预览确认并续接生成', async ({ page }) => {
   await userRow.getByRole('button', { name: '编辑这条消息' }).click()
   const box = page.getByRole('textbox', { name: '编辑这条消息' })
   await expect(box).toHaveValue('原始问题')
+  await expect(userRow.locator('.msg-body')).toHaveCount(0)
+  await expect(userRow.locator('.msg-bubble textarea')).toHaveCount(1)
   await box.fill('改过的问题')
   await box.press('Control+Enter')
 
@@ -178,6 +180,8 @@ test('编辑消息走预览确认并续接生成', async ({ page }) => {
   // 取消不启动任何恢复。
   await dialog.getByRole('button', { name: '取消' }).click()
   await expect(dialog).toHaveCount(0)
+  await expect(userRow.locator('.msg-body')).toHaveText('原始问题')
+  await expect(userRow.locator('textarea')).toHaveCount(0)
   expect(calls.some((c) => /\/recoveries$/.test(c.url))).toBe(false)
 
   // 再次提交并确认。
