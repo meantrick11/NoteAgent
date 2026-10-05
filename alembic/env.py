@@ -5,9 +5,9 @@ from sqlalchemy import pool
 
 from alembic import context
 
-from noteagent.bootstrap.settings import Settings
-from noteagent.db import load_all_models
-from noteagent.db.models import Base
+from NoteAgent.AppBootstrap.AppSettings import Settings
+from NoteAgent.TechnicalSupport.DatabaseAccess import load_all_models
+from NoteAgent.TechnicalSupport.DatabaseAccess import Base
 
 # 新表注册在同一个 Base.metadata 上；不导入则 autogenerate 看不到它们。
 load_all_models()

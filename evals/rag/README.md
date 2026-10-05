@@ -24,31 +24,31 @@
 
 ```bash
 # 从草稿重建查询集（逐字定位引文、推算 heading_path 与偏移，并跑正式校验）
-uv run python scripts/build_rag_queries.py \
+uv run python Scripts/BuildRagQueries.py \
   --corpus evals/rag/corpus/v1 \
   --draft evals/rag/queries.v1.draft.json \
   --output evals/rag/queries.v1.jsonl
 
 # 直接检索评测：真 RetrievalService + 真 embedding + 独立 Chroma
 # 默认就是生产配置（章节切块 + 标题路径进嵌入文本），跑一次即代表线上
-uv run python scripts/eval_rag.py --corpus evals/rag/corpus/v1 \
+uv run python Scripts/EvalRag.py --corpus evals/rag/corpus/v1 \
   --queries evals/rag/queries.v1.jsonl --split dev \
   --variant selected --run-id rag-v1-selected-dev
 
 # 复现旧基线（char 500/50 + 正文嵌入）
-uv run python scripts/eval_rag.py --split dev --variant baseline \
+uv run python Scripts/EvalRag.py --split dev --variant baseline \
   --strategy char --no-embed-heading-prefix --run-id rag-v1-baseline-dev
 
 # 换向量模型：编码指令按模型自动应用（见 retrieval/embedder.py 的 MODEL_INSTRUCTIONS）
-uv run python scripts/eval_rag.py --split dev --variant candidate-zh \
+uv run python Scripts/EvalRag.py --split dev --variant candidate-zh \
   --model BAAI/bge-small-zh-v1.5 --run-id rag-v1-candidate-zh-dev
-uv run python scripts/eval_rag.py --split dev --variant candidate-multi \
+uv run python Scripts/EvalRag.py --split dev --variant candidate-multi \
   --model intfloat/multilingual-e5-small --run-id rag-v1-candidate-multi-dev
 ```
 
 参数：`--model`（候选向量模型完整 id，默认取 `EMBEDDING_MODEL`）、`--strategy char|heading`（默认取 `CHUNK_STRATEGY`）、`--embed-heading-prefix / --no-embed-heading-prefix`（默认取 `EMBED_HEADING_PREFIX`）、`--chunk-size`、`--chunk-overlap`、`--top-k`（主指标口径，默认 5）、`--probe-k`（诊断用的更深候选，默认 20）、`--repeats`、`--warmup`。每个 run 在 `var/evals/rag/<run-id>/` 新建独立 Chroma，不复用生产索引，也不写生产 `notes/`。
 
-模型文件用 [`scripts/download_models.py`](../../scripts/download_models.py) 走镜像取（hf.co 直连不通；huggingface_hub 因镜像不回 `x-repo-commit` 头而拒绝下载，脚本改为手工构建 HF 缓存布局）。缓存在 `EMBEDDING_CACHE_DIR`（当前 `D:\develop\aidevelop\transformer_models`）。
+模型文件用 [DownloadModels.py](../../Scripts/DownloadModels.py) 走镜像取（hf.co 直连不通；huggingface_hub 因镜像不回 `x-repo-commit` 头而拒绝下载，脚本改为手工构建 HF 缓存布局）。缓存在 `EMBEDDING_CACHE_DIR`（当前 `D:\develop\aidevelop\transformer_models`）。
 
 对照 run 都留在 `results/`：切块五项（`rag-v1-baseline-dev`、`rag-v1-heading-dev`、`rag-v1-heading-prefix-dev`、`rag-v1-char320-dev`、`rag-v1-heading-prefix-320-dev`）、向量模型两项（`rag-v1-candidate-zh-dev` = bge-small-zh、`rag-v1-candidate-multi-dev` = 选定 e5-small），以及最终验收两项（`rag-v1-baseline-holdout`、`rag-v1-selected-holdout`）。结论见 [rag-v1-report.md](../reports/rag-v1-report.md) §5、§6、§1.1。
 

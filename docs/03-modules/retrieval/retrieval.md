@@ -40,7 +40,7 @@
 | `DraftStore`、PG 消息、`context.md` | 否 |
 | 用户 PDF / 图片 / 网页正文 | 否（现行无此路径） |
 
-进程启动**不会**扫描 `notes/` 全量索引。盘上已有、从未经过这次同步的文件，要搜到仍须对该篇跑 [`scripts/index_notes.py`](../../../scripts/index_notes.py)，或在 Documents 点「未索引」，或再批准一次写盘。
+进程启动**不会**扫描 `notes/` 全量索引。盘上已有、从未经过这次同步的文件，要搜到仍须对该篇跑 [IndexNotes.py](../../../Scripts/IndexNotes.py)，或在 Documents 点「未索引」，或再批准一次写盘。
 
 ---
 
@@ -133,7 +133,7 @@ collection 自身的 metadata 另存上面两项身份记录（见 §4 的开头
 
 ## 5. 切块与向量化
 
-[`MarkdownChunker`](../../../src/noteagent/retrieval/chunker.py)：`RecursiveCharacterTextSplitter`，`chunk_size=500`，`chunk_overlap=50`，`length_function=len`。分隔符优先段落、换行、中文句读。
+[BusinessModules/NoteRetrieval/MarkdownChunker.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/MarkdownChunker.py)：`RecursiveCharacterTextSplitter`，`chunk_size=500`，`chunk_overlap=50`，`length_function=len`。分隔符优先段落、换行、中文句读。
 
 两种策略，`split()` 保持返回字符串列表的兼容入口，索引走 `split_with_metadata()`：
 
@@ -142,7 +142,7 @@ collection 自身的 metadata 另存上面两项身份记录（见 §4 的开头
 
 每个块都带 `heading_path` 与 `start_char`/`end_char`，偏移由切分器给出并在写入前用切片校验（`text[start:end] == content`），不靠事后字符串搜索猜位置。
 
-[`SentenceTransformerEmbedder`](../../../src/noteagent/retrieval/embedder.py)：本地 `SentenceTransformer`，`cache_folder` 为 `EMBEDDING_CACHE_DIR`。`embed_documents` 与 `embed_query` 必须是同一模型。默认 `intfloat/multilingual-e5-small`，编码指令见 [`MODEL_INSTRUCTIONS`](../../../src/noteagent/retrieval/embedder.py)。`EMBEDDING_LOCAL_FILES_ONLY=true` 时不联网下载。
+[BusinessModules/NoteRetrieval/TextEmbedder.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/TextEmbedder.py)：本地 `SentenceTransformer`，`cache_folder` 为 `EMBEDDING_CACHE_DIR`。`embed_documents` 与 `embed_query` 必须是同一模型。默认 `intfloat/multilingual-e5-small`，编码指令见 [BusinessModules/NoteRetrieval/TextEmbedder.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/TextEmbedder.py)。`EMBEDDING_LOCAL_FILES_ONLY=true` 时不联网下载。
 
 **被嵌入的文本可以不是引用原文。** `embed_heading_prefix=True` 时嵌入文本为 `heading_path + 换行 + 正文`，而 Chroma 的 `document` 始终存正文切片，保证引用可映射回原文。
 
@@ -174,7 +174,7 @@ collection 自身的 metadata 另存上面两项身份记录（见 §4 的开头
 |------|------|
 | 写盘失败 | 不索引；draft 放回 store |
 | 写盘成功、embed / Chroma 失败 | 文件保留；日志 `draft index failed` |
-| 向量库目录损坏 | 删 persist 或对每篇跑 `index_notes.py` |
+| 向量库目录损坏 | 删 persist 或对每篇跑 `IndexNotes.py` |
 | 缩短 replace 仍只 upsert、不先删 | **现行已先删。** 旧实现会残留高序号 id |
 | 活动 collection 不存在 | `CollectionMissingError`；状态 `retrieval_state=missing`、`retrieval_available=false` 并给出可操作原因。读取路径**不会**创建空集合，界面提供「重建并修复」 |
 | 配置指纹与 collection 不符 | 构造 `RetrievalService` 抛 `IndexConfigMismatch`，附两边指纹与「重建」提示；状态 `config_mismatch`，不静默用旧向量 |
@@ -188,11 +188,11 @@ collection 自身的 metadata 另存上面两项身份记录（见 §4 的开头
 
 ### 7.1 界面切换向量模型（维护窗口）
 
-单进程串行维护，不做双写或增量追赶。`ModelRuntimeService`（[`model_management/service.py`](../../../src/noteagent/model_management/service.py)）持有唯一的 `RuntimeSnapshot`（chat agent + retrieval + embedding 状态 + revision），请求通过 `read` / `write` / `chat` 取一次快照并在整个操作内使用：
+单进程串行维护，不做双写或增量追赶。`ModelRuntimeService`（[ApplicationFlows/ModelRuntime/ModelRuntime.py](../../../src/NoteAgent/ApplicationFlows/ModelRuntime/ModelRuntime.py)）持有唯一的 `RuntimeSnapshot`（chat agent + retrieval + embedding 状态 + revision），请求通过 `read` / `write` / `chat` 取一次快照并在整个操作内使用：
 
 1. 门禁锁内确认没有正在进行的聊天/写操作，再开维护窗口（检查与设置必须原子）。已有请求继续持有旧快照到 `finally` 释放。
 2. **先在锁外算出目标身份**（`index_fingerprint`，不加载权重），据此得到目标 collection 名；后台线程再用 `local_files_only=true` 加载目标模型并写这个新 collection。
-3. 逐篇 `index_note` 并汇报进度；目标集合里磁盘上已不存在的 `file_name` 会删掉（`indexed_files()`，避免残留幽灵片段）。`scripts/index_notes.py` 与界面共用 `index_targets()`，README.md 与 `bak/` 的排除规则一致。
+3. 逐篇 `index_note` 并汇报进度；目标集合里磁盘上已不存在的 `file_name` 会删掉（`indexed_files()`，避免残留幽灵片段）。`Scripts/IndexNotes.py` 与界面共用 `index_targets()`，README.md 与 `bak/` 的排除规则一致。
 4. 构建前后比对笔记清单与内容 hash；不一致（外部改过文件）则任务失败，旧索引保留。非空语料必须切出至少一块，并至少用真实语料搜到一次命中；空语料允许成功建空索引。装配出的指纹与第 2 步预计算的不一致时**放弃发布**，绝不把内容登记成另一个身份。
 5. 原子写 `active_embedding`（模型、resolved revision、collection、指纹）与 revision，然后用**一次替换**发布新的检索对象与绑定它的 Agent/工具。任一步失败都保留旧对象，job 记为 `failed`。
 6. 维护期间 `/chat`、审批的 approve/override、所有 `/notes` 写接口返回 409（`code=busy`），拒绝发生在建会话/写消息/落盘之前；reject 草稿走只读租约因此仍可用；读笔记、读历史、`GET /model-settings` 不受影响。
@@ -234,23 +234,23 @@ collection 自身的 metadata 另存上面两项身份记录（见 §4 的开头
 
 | 路径 | 职责 |
 |------|------|
-| [`src/noteagent/retrieval/chunker.py`](../../../src/noteagent/retrieval/chunker.py) | 字符 / 章节切块，输出块与偏移 |
-| [`src/noteagent/retrieval/markdown.py`](../../../src/noteagent/retrieval/markdown.py) | 围栏感知的标题解析与 `heading_path`（检索与评测共用） |
-| [`src/noteagent/retrieval/embedder.py`](../../../src/noteagent/retrieval/embedder.py) | 本地句向量 |
-| [`src/noteagent/retrieval/instructions.py`](../../../src/noteagent/retrieval/instructions.py) | 各模型的编码指令表；单独成模块，让指纹能在不加载权重时算出来 |
-| [`src/noteagent/retrieval/vector_store.py`](../../../src/noteagent/retrieval/vector_store.py) | upsert / query / `delete_by_file_name` / 存在性与身份校验（`exists`、`stored_config`、`ensure_config`） |
-| [`src/noteagent/retrieval/service.py`](../../../src/noteagent/retrieval/service.py) | `index_note`、`delete_note`、`search`、`indexed_files`、`index_targets`、身份指纹（`canonical_index_config` / `index_fingerprint_for_model`）、`verify_index` |
-| [`src/noteagent/observability/index_trace.py`](../../../src/noteagent/observability/index_trace.py) | 索引/检索步骤 INFO |
-| [`src/noteagent/retrieval/models.py`](../../../src/noteagent/retrieval/models.py) | `SearchHit`、`NoteChunk` |
-| [`src/noteagent/chat/drafts.py`](../../../src/noteagent/chat/drafts.py) | `_sync_index` |
-| [`src/noteagent/chat/agent.py`](../../../src/noteagent/chat/agent.py) | `review` 注入 `retrieval` |
-| [`src/noteagent/bootstrap/runtime.py`](../../../src/noteagent/bootstrap/runtime.py) | 唯一的 Agent/工具/检索装配入口（`BootstrapAssembler`） |
-| [`src/noteagent/bootstrap/app.py`](../../../src/noteagent/bootstrap/app.py) | 装配 `ModelRuntimeService` 并注册路由 |
-| [`src/noteagent/model_management/service.py`](../../../src/noteagent/model_management/service.py) | 运行快照、门禁、向量重建任务 |
-| [`scripts/index_notes.py`](../../../scripts/index_notes.py) | 按篇重建（与界面共用 `index_targets`） |
-| [`src/noteagent/bootstrap/settings.py`](../../../src/noteagent/bootstrap/settings.py) | `CHROMA_*`、`EMBEDDING_*`、`MODEL_SETTINGS_DIR` |
+| [BusinessModules/NoteRetrieval/MarkdownChunker.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/MarkdownChunker.py) | 字符 / 章节切块，输出块与偏移 |
+| [BusinessModules/NoteRetrieval/MarkdownSections.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/MarkdownSections.py) | 围栏感知的标题解析与 `heading_path`（检索与评测共用） |
+| [BusinessModules/NoteRetrieval/TextEmbedder.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/TextEmbedder.py) | 本地句向量 |
+| [BusinessModules/NoteRetrieval/EmbeddingInstructions.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/EmbeddingInstructions.py) | 各模型的编码指令表；单独成模块，让指纹能在不加载权重时算出来 |
+| [BusinessModules/NoteRetrieval/ChromaVectorStore.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/ChromaVectorStore.py) | upsert / query / `delete_by_file_name` / 存在性与身份校验（`exists`、`stored_config`、`ensure_config`） |
+| [BusinessModules/NoteRetrieval/NoteRetrievalService.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/NoteRetrievalService.py) | `index_note`、`delete_note`、`search`、`indexed_files`、`index_targets`、身份指纹（`canonical_index_config` / `index_fingerprint_for_model`）、`verify_index` |
+| [TechnicalSupport/ExecutionLogging/IndexTrace.py](../../../src/NoteAgent/TechnicalSupport/ExecutionLogging/IndexTrace.py) | 索引/检索步骤 INFO |
+| [BusinessModules/NoteRetrieval/RetrievalModels.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/RetrievalModels.py) | `SearchHit`、`NoteChunk` |
+| [BusinessModules/ConversationState/PendingDrafts.py](../../../src/NoteAgent/BusinessModules/ConversationState/PendingDrafts.py) | `_sync_index` |
+| [BusinessModules/ChatAgent/ChatAgent.py](../../../src/NoteAgent/BusinessModules/ChatAgent/ChatAgent.py) | `review` 注入 `retrieval` |
+| [AppBootstrap/RuntimeAssembler.py](../../../src/NoteAgent/AppBootstrap/RuntimeAssembler.py) | 唯一的 Agent/工具/检索装配入口（`BootstrapAssembler`） |
+| [AppBootstrap/HttpApp.py](../../../src/NoteAgent/AppBootstrap/HttpApp.py) | 装配 `ModelRuntimeService` 并注册路由 |
+| [ApplicationFlows/ModelRuntime/ModelRuntime.py](../../../src/NoteAgent/ApplicationFlows/ModelRuntime/ModelRuntime.py) | 运行快照、门禁、向量重建任务 |
+| [IndexNotes.py](../../../Scripts/IndexNotes.py) | 按篇重建（与界面共用 `index_targets`） |
+| [AppBootstrap/AppSettings.py](../../../src/NoteAgent/AppBootstrap/AppSettings.py) | `CHROMA_*`、`EMBEDDING_*`、`MODEL_SETTINGS_DIR` |
 
-包说明（与代码同步的目录表）：[`src/noteagent/retrieval/README.md`](../../../src/noteagent/retrieval/README.md)。
+包说明（与代码同步的目录表）：[`src/NoteAgent/BusinessModules/NoteRetrieval/README.md`](../../../src/NoteAgent/BusinessModules/NoteRetrieval/README.md)。
 
 ## 恢复与可信索引
 

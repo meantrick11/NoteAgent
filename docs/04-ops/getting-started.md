@@ -63,7 +63,7 @@ docker-compose up --build
 
 ## 常见问题
 
-**8000 端口被占用。** 改 [`docker-compose.yml`](../../docker-compose.yml) 里 `app.ports`，例如 `"18000:8000"`，然后访问 `http://127.0.0.1:18000`。
+**8000 端口被占用。** 改 [docker-compose.yml](../../docker-compose.yml) 里 `app.ports`，例如 `"18000:8000"`，然后访问 `http://127.0.0.1:18000`。
 
 **页面能开，对话失败。** 几乎都是没填或填错 `DEEPSEEK_API_KEY` / `DEEPSEEK_API_BASE` / `CHAT_MODEL`。改 `.env` 后需要重新 `docker compose up`（compose 用 `env_file` 读密钥）。
 

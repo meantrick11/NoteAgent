@@ -1,0 +1,43 @@
+"""Synchronous SQLAlchemy engine and session factory.
+
+Used by the runtime (PostgreSQL) and unit tests (in-memory SQLite).
+"""
+
+from sqlalchemy import Engine, create_engine, event
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+
+#输入数据库URL并创建数据库的连接引擎engine
+def create_engine_from_url(url: str) -> Engine:
+    """Create a synchronous engine from a SQLAlchemy URL string.
+
+    SQLite URLs get ``check_same_thread=False`` and foreign-key enforcement;
+    in-memory SQLite also shares one connection (StaticPool) so tables are
+    visible across threads (e.g. TestClient). PostgreSQL URLs need neither.
+    """
+    if url.startswith("sqlite:"):   #Sqlite:的数据库创建
+        kwargs: dict = {"connect_args": {"check_same_thread": False}}
+        if ":memory:" in url:
+            kwargs["poolclass"] = StaticPool
+        engine = create_engine(url, **kwargs)
+        _enable_sqlite_foreign_keys(engine)
+        return engine
+    return create_engine(url)   #创建数据库连接，环境中配置的是Pg数据库
+
+#每次 SQLAlchemy 新建一条数据库连接时，自动执行 PRAGMA foreign_keys=ON，开启 SQLite 外键强制校验。
+def _enable_sqlite_foreign_keys(engine: Engine) -> None:
+    """Turn on SQLite FK enforcement for every new connection."""
+
+    def _set_sqlite_pragma(dbapi_connection, _connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    event.listen(engine, "connect", _set_sqlite_pragma)
+
+# 生产 session 工厂，关闭两个自动行为（expire_on_commit、autoflush）
+# 业务代码拿这个工厂创建 session 做数据库读写。
+# 普通的Session(engine)只
+def create_session_factory(engine: Engine) -> sessionmaker[Session]:
+    """Build a sessionmaker with expire_on_commit off and no autoflush."""
+    return sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)

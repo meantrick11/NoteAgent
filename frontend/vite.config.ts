@@ -20,7 +20,7 @@ export default defineConfig(({ command }) => ({
     },
   },
   build: {
-    outDir: '../src/noteagent/web/dist',
+    outDir: '../src/NoteAgent/HttpApi/WebFrontend/dist',
     emptyOutDir: true,
   },
   server: {

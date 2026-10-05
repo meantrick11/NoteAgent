@@ -61,3 +61,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+## 5. Python Package and File Naming
+
+- Use PascalCase for project-owned Python packages and files. Each word starts with an uppercase letter; names describe the business object and purpose.
+- Use NoteAgent, Scripts, Tools, and Tests paths with exact casing. The entry point is main.py; test files are Test*.py.
+- Keep the requested lowercase main.py entry point and framework-required __init__.py, __main__.py, conftest.py, and Alembic env.py names. Keep third-party package names and persistent identifiers unchanged.
+- Class, function, and field names retain their current interfaces until separately migrated. After generating an Alembic migration, give its file a descriptive PascalCase name and retain its revision metadata.

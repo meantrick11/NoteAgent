@@ -82,7 +82,7 @@ selected 在 holdout 上 **8 个场景全部 3/3**；dev 侧同配置（含 v10�
 
 | 路径 | 作用 |
 |---|---|
-| `src/noteagent/rag_eval/{dataset,metrics,run,agent_run}.py` | 读取与校验、纯计分、检索 run、Agent run |
+| `tools/noteagent_evals/rag/{dataset,metrics,run,agent_run}.py` | 读取与校验、纯计分、检索 run、Agent run |
 | `scripts/{build_rag_queries,verify_rag_corpus,eval_rag,eval_rag_agent}.py` | 建集、核验、两个评测入口 |
 | `tests/unit/test_rag_eval.py`（22）、`tests/unit/test_rag_agent_eval.py`（11） | 离线单测，无模型、无网络、无数据库 |
 

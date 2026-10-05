@@ -16,12 +16,12 @@
 ## 怎么跑
 
 ```bash
-uv run python scripts/eval_rag_agent.py --corpus evals/rag/corpus/v1 \
+uv run python Scripts/EvalRagAgent.py --corpus evals/rag/corpus/v1 \
   --cases evals/agent/rag_cases.v1.json --split dev \
   --variant baseline --run-id agent-v1-baseline-dev --repeat 3
 
 # 小范围冒烟（少花 API 调用）
-uv run python scripts/eval_rag_agent.py --split dev --variant baseline \
+uv run python Scripts/EvalRagAgent.py --split dev --variant baseline \
   --run-id agent-smoke --ids a11 --repeat 1
 ```
 

@@ -2,7 +2,7 @@
 
 正式知识的 Markdown。这是数据，不是 Python 包，不要放 `.py`。本 README 不参与向量索引。
 
-代码侧对应 [`src/noteagent/notes`](../src/noteagent/notes/README.md) 的 `FileNoteRepository`，根路径由 `NOTES_DIR` 决定（默认就是本目录）。
+代码侧对应 [`src/noteagent/modules/notes`](../src/noteagent/modules/notes/README.md) 的 `FileNoteRepository`，根路径由 `NOTES_DIR` 决定（默认就是本目录）。
 
 ## 包含内容
 

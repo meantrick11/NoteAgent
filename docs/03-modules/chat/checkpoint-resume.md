@@ -1,6 +1,6 @@
 # Checkpoint 会话续接与草稿并发
 
-正式聊天经 `conversations/service.py` 保存 checkpoint 状态，页面从活跃 head 投影消息和待审草稿。旧消息表不是正式聊天的新状态写入源。运行 claim 和会话 revision 是业务数据库中的协调信息；checkpoint 与业务数据库之间仍需要发布 head 来确定可见状态。
+正式聊天经 `BusinessModules/ConversationState/ConversationStateService.py` 保存 checkpoint 状态，页面从活跃 head 投影消息和待审草稿。旧消息表不是正式聊天的新状态写入源。运行 claim 和会话 revision 是业务数据库中的协调信息；checkpoint 与业务数据库之间仍需要发布 head 来确定可见状态。
 
 ## 中断续接
 

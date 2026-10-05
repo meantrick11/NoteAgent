@@ -82,15 +82,16 @@ dependencies = [
 ]
 
 [tool.pytest.ini_options]
-pythonpath = [".", "src", "tests"]
-testpaths = ["tests"]
+pythonpath = [".", "src", "Tests", "Tools"]
+testpaths = ["Tests"]
+python_files = ["Test*.py"]
 asyncio_mode = "auto"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/noteagent"]
+packages = ["src/NoteAgent"]
 # 前端产物被 .gitignore 忽略，但运行时要读 web/dist/index.html：
 # 显式声明为 artifact，避免打包时被 VCS 忽略规则一起丢掉。
-artifacts = ["src/noteagent/web/dist/**"]
+artifacts = ["src/NoteAgent/HttpApi/WebFrontend/dist/**"]
 
 [dependency-groups]
 dev = [
