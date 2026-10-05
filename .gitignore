@@ -54,4 +54,4 @@ frontend/test-results/
 frontend/coverage/
 frontend/node_modules/
 frontend/.vite/
-src/noteagent/web/dist/
+src/NoteAgent/HttpApi/WebFrontend/dist/

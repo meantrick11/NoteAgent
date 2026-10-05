@@ -1,6 +1,6 @@
 # 整体恢复实现与故障处理
 
-代码分区：`recovery/` 负责门禁、预览、协调与 HTTP；`notes/` 负责正文 mutation 和影子 Git；`retrieval/repairs.py` 负责索引维修；`conversations/` 负责候选状态和活动指针。上层契约见 [REQ-018](../../../../NoteAgent-docs/docs/02-requirements/REQ-018-历史消息编辑与整体回退.md)。
+代码分区：`recovery/` 负责门禁、预览、协调与 HTTP；`notes/` 负责正文 mutation 和影子 Git；`BusinessModules/NoteRetrieval/IndexRepair/IndexRepairService.py` 负责索引维修；`conversations/` 负责候选状态和活动指针。上层契约见 [REQ-018](../../../../NoteAgent-docs/docs/02-requirements/REQ-018-历史消息编辑与整体回退.md)。
 
 ## 材料写入
 
@@ -30,4 +30,4 @@ read/chat shared，mutate/recovery/model_rebuild exclusive；租约覆盖 HTTP/S
 
 ## 验证
 
-真实 PostgreSQL/Git/Chroma worker 终止重启和双进程竞争：`tests/integration/test_recovery_process_drills.py`。真实 HTTP 编辑→确认→恢复→生成→刷新：`frontend/tests/e2e/checkpoint-edit-real.spec.ts`。故障矩阵见 [补验结果](../../05-records/plans/2026-10-04-checkpoint-shadow-git-completion-results.md)。模型与 embedding 在这些测试中为确定性替身；本轮未运行 Docker 镜像构建。
+真实 PostgreSQL/Git/Chroma worker 终止重启和双进程竞争：`Tests/Integration/TestRecoveryProcessDrills.py`。真实 HTTP 编辑→确认→恢复→生成→刷新：`frontend/Tests/E2e/checkpoint-edit-real.spec.ts`。故障矩阵见 [补验结果](../../05-records/plans/2026-10-04-checkpoint-shadow-git-completion-results.md)。模型与 embedding 在这些测试中为确定性替身；本轮未运行 Docker 镜像构建。

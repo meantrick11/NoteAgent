@@ -1,6 +1,6 @@
 # Checkpoint 上下文与压缩
 
-当前状态定义在 conversations/records.py 的 GraphState，执行节点在 chat/graph.py 与 nodes.py。checkpoint 保存完整显示历史和独立模型工作上下文。
+当前状态定义在 BusinessModules/ConversationState/ConversationRecords.py 的 GraphState，执行节点在 BusinessModules/ChatAgent/ChatGraph.py 与 nodes.py。checkpoint 保存完整显示历史和独立模型工作上下文。
 
 | 状态 | 用途 |
 |---|---|

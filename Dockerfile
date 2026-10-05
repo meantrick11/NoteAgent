@@ -8,8 +8,8 @@ WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-# vite.config.ts 把产物写到 ../src/noteagent/web/dist，
-# 即 /build/src/noteagent/web/dist，下面直接从这里取。
+# vite.config.ts 把产物写到 ../src/NoteAgent/HttpApi/WebFrontend/dist，
+# 即 /build/src/NoteAgent/HttpApi/WebFrontend/dist，下面直接从这里取。
 RUN npm run build
 
 
@@ -37,7 +37,7 @@ COPY alembic ./alembic
 
 # 前端产物放进包目录：项目是 editable 安装，运行时就从这个路径读 index.html。
 # 必须放在 COPY src 之后，否则会被源码那一层覆盖掉。
-COPY --from=frontend-build /build/src/noteagent/web/dist ./src/noteagent/web/dist
+COPY --from=frontend-build /build/src/NoteAgent/HttpApi/WebFrontend/dist ./src/NoteAgent/HttpApi/WebFrontend/dist
 
 # Lock resolves CUDA torch on Linux. Skip those packages and install the CPU wheel.
 RUN uv sync --frozen --no-dev \

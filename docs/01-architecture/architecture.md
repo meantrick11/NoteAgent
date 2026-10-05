@@ -37,6 +37,15 @@ IndexRepairService 先记 pending，再删旧向量并按当前正文重建，�
 
 ## 验证入口
 
-[执行结果](../05-records/plans/2026-10-04-checkpoint-shadow-git-completion-results.md) 包含 B1–B9 原执行与补验。tests/integration/test_recovery_process_drills.py 使用真实 PostgreSQL/Git/Chroma 和真实子进程验证终止/重启及两进程竞争；frontend/tests/e2e/checkpoint-edit-real.spec.ts 验证真实 HTTP 编辑确认、重生成与刷新。模型/embedding 在这些验收中使用确定性替身。
+[执行结果](../05-records/plans/2026-10-04-checkpoint-shadow-git-completion-results.md) 包含 B1–B9 原执行与补验。Tests/Integration/TestRecoveryProcessDrills.py 使用真实 PostgreSQL/Git/Chroma 和真实子进程验证终止/重启及两进程竞争；frontend/Tests/E2e/checkpoint-edit-real.spec.ts 验证真实 HTTP 编辑确认、重生成与刷新。模型/embedding 在这些验收中使用确定性替身。
 
 部署镜像安装 Git；Compose 独立 notes_history 卷保留材料历史。必须同时备份 notes、影子 Git 与 PostgreSQL，索引可从正文重建。详见 [部署指南](../04-ops/getting-started.md)、[数据库](database.md)、[上下文](../03-modules/chat/context-management.md)、[检索](../03-modules/retrieval/retrieval.md)。
+
+
+## 源码组织
+
+源码分为 HTTP、业务模块、跨模块流程、基础设施、装配五个入口，见 [源码导航](../../src/NoteAgent/README.md)。审批由 ApplicationFlows/DraftApproval 协调，模型运行由 ApplicationFlows/ModelRuntime 管理，恢复由 ApplicationFlows/ConversationRecovery 协调。笔记修改台账属于 BusinessModules/NoteStorage/ChangeJournal，恢复任务记录属于 BusinessModules/ConversationRecovery，共享访问状态属于 TechnicalSupport/NoteAccessControl，索引维修属于 BusinessModules/NoteRetrieval/IndexRepair，评测位于 Tools/noteagent_evals。HTTP、表名和磁盘数据格式不变。
+
+## 上层模块命名与归属（2026-10-05）
+
+当前后端按 HttpApi、BusinessModules、ApplicationFlows、TechnicalSupport、AppBootstrap 五个职责入口组织，自有 Python 包和文件采用大驼峰。原 workspace 拆为 NoteStorage/ChangeJournal、TechnicalSupport/NoteAccessControl、BusinessModules/ConversationRecovery。最新目录及旧名映射见 [源码导航](../../src/NoteAgent/README.md)。同一数据库事务可以调用多个模块的 ORM，包归属变化不改变提交边界。

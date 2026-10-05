@@ -62,19 +62,19 @@ Library 页：左树、右编辑器 + Markdown 预览。保存、新建、移动
 | `search_relative_from_chromadb` | 语义检索已索引片段（只读） |
 | `propose_note` | 持久化会话待审草稿，**不修改正式笔记** |
 
-参数、返回值和审批动作：[聊天工具](docs/02-api/chat-tools.md)。系统提示词在 [`src/noteagent/chat/prompts/system.txt`](src/noteagent/chat/prompts/system.txt)。
+参数、返回值和审批动作：[聊天工具](docs/02-api/chat-tools.md)。系统提示词在 [`src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/system.txt`](src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/system.txt)。
 
 ### 索引
 
 人审写盘、Documents 保存/删除、或 Chat 出处侧栏保存后，按该文件相对路径同步 Chroma（先删旧点再切块）。collection 损坏时仍可手动重建一篇：
 
 ```powershell
-uv run python scripts/index_notes.py Agent.md
+uv run python Scripts/IndexNotes.py Agent.md
 ```
 
 输入框下侧靠右的**向量入口**可以切换本地向量模型，也可以在索引丢失/配置不符时点「重建并修复」。索引用**身份指纹**（模型 + 权重快照 + 分块策略与大小 + 标题前缀 + 编码指令 + 正文规范化版本）标识，指纹不同的索引各有自己的 collection，所以改了分块配置不需要先删旧库；丢失的索引会如实报为不可用，不会用一个空 collection 冒充。重建期间不能发送消息或写笔记（后端也拒绝），旧索引保留到新索引校验通过。
 
-切块与查询路径：[检索](docs/03-modules/retrieval/retrieval.md)。脚本说明：[scripts/README.md](scripts/README.md)。
+切块与查询路径：[检索](docs/03-modules/retrieval/retrieval.md)。脚本说明：[Scripts/README.md](Scripts/README.md)。
 
 ## 快速开始
 
@@ -124,7 +124,7 @@ npm --prefix frontend run build
 uv run python main.py
 ```
 
-界面默认走 Vue，产物在 `src/noteagent/web/dist/`；**没构建过时页面返回 503 并给出构建提示**。
+界面默认走 Vue，产物在 `src/NoteAgent/HttpApi/WebFrontend/dist/`；**没构建过时页面返回 503 并给出构建提示**。
 想先用旧页面：设 `FRONTEND_MODE=legacy`。前端开发（Vite 热更新、类型检查、单测与 e2e）：
 [frontend/README.md](frontend/README.md)。
 
@@ -137,7 +137,7 @@ npm --prefix frontend run test:unit
 npm --prefix frontend run test:e2e
 ```
 
-数据库未升到现行 head 时发聊天会 500。环境变量全表、GBK、Docker 卷：[本机开发](docs/00-overview/local-dev.md)。包地图：[src/noteagent/README.md](src/noteagent/README.md)。给协作者 / Agent 的约束：[CLAUDE.md](CLAUDE.md)。
+数据库未升到现行 head 时发聊天会 500。环境变量全表、GBK、Docker 卷：[本机开发](docs/00-overview/local-dev.md)。包地图：[src/NoteAgent/README.md](src/NoteAgent/README.md)。给协作者 / Agent 的约束：[CLAUDE.md](CLAUDE.md)。
 
 ## 使用说明
 
@@ -197,37 +197,22 @@ npm --prefix frontend run test:e2e
 
 ```text
 NoteAgent/
-├── main.py                 # 读配置、打日志、启动 uvicorn
-├── docker-compose.yml      # 应用 + Postgres
-├── Dockerfile
-├── pyproject.toml · uv.lock · alembic.ini
-├── alembic/                # 会话库迁移
-├── notes/                  # 正式 Markdown
-├── scripts/                # 按篇索引、API 冒烟
-├── frontend/               # Vue 3 + Vite 前端工程；产物写到 src/noteagent/web/dist/
-├── tests/                  # 单测 / 集成测（无真实 LLM）
-├── evals/                  # 评测：criteria/ 准则、reports/ 报告、prompt|rag|agent 数据
-├── docs/
-│   ├── README.md           # 研发文档导航；版本随代码 Tag
-│   ├── 00-overview/        # 入门与开发
-│   ├── 01-architecture/    # 当前架构与数据库
-│   ├── 02-api/             # 接口与工具契约
-│   ├── 03-modules/         # chat / frontend / retrieval 专题
-│   ├── 04-ops/             # 部署与可观测性
-│   ├── 05-records/         # 计划、结果、历史设计
-│   ├── 06-releases/        # 代码版本发布记录
-│   ├── 07-assets/          # 附件与历史画布
-│   ├── references/         # 用户维护的个人记录，非契约
-│   └── roadmap/            # 用户代码解析，保留例外
-└── src/noteagent/
-    ├── bootstrap/          # Settings、组装 FastAPI
-    ├── chat/               # Agent、工具、人审、上下文
-    ├── notes/              # 磁盘仓库与 Documents API
-    ├── retrieval/          # 切块、Chroma、查询
-    ├── db/                 # 会话 ORM
-    ├── llm/                # 聊天模型工厂
-    ├── observability/      # 日志与 trace
-    └── web/                # 页面路由、SPA 产物与旧模板（回退用）
+├─ main.py                    后端启动
+├─ src/NoteAgent/
+│  ├─ HttpApi/                HTTP 接口
+│  ├─ BusinessModules/        聊天、会话、笔记、检索、模型设置与恢复记录
+│  ├─ ApplicationFlows/       草稿审批、模型运行、会话恢复流程
+│  ├─ TechnicalSupport/       数据库、日志、共享笔记访问控制
+│  └─ AppBootstrap/           配置、装配、启动与关闭
+├─ frontend/                  Vue 前端源码
+├─ alembic/                   数据库迁移
+├─ Tests/                     后端测试
+├─ Scripts/                   命令行入口
+├─ Tools/NoteAgentEvals/      评测实现
+├─ evals/                     评测数据、报告和历史提示词
+├─ docs/                      架构、模块、运维和历史记录
+├─ notes/                     正式 Markdown 笔记
+└─ var/                       日志、缓存、配置和笔记版本
 ```
 
-`var/` 是运行时数据，不入库。业务、需求、目标架构及 CR/ADR 在独立的 `NoteAgent-docs` 本地仓库维护，尚未发布到远端；此处不提供只能在本机打开的目录链接。本仓库实现说明随代码 Tag，入口见 [文档目录](docs/README.md)。
+职责、目录及旧名映射见 [源码导航](src/NoteAgent/README.md)。自有 Python 包和文件统一使用大驼峰；框架特殊文件保留固定名称。类和函数名沿用现有接口。Vue 构建输出在 src/NoteAgent/HttpApi/WebFrontend/dist。

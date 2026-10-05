@@ -1,7 +1,7 @@
 # 前端（现行界面）
 
-> 现行实现是 [`frontend/`](../../../frontend) 下的 Vue 3 SPA，产物由 `src/noteagent/web/dist/` 承载；
-> 旧的单模板 [`home.html`](../../../src/noteagent/web/templates/home.html) 只在 `FRONTEND_MODE=legacy` 时下发，作为回退。
+> 现行实现是 [`frontend/`](../../../frontend) 下的 Vue 3 SPA，产物由 `src/NoteAgent/HttpApi/WebFrontend/dist/` 承载；
+> 旧的单模板 [home.html](../../../src/NoteAgent/HttpApi/WebFrontend/templates/home.html) 只在 `FRONTEND_MODE=legacy` 时下发，作为回退。
 > 全局职责见 [architecture.md §5.1](../../01-architecture/architecture.md#51-前端)。
 > 聊天工具与人审卡片字段见 [chat-tools.md](../../02-api/chat-tools.md)。
 > 磁盘与向量同步见 [retrieval.md](../retrieval/retrieval.md)。
@@ -273,7 +273,7 @@ flowchart LR
 
 `DELETE /notes/folders/{name}` 必须注册在 `DELETE /notes/{path}` **之前**，否则会被当成删 `folders/Lang.md`。
 
-成功 INFO 在 `noteagent.notes.router`（`notes http create/save/move/delete/index/folder *`）。切块步骤仍走 `IndexTrace`。
+成功 INFO 在 `NoteAgent.HttpApi.NoteApi.router`（`notes http create/save/move/delete/index/folder *`）。切块步骤仍走 `IndexTrace`。
 
 维护窗口内这些写接口返回 409（`code=busy`），消息结构与「不泄露凭据」见 [retrieval.md](../retrieval/retrieval.md) 与 [../plans/2026-09-25-model-switching-ui.md](../../05-records/plans/2026-09-25-model-switching-ui.md)；前端用 `errorMessage()` 统一读 `message` / `detail`。
 
@@ -291,7 +291,7 @@ Agent 工具    propose_note       → conversations.pending_draft，不写盘
 
 同一 `FileNoteRepository` 与 `RetrievalService.index_note` / `delete_note`。聊天侧日志是 `draft indexed`；Documents 侧是 `notes http *`。失败都不回滚 Markdown。
 
-未在 Documents 打开过、也从未审批/点芯片的旧文件，树上显示未索引，点灰芯片或跑 `scripts/index_notes.py` 才会进库。
+未在 Documents 打开过、也从未审批/点芯片的旧文件，树上显示未索引，点灰芯片或跑 `Scripts/IndexNotes.py` 才会进库。
 
 ---
 
@@ -314,25 +314,25 @@ Records 只保留入口与空状态。
 | [`frontend/src/router.ts`](../../../frontend/src/router.ts) | 页面路由、`/documents` 兼容、未知地址回首页 |
 | [`frontend/src/features/`](../../../frontend/src/features) | chat／notes／models／settings 四个领域的状态与组件 |
 | [`frontend/src/shared/`](../../../frontend/src/shared) | API 合同、导航定义、未保存守卫、通用 UI |
-| [`frontend/tests/`](../../../frontend/tests) | Vitest 单测（状态与协议）与 Playwright 交互回归 |
-| [`web/router.py`](../../../src/noteagent/web/router.py) | 页面白名单、vue／legacy 两种模式、产物缺失时的 503 |
-| [`web/__init__.py`](../../../src/noteagent/web/__init__.py) | `read_spa_html()`、`read_home_html()`、`STATIC_DIR`、`DIST_DIR` |
-| [`bootstrap/settings.py`](../../../src/noteagent/bootstrap/settings.py) | `frontend_mode`（默认 `vue`） |
+| [`frontend/Tests/`](../../../frontend/Tests) | Vitest 单测（状态与协议）与 Playwright 交互回归 |
+| [HttpApi/WebFrontend/WebRoutes.py](../../../src/NoteAgent/HttpApi/WebFrontend/WebRoutes.py) | 页面白名单、vue／legacy 两种模式、产物缺失时的 503 |
+| [HttpApi/WebFrontend/__init__.py](../../../src/NoteAgent/HttpApi/WebFrontend/__init__.py) | `read_spa_html()`、`read_home_html()`、`STATIC_DIR`、`DIST_DIR` |
+| [AppBootstrap/AppSettings.py](../../../src/NoteAgent/AppBootstrap/AppSettings.py) | `frontend_mode`（默认 `vue`） |
 
 回退路径（`FRONTEND_MODE=legacy` 时才会用到，迁移完成后先留着，删除另开清理任务）：
 
 | 文件 | 内容 |
 |------|------|
-| [`web/templates/home.html`](../../../src/noteagent/web/templates/home.html) | 旧布局、样式与 Chat／Documents 全部逻辑 |
-| [`web/static/model-settings.js`](../../../src/noteagent/web/static/model-settings.js) | 旧 `ModelSettings`：状态轮询、聊天表单、向量候选与进度 |
-| [`web/static/model-settings.css`](../../../src/noteagent/web/static/model-settings.css) | 旧工具栏、弹层、表单、进度与错误样式 |
+| [`web/templates/home.html`](../../../src/NoteAgent/HttpApi/WebFrontend/templates/home.html) | 旧布局、样式与 Chat／Documents 全部逻辑 |
+| [`web/static/model-settings.js`](../../../src/NoteAgent/HttpApi/WebFrontend/static/model-settings.js) | 旧 `ModelSettings`：状态轮询、聊天表单、向量候选与进度 |
+| [`web/static/model-settings.css`](../../../src/NoteAgent/HttpApi/WebFrontend/static/model-settings.css) | 旧工具栏、弹层、表单、进度与错误样式 |
 
 其余后端落点：
 
 | 文件 | 内容 |
 |------|------|
-| [`chat/router.py`](../../../src/noteagent/chat/router.py) | 会话与聊天 HTTP（页面路由已移到 `web/router.py`） |
-| [`notes/router.py`](../../../src/noteagent/notes/router.py) | Documents 笔记 HTTP |
-| [`model_management/router.py`](../../../src/noteagent/model_management/router.py) | `/model-settings*`，并导出请求级租约依赖 |
+| [HttpApi/ChatApi/ChatRoutes.py](../../../src/NoteAgent/HttpApi/ChatApi/ChatRoutes.py) | 会话与聊天 HTTP（页面路由已移到 `web/ApiRoutes.py`） |
+| [HttpApi/NoteApi/NoteRoutes.py](../../../src/NoteAgent/HttpApi/NoteApi/NoteRoutes.py) | Documents 笔记 HTTP |
+| [HttpApi/ModelSettingsApi/ModelSettingsRoutes.py](../../../src/NoteAgent/HttpApi/ModelSettingsApi/ModelSettingsRoutes.py) | `/model-settings*`，并导出请求级租约依赖 |
 
-包说明：[`web/README.md`](../../../src/noteagent/web/README.md)、[`web/templates/README.md`](../../../src/noteagent/web/templates/README.md)、[`frontend/README.md`](../../../frontend/README.md)、[`model_management/README.md`](../../../src/noteagent/model_management/README.md)。
+包说明：[`web/README.md`](../../../src/NoteAgent/HttpApi/WebFrontend/README.md)、[`web/templates/README.md`](../../../src/NoteAgent/HttpApi/WebFrontend/templates/README.md)、[`frontend/README.md`](../../../frontend/README.md)、[`model_management/README.md`](../../../src/NoteAgent/BusinessModules/ModelSettings/README.md)。

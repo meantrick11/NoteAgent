@@ -13,20 +13,20 @@
 | Python / 平台 | Python 3.13.5 / Windows 10.0.22635（win32, x64） |
 | 运行模型 | `deepseek-v4-flash`（`CHAT_MODEL`），`deepseek_api_base=https://api.deepseek.com/` |
 | Judge | 未配置 `JUDGE_MODEL`，本轮 `judge_model=disabled`，25 条均为 `task_mode=""`，不触发语义 Judge |
-| system prompt | `src/noteagent/chat/prompts/system.txt`，SHA-256 `24d3623d9ee72d8ab4dfb202794ab8e3db5808689eb984e3e4642cba18cacc3f` |
+| system prompt | `src/noteagent/modules/assistant/prompts/system.txt`，SHA-256 `24d3623d9ee72d8ab4dfb202794ab8e3db5808689eb984e3e4642cba18cacc3f` |
 | 样例 `v1_acceptance.jsonl` | SHA-256 `a29daece82be411c7700178789824ee088a303b65e5c5f1b854049c2fb680dd3` |
 | 样例 `cases.jsonl` | SHA-256 `76bf7655991b6b594905e8b2f2e2c56bb0b37943f3a10997cd3487830709f1c5` |
 | 修复文件 `drafts.py` | SHA-256 `26858f1ddd57eab619086ecf044fdaca5ac12cad08239b270851eea723b35d4e` |
 
 CLI 使用 `Settings` 的模型配置（`.env`），**不保证等于界面已激活的 profile**。上表记录的是脚本实际运行使用的模型，不是 UI 显示的名称。
 
-> **两个 prompt 哈希是同一份文件（2026-09-27 补注）。** 本表记 system prompt 的 SHA-256 为 `24d3623d…`，而 §7 的对照表记“prompt SHA `25fbb8a9…`”，路径都是 `src/noteagent/chat/prompts/system.txt`。两者不矛盾：`24d3623d…` 是**磁盘原始字节**的哈希（`sha256sum` 口径，8234 字节、64 处 CRLF，见 `var/v1-acceptance/run-identity.txt`，也等于各 run 归档副本 `system.txt` 的字节哈希）；`25fbb8a9…` 是 `config.json` 记录的 `prompt_sha256`，由 `src/noteagent/prompt_eval/run.py` 用 `Path.read_text(encoding="utf-8")`（通用换行：CRLF→LF）计算。对同一份归档副本做 `\r\n`→`\n` 替换即得 `25fbb8a9…`。因此 §7 两轮比较的“prompt 相同”结论成立，不能据截断哈希推断成两个不同 prompt。
+> **两个 prompt 哈希是同一份文件（2026-09-27 补注）。** 本表记 system prompt 的 SHA-256 为 `24d3623d…`，而 §7 的对照表记“prompt SHA `25fbb8a9…`”，路径都是 `src/noteagent/modules/assistant/prompts/system.txt`。两者不矛盾：`24d3623d…` 是**磁盘原始字节**的哈希（`sha256sum` 口径，8234 字节、64 处 CRLF，见 `var/v1-acceptance/run-identity.txt`，也等于各 run 归档副本 `system.txt` 的字节哈希）；`25fbb8a9…` 是 `config.json` 记录的 `prompt_sha256`，由 `tools/noteagent_evals/prompt/run.py` 用 `Path.read_text(encoding="utf-8")`（通用换行：CRLF→LF）计算。对同一份归档副本做 `\r\n`→`\n` 替换即得 `25fbb8a9…`。因此 §7 两轮比较的“prompt 相同”结论成立，不能据截断哈希推断成两个不同 prompt。
 
 ## 2. bug 修复：写盘异常导致待审草稿丢失
 
 **原因。** `commit_review` 先执行 `store.pop(thread_id)`：该操作读取草稿后清空 `conversations.pending_draft`。随后 `_write_draft` 抛出的异常只捕获 `FileNotFoundError / FileExistsError / NotePathError / ValueError`。`PermissionError` 以及其它 `OSError` 会逃逸出函数，导致这次审批既没有写成文件，也把唯一一份待审草稿从数据库里抹掉。
 
-**修改。** `src/noteagent/chat/drafts.py`：
+**修改。** `src/noteagent/modules/conversations/drafts.py`：
 
 - 捕获元组改为 `(OSError, ValueError)`。`FileNotFoundError`、`FileExistsError`、`PermissionError` 都是 `OSError` 子类，`NotePathError` 继承 `ValueError`，覆盖没有放宽到 `Exception`，程序性错误仍会抛出。
 - 失败日志由 `thread / error` 扩展为 `thread / action / file / error`，便于定位是哪个目标文件写失败；不打印草稿正文。
@@ -166,7 +166,7 @@ L1 总分（**仅作辅助**，不代替内容审查）：最低 62.25、最高 
 | L1 总分波动 | n04 100.0 → 81.72、n12 83.7 → 100.0、b02 91.85 → 100.0、n01 87.23 → 92.66 | 同左 |
 
 - 两次运行使用同一模型与同一 prompt/样例哈希，因此差异只能来自采样；本轮没有任何"提示词或打分器改动"。
-- **不改动被修改的产品代码路径**：本轮 `src/noteagent/chat/drafts.py` 的改动只在人审落盘路径（`commit_review`）上，评测脚本从不调用 `commit_review`，索引调用也由 `_FakeRetrieval` 替身承接。因此评测结果与本次修复无关。
+- **不改动被修改的产品代码路径**：本轮 `src/noteagent/modules/conversations/drafts.py` 的改动只在人审落盘路径（`commit_review`）上，评测脚本从不调用 `commit_review`，索引调用也由 `_FakeRetrieval` 替身承接。因此评测结果与本次修复无关。
 - 单项 L1 总分在两次运行间可相差 20 分上下，**不参与任何"通过/未通过"判断**，也不据此宣布质量提升或下降。
 - 正文回归（L1 正文分）与行为回归分别记录：行为门见上表；正文分仅作噪声观测，不设门槛。
 

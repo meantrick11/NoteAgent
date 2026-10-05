@@ -59,7 +59,7 @@ uv run python main.py
 浏览器打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)。
 
 界面默认走 Vue（`FRONTEND_MODE` 默认 `vue`），产物由 `frontend` 构建到
-`src/noteagent/web/dist/`。**没构建过时页面会返回 503 并给出构建提示**，而不是偷偷回退旧页面。
+`src/NoteAgent/HttpApi/WebFrontend/dist/`。**没构建过时页面会返回 503 并给出构建提示**，而不是偷偷回退旧页面。
 想先用旧页面：`$env:FRONTEND_MODE="legacy"` 再启动，`/` 与 `/documents` 会下发旧模板。
 
 也要填 `DEEPSEEK_API_KEY`、`DEEPSEEK_API_BASE`、`CHAT_MODEL`，否则对话会失败。
@@ -86,10 +86,10 @@ uv run pytest -q
 人审写盘后会按该文件重建向量。collection 损坏时仍可手动重建一篇：
 
 ```powershell
-uv run python scripts/index_notes.py Agent.md
+uv run python Scripts/IndexNotes.py Agent.md
 ```
 
-密钥冒烟：`uv run python scripts/sdk_smoke.py`。说明见 [`scripts/README.md`](../../scripts/README.md)。
+密钥冒烟：`uv run python Scripts/SdkSmoke.py`。说明见 [`Scripts/README.md`](../../Scripts/README.md)。
 
 ## 环境变量
 
@@ -116,12 +116,12 @@ uv run python scripts/index_notes.py Agent.md
 
 | 目录/文件 | 作用 |
 |-----------|------|
-| [`src/noteagent/`](../../src/noteagent/README.md) | 全部应用代码 |
-| [`frontend/`](../../frontend/README.md) | Vue 3 + Vite 前端工程；产物写到 `src/noteagent/web/dist/` |
-| [`main.py`](../../main.py) | 读配置、打日志、启动 uvicorn |
+| [`src/NoteAgent/`](../../src/NoteAgent/README.md) | 全部应用代码 |
+| [`frontend/`](../../frontend/README.md) | Vue 3 + Vite 前端工程；产物写到 `src/NoteAgent/HttpApi/WebFrontend/dist/` |
+| [main.py](../../main.py) | 读配置、打日志、启动 uvicorn |
 | [`notes/`](../../notes/README.md) | 正式 Markdown 数据 |
-| [`scripts/`](../../scripts/README.md) | 索引、API 冒烟 |
-| [`tests/`](../../tests/README.md) | 单测 / 集成测（无真实 LLM） |
+| [`Scripts/`](../../Scripts/README.md) | 索引、API 冒烟 |
+| [`Tests/`](../../Tests/README.md) | 单测 / 集成测（无真实 LLM） |
 | [`evals/`](../../evals/README.md) | 评测：准则、报告、黄金集与跑分结果；不进默认 CI |
 | [`docs/`](../README.md) | 架构、产品与路线、计划、指南、参考 |
 | [`var/`](../../var/README.md) | 日志等运行时数据（不入库） |

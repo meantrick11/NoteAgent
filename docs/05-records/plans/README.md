@@ -70,3 +70,15 @@ V2.2／V2.3 仍按当前可用处理，其余 V2 迭代在前端扩容后继续�
 
 
 本次迁移见 [双仓库迁移记录](2026-10-01-two-repository-document-migration.md)。
+
+## 2026-10-05 源码组织
+
+[源码组织实施计划](2026-10-05-source-organization.md)：按 API、业务模块、跨模块流程、基础设施和启动装配组织源码，同步 README；验证记录见计划末尾。
+
+## 上层模块小驼峰命名
+
+[上层模块驼峰命名与组织调整](2026-10-05-camel-case-module-organization.md)：五个职责入口、按业务用途命名的子模块及 workspace 职责拆分；验证记录见计划末尾。
+
+## Python 包与文件大驼峰命名
+
+[Python 包与文件 PascalCase 命名](2026-10-05-pascal-case-python-modules.md)：全部自有包、单个 Python 文件、测试、脚本及迁移文件同步命名；固定框架文件保留约定。当前源码导航位于 src/NoteAgent/README.md。

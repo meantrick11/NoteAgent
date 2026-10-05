@@ -7,9 +7,10 @@ import uvicorn
 from alembic import command
 from alembic.config import Config
 
-from noteagent.bootstrap.app import build_container, create_app #构建Agent+FastAPI的函数
-from noteagent.bootstrap.settings import Settings   #设置文件
-from noteagent.observability.logging import setup_logging
+from NoteAgent.AppBootstrap.ContainerAssembly import build_container
+from NoteAgent.AppBootstrap.HttpApp import create_app
+from NoteAgent.AppBootstrap.AppSettings import Settings  #设置文件
+from NoteAgent.TechnicalSupport.ExecutionLogging.LoggingSetup import setup_logging
 
 _logger = logging.getLogger(__name__)
 
@@ -38,8 +39,8 @@ def main() -> None:
     _logger.info("alembic upgrade head ini=%s", ini)
     command.upgrade(Config(str(ini)), "head")
     
-    container = build_container(settings)
-    app = create_app(container)
+    container = build_container(settings)   #聚合所有类，作为创建FastAPI的输入container
+    app = create_app(container) #创建FastAPI服务
 
     _logger.info("NoteAgent starting on %s:%s", settings.host, settings.port)
     
