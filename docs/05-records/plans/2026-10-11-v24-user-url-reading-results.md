@@ -13,7 +13,7 @@
 | 2 | `8238828` | `ChatTools.py`、`ChatNodes.py`、`RuntimeAssembler.py`、`Tests/Support/Harness.py`、`Fakes.py`、`Tests/Unit/TestChatTools.py`、`Tests/Integration/TestWebReadingGraph.py` |
 | 3 | `bba27ad`、`f7435c3` | `SystemPrompts/system.txt`、`evals/prompt/iterations/v12-2026-10-11-url-reading.txt`、`Tests/Unit/TestSystemPromptLearningNotes.py`、`Tests/Integration/TestWebReadingGraph.py` |
 | 4 | `f73398c` | `NoteSources.py`、`PendingDrafts.py`、`ChatTools.py`、`ChatNodes.py`、`DraftApprovalWorkflow.py`、`Tests/Unit/TestNoteSources.py`、`Tests/Integration/TestCheckpointDraftApi.py`、`Tests/Support/Webapp.py` |
-| 5 | 见本次提交 | `Tests/Integration/TestWebReadingGraph.py`（注入/无独立存储）、本文件、`NoteAgent-docs` TC-001 |
+| 5 | `0aec33a` | `Tests/Integration/TestWebReadingGraph.py`（注入/无独立存储）、本文件、`NoteAgent-docs` TC-001 |
 | 0 | `1aeeda4`（docs 仓库） | ARC-005、MOD-009、API-005、DATA-002、TC-001 |
 
 环境：Windows、`.venv/Scripts/python.exe`（3.13.5）、pytest（asyncio auto）。新增依赖 `trafilatura 2.1.0`（uv add 更新 pyproject/uv.lock）。
