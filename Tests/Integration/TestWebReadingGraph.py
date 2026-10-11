@@ -130,3 +130,24 @@ async def test_no_reader_means_no_tool_bound(conversation_harness):
     await h.complete_turn(c.id, "你好")
 
     assert "read_webpage" not in {t.name for t in h.model.bound_tools}
+
+
+async def test_second_turn_sees_only_a_stub_not_the_body(conversation_harness):
+    """A later turn must not silently replay the page body; it keeps only the stub.
+
+    The full text lives in the earlier checkpoint, but build_pack turns past tool rows
+    into one-line stubs, so the model would have to call read_webpage again to use it.
+    """
+    h = conversation_harness
+    h.web_reader = FakeWebReader({"https://a.test/ok": _ok("https://a.test/ok")})
+    c = await h.create_conversation()
+    h.model.replies = [_tool_calls("https://a.test/ok"), AIMessage(content="答一")]
+
+    await h.complete_turn(c.id, "看 https://a.test/ok")
+
+    h.model.replies = [AIMessage(content="答二")]
+    await h.complete_turn(c.id, "刚才那篇的细节再说说")
+
+    second_input = "\n".join(getattr(m, "content", "") or "" for m in h.model.calls[-1])
+    assert BODY not in second_input
+    assert "[tool_stub]" in second_input
