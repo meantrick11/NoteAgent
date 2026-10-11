@@ -106,3 +106,27 @@ async def test_interrupted_web_turn_keeps_body_in_middle_checkpoint(conversation
     assert view.values["runtime_messages"] == []
     messages = await h.service.list_messages(c.id)
     assert [m.content for m in messages] == ["读一下 https://a.test/ok", "好的，已读。"]
+
+
+async def test_graph_binds_read_webpage_with_per_url_instruction(conversation_harness):
+    """The scripted model must be offered the tool, with the per-URL rule in its schema."""
+    h = conversation_harness
+    h.web_reader = FakeWebReader({"https://a.test/ok": _ok("https://a.test/ok")})
+    c = await h.create_conversation()
+    h.model.replies = [AIMessage(content="好的")]
+
+    await h.complete_turn(c.id, "你好")
+
+    bound = {t.name: t for t in h.model.bound_tools}
+    assert "read_webpage" in bound
+    assert "逐个" in (bound["read_webpage"].description or "")
+
+
+async def test_no_reader_means_no_tool_bound(conversation_harness):
+    h = conversation_harness
+    c = await h.create_conversation()
+    h.model.replies = [AIMessage(content="好的")]
+
+    await h.complete_turn(c.id, "你好")
+
+    assert "read_webpage" not in {t.name for t in h.model.bound_tools}
