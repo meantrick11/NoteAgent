@@ -77,7 +77,7 @@ class _GraphAssembler:
         self._app.model = model
         return build_graph_agent(
             model=model,
-            tools=build_chat_tools(self._app.notes, self._app.agent_retrieval, self._app.drafts),
+            tools=build_chat_tools(self._app.notes, self._app.agent_retrieval, self._app.drafts, web_reader=self._app.web_reader),
             notes=self._app.notes,
             drafts=self._app.drafts,
             budget=TEST_BUDGET,
@@ -103,6 +103,7 @@ class CheckpointApp:
     agent_retrieval: FakeRetrieval
     model: FakeChatModel
     _reply_batches: list[list]
+    web_reader: object | None = None
 
     def next_model(self):
         """One scripted model per built agent (initial + each activation).
@@ -124,6 +125,7 @@ def build_checkpoint_app(
     reply_batches: list[list],
     sqlalchemy_url: str = "sqlite:///:memory:",
     libpq_dsn: str | None = None,
+    web_reader: object | None = None,
 ) -> CheckpointApp:
     """Assemble the app; ``reply_batches`` scripts one model per build, in order.
 
@@ -161,6 +163,7 @@ def build_checkpoint_app(
         agent_retrieval=FakeRetrieval(),
         model=FakeChatModel([]),
         _reply_batches=list(reply_batches),
+        web_reader=web_reader,
     )
     runtime = ModelRuntimeService(
         settings=settings,

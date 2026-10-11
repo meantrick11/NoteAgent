@@ -2,6 +2,12 @@ from langchain_core.tools import BaseTool
 from langchain.tools import tool
 
 from NoteAgent.BusinessModules.ChatAgent.CitationRegistry import current_citations
+from NoteAgent.BusinessModules.ChatAgent.NoteSources import (
+    current_source_evidence,
+    merge_source_section,
+    render_source_section,
+    select_sources,
+)
 from NoteAgent.BusinessModules.ChatAgent.WebReading import WebPageReader
 from NoteAgent.BusinessModules.ConversationState.PendingDrafts import WRITE_ACTIONS, DraftStore, NoteDraft, ProposeNoteInput, current_thread_id, markdown_name
 from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
@@ -113,6 +119,8 @@ def build_chat_tools(
         content: str,
         reason: str = "",
         similar: str = "",
+        source_urls: list[str] | None = None,
+        user_supplied_source_urls: list[str] | None = None,
     ) -> dict:
         thread_id = current_thread_id.get()
         if not thread_id:
@@ -130,6 +138,13 @@ def build_chat_tools(
         if action == "create" and exists:
             return {"error": f"{name} already exists; use append"}
         similar_names = [item.strip() for item in similar.split(",") if item.strip()]
+        # Only sources this session can prove reach the note; the section is rendered here
+        # so the approval preview and the written file already contain the final block.
+        sources, provided = select_sources(
+            source_urls or [], user_supplied_source_urls or [], current_source_evidence.get()
+        )
+        if action != "delete" and (sources or provided):
+            content = merge_source_section(content, render_source_section(sources, provided))
         draft = NoteDraft(
             action=action,
             file_name=name,
@@ -137,6 +152,8 @@ def build_chat_tools(
             reason=reason,
             similar=similar_names,
             existing_files=notes.list_notes(),
+            source_urls=sources,
+            user_supplied_source_urls=provided,
         )
         drafts.put(thread_id, draft)
         return {"status": "pending_review", "action": action, "file_name": name}

@@ -21,6 +21,7 @@ from langgraph.config import get_config, get_stream_writer
 
 from NoteAgent.BusinessModules.ChatAgent import ChatEvents as events
 from NoteAgent.BusinessModules.ChatAgent.CitationRegistry import CitationRegistry, current_citations, sanitize_answer
+from NoteAgent.BusinessModules.ChatAgent.NoteSources import build_source_evidence, current_source_evidence
 from NoteAgent.BusinessModules.ChatAgent.ConversationContext.ContextBudget import ContextBudget
 from NoteAgent.BusinessModules.ChatAgent.ConversationContext.ContextCompaction import concat_summary, format_turns_for_summary, group_turns, select_turns_to_drop, should_compact
 from NoteAgent.BusinessModules.ChatAgent.ConversationContext.ContextPack import PackResult, build_pack, draft_workspace_line
@@ -230,6 +231,10 @@ async def tools_node(state: GraphState, runtime: GraphRuntime) -> dict[str, Any]
     workspace = DraftWorkspace(graph_thread_id(), state.get("pending_draft"))
     token_draft = current_draft_workspace.set(workspace)
     steps = list(state.get("tool_steps") or [])
+    # Source evidence for propose_note: what URLs the user gave, and how each read ended.
+    user_texts = [state.get("current_question") or ""] + [
+        r.content for r in records_from_state(state) if r.role == "user"
+    ]
     tool_map = runtime.tool_map
     produced: list[ToolMessage] = []
     try:
@@ -238,12 +243,20 @@ async def tools_node(state: GraphState, runtime: GraphRuntime) -> dict[str, Any]
             tool_call_id = events.tool_call_id_of(call)
             logger.info("tool start tool=%s turn=%s", name, state.get("current_turn_id"))
             web_status = None
+            token_sources = None
+            if name == "propose_note":
+                token_sources = current_source_evidence.set(
+                    build_source_evidence(user_texts, steps)
+                )
             try:
                 raw = await tool_map[name].ainvoke(args)
                 status = "ok"
             except Exception as exc:  # noqa: BLE001 - surfaced to the model and the trace
                 raw = {"error": str(exc)}
                 status = "error"
+            finally:
+                if token_sources is not None:
+                    current_source_evidence.reset(token_sources)
             output = raw if isinstance(raw, str) else events.json_args(raw)
             if name == "read_webpage" and isinstance(raw, dict) and "status" in raw:
                 # The step status reflects how much of the page was read; the raw value is

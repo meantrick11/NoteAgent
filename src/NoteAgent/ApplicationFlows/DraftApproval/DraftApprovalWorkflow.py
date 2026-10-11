@@ -1,6 +1,7 @@
 """Human draft review: coordinate conversation state, durable notes and indexing."""
 
 from __future__ import annotations
+from NoteAgent.BusinessModules.ChatAgent.NoteSources import merge_source_section, render_source_section
 from NoteAgent.BusinessModules.ConversationState.PendingDrafts import WRITE_ACTIONS, DraftStore, markdown_name
 from NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.LegacyDraftReview import commit_review, _sync_index, _write_draft
 from NoteAgent.BusinessModules.ConversationState.ConversationStateService import ConversationService
@@ -9,6 +10,20 @@ from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRep
 from NoteAgent.BusinessModules.NoteRetrieval.NoteRetrievalService import RetrievalService
 
 _DRAFT_KINDS = {"create": CREATE, "append": WRITE, "replace": WRITE, "delete": DELETE}
+
+
+def _keep_source_section(content: str, draft: dict) -> str:
+    """Regenerate the draft's source block from its stored URLs after an edit.
+
+    Editing the body must not drop or duplicate the sources; they are rebuilt from the
+    URLs recorded when the draft was proposed. A draft with no webpage sources is left
+    exactly as the user typed it.
+    """
+    sources = draft.get("source_urls") or []
+    provided = draft.get("user_supplied_source_urls") or []
+    if not sources and not provided:
+        return content
+    return merge_source_section(content, render_source_section(sources, provided))
 
 
 class DraftApprovalWorkflow:
@@ -34,6 +49,10 @@ class DraftApprovalWorkflow:
     ) -> dict:
         """Save edits to the pending draft. Only the conversation state changes."""
         if self._is_checkpoint(conversation_id):
+            pending = await self._service.get_pending_draft(conversation_id)
+            if pending is None:
+                return {"error": "no pending draft"}
+            content = _keep_source_section(content, pending)
             draft = await self._service.update_pending_draft(
                 conversation_id, content, expected_revision=expected_revision,
                 file_name=self._notes.normalize(file_name) if file_name is not None else None,
@@ -43,6 +62,9 @@ class DraftApprovalWorkflow:
             return {"status": "updated", "pending_draft": draft}
         if file_name is not None:
             raise ValueError("migrate the conversation before renaming a draft")
+        existing = self._legacy_drafts.get(conversation_id)
+        if existing is not None:
+            content = _keep_source_section(content, existing.as_dict())
         draft = self._legacy_drafts.update_content(conversation_id, content)
         if draft is None:
             return {"error": "no pending draft"}
