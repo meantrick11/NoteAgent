@@ -21,6 +21,7 @@ from langgraph.config import get_config, get_stream_writer
 
 from NoteAgent.BusinessModules.ChatAgent import ChatEvents as events
 from NoteAgent.BusinessModules.ChatAgent.CitationRegistry import CitationRegistry, current_citations, sanitize_answer
+from NoteAgent.BusinessModules.ChatAgent.NoteSources import build_source_evidence, current_source_evidence
 from NoteAgent.BusinessModules.ChatAgent.ConversationContext.ContextBudget import ContextBudget
 from NoteAgent.BusinessModules.ChatAgent.ConversationContext.ContextCompaction import concat_summary, format_turns_for_summary, group_turns, select_turns_to_drop, should_compact
 from NoteAgent.BusinessModules.ChatAgent.ConversationContext.ContextPack import PackResult, build_pack, draft_workspace_line
@@ -230,6 +231,10 @@ async def tools_node(state: GraphState, runtime: GraphRuntime) -> dict[str, Any]
     workspace = DraftWorkspace(graph_thread_id(), state.get("pending_draft"))
     token_draft = current_draft_workspace.set(workspace)
     steps = list(state.get("tool_steps") or [])
+    # Source evidence for propose_note: what URLs the user gave, and how each read ended.
+    user_texts = [state.get("current_question") or ""] + [
+        r.content for r in records_from_state(state) if r.role == "user"
+    ]
     tool_map = runtime.tool_map
     produced: list[ToolMessage] = []
     try:
@@ -237,16 +242,48 @@ async def tools_node(state: GraphState, runtime: GraphRuntime) -> dict[str, Any]
             call_id, name, args = events.tool_call_triple(call)
             tool_call_id = events.tool_call_id_of(call)
             logger.info("tool start tool=%s turn=%s", name, state.get("current_turn_id"))
+            web_status = None
+            token_sources = None
+            missing_source_selection = False
+            if name == "propose_note":
+                evidence = build_source_evidence(
+                    user_texts, steps,
+                    history=state.get("ui_messages") or [],
+                    current_question=state.get("current_question") or "",
+                )
+                token_sources = current_source_evidence.set(evidence)
+                missing_source_selection = bool(
+                    args.get("action") != "delete"
+                    and (evidence.fetched_ok or evidence.user_provided_after_failure)
+                    and ("source_urls" not in args or "user_supplied_source_urls" not in args)
+                )
             try:
-                raw = await tool_map[name].ainvoke(args)
-                status = "ok"
+                if missing_source_selection:
+                    raw = {"error": "网页笔记必须明确传入 source_urls 和 user_supplied_source_urls；未采用网页时传空列表"}
+                    status = "error"
+                else:
+                    raw = await tool_map[name].ainvoke(args)
+                    status = "ok"
             except Exception as exc:  # noqa: BLE001 - surfaced to the model and the trace
                 raw = {"error": str(exc)}
                 status = "error"
+            finally:
+                if token_sources is not None:
+                    current_source_evidence.reset(token_sources)
             output = raw if isinstance(raw, str) else events.json_args(raw)
-            preview, _truncated = _preview(output, runtime.budget.stub_preview_tokens)
+            if name == "read_webpage" and isinstance(raw, dict) and "status" in raw:
+                # The step status reflects how much of the page was read; the raw value is
+                # kept so draft sources can tell a successful fetch from a failed one.
+                web_status = str(raw.get("status") or "")
+                status = _web_step_status(web_status)
+                preview, _truncated = _preview(_web_preview(raw), runtime.budget.stub_preview_tokens)
+            else:
+                preview, _truncated = _preview(output, runtime.budget.stub_preview_tokens)
             arguments = events.json_args(args)
-            steps.append({"name": name, "status": status, "preview": preview, "arguments": arguments})
+            step: dict = {"name": name, "status": status, "preview": preview, "arguments": arguments}
+            if web_status is not None:
+                step["web_status"] = web_status
+            steps.append(step)
             writer(events.tool_done_event(name, status, preview, arguments))
             produced.append(
                 ToolMessage(content=output, tool_call_id=tool_call_id, name=name)
@@ -268,6 +305,29 @@ async def tools_node(state: GraphState, runtime: GraphRuntime) -> dict[str, Any]
 def _preview(text: str, stub_preview_tokens: int) -> tuple[str, bool]:
     """Display stub preview, mirroring the character budget of the legacy stub."""
     return prefix_until_tokens(text, stub_preview_tokens)
+
+
+def _web_step_status(web_status: str) -> str:
+    """Map a ``WebPageResult.status`` to the step status shown on the trace.
+
+    A truncated read still counts as ``partial``; anything that did not yield the
+    article body reads as ``error`` so it can never look like a successful fetch.
+    """
+    if web_status == "ok":
+        return "ok"
+    if web_status == "partial":
+        return "partial"
+    return "error"
+
+
+def _web_preview(result: dict) -> str:
+    """Short trace line for a webpage step: never the extracted body."""
+    parts = [f"url={result.get('url') or ''}", f"status={result.get('status') or ''}"]
+    if result.get("title"):
+        parts.append(f"title={result['title']}")
+    if result.get("error"):
+        parts.append(f"error={result['error']}")
+    return " ".join(parts)
 
 
 async def finalize_node(state: GraphState, runtime: GraphRuntime) -> dict[str, Any]:

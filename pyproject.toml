@@ -70,6 +70,7 @@ dependencies = [
     "tiktoken==0.13.0",
     "torch>=2.12.1",
     "tqdm==4.68.2",
+    "trafilatura>=2.1.0",
     "transformers>=5.12.1",
     "typing-extensions==4.15.0",
     "typing-inspection==0.4.2",

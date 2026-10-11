@@ -52,6 +52,14 @@ class ProposeNoteInput(BaseModel):
     )
     reason: str = Field(default="", description="一句话说明为何归到这个文件")
     similar: str = Field(default="", description="逗号分隔的相近已有文件名，没有则空字符串")
+    source_urls: list[str] = Field(
+        default_factory=list,
+        description="正文实际采用、且本轮成功读取的网页 URL；没有网页来源时留空数组",
+    )
+    user_supplied_source_urls: list[str] = Field(
+        default_factory=list,
+        description="抓取失败后由用户粘贴正文的网页 URL；没有则留空数组",
+    )
 
 
 #获取对应的笔记文件
@@ -73,6 +81,8 @@ class NoteDraft:
     reason: str = ""
     similar: list[str] = field(default_factory=list)
     existing_files: list[str] = field(default_factory=list)
+    source_urls: list[str] = field(default_factory=list)
+    user_supplied_source_urls: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         """JSON payload for the SSE draft event and the frontend card."""
@@ -83,6 +93,8 @@ class NoteDraft:
             "reason": self.reason,
             "similar": self.similar,
             "existing_files": self.existing_files,
+            "source_urls": self.source_urls,
+            "user_supplied_source_urls": self.user_supplied_source_urls,
         }
 
     @classmethod
@@ -99,6 +111,10 @@ class NoteDraft:
             reason=data.get("reason") or "",
             similar=list(similar),
             existing_files=list(existing),
+            source_urls=[str(item) for item in (data.get("source_urls") or [])],
+            user_supplied_source_urls=[
+                str(item) for item in (data.get("user_supplied_source_urls") or [])
+            ],
         )
 
 

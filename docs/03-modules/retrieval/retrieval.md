@@ -38,7 +38,8 @@
 | Documents 新建 / 保存 / 移动 / 点「未索引」 | 是。同一条 `index_note` |
 | 人审或 Documents 删除的文件 | 否。只删该 `file_name` 的点 |
 | `DraftStore`、PG 消息、`context.md` | 否 |
-| 用户 PDF / 图片 / 网页正文 | 否（现行无此路径） |
+| 用户 PDF / 图片正文 | 否（当前没有直接入库路径） |
+| `read_webpage` 抽取的网页正文 | 否；仅作为会话工具消息使用，审批成正式 `notes/*.md` 后才按笔记文件入库 |
 
 进程启动**不会**扫描 `notes/` 全量索引。盘上已有、从未经过这次同步的文件，要搜到仍须对该篇跑 [IndexNotes.py](../../../Scripts/IndexNotes.py)，或在 Documents 点「未索引」，或再批准一次写盘。
 

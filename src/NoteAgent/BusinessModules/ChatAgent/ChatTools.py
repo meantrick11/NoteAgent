@@ -2,6 +2,15 @@ from langchain_core.tools import BaseTool
 from langchain.tools import tool
 
 from NoteAgent.BusinessModules.ChatAgent.CitationRegistry import current_citations
+from NoteAgent.BusinessModules.ChatAgent.NoteSources import (
+    current_source_evidence,
+    merge_source_section,
+    render_source_section,
+    select_sources,
+    source_urls_in_section,
+    strip_source_section,
+)
+from NoteAgent.BusinessModules.ChatAgent.WebReading import WebPageReader
 from NoteAgent.BusinessModules.ConversationState.PendingDrafts import WRITE_ACTIONS, DraftStore, NoteDraft, ProposeNoteInput, current_thread_id, markdown_name
 from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
 from NoteAgent.BusinessModules.NoteRetrieval.NoteRetrievalService import RetrievalService
@@ -12,12 +21,16 @@ def build_chat_tools(
     retrieval: RetrievalService | None,
     drafts: DraftStore,
     repairs=None,
+    web_reader: WebPageReader | None = None,
 ) -> list[BaseTool]:
     """Build list/read/search/propose tools. Disk writes happen only after review.
 
     ``retrieval`` may be None while the embedding index is unavailable (for example after
     a model switch that has not been rebuilt yet); the search tool then reports that
     instead of returning an empty result that would read as "no matching note".
+
+    ``web_reader`` is optional: without it the reader tool is not registered at all, so a
+    test container can never make an unexpected network request.
     """
     #列处所有文件的工具
     @tool("list_files", description="列出 notes/ 下已有笔记相对路径（含 Folder/Note.md）和一层文件夹名。提案前必须先调用。")
@@ -108,6 +121,8 @@ def build_chat_tools(
         content: str,
         reason: str = "",
         similar: str = "",
+        source_urls: list[str] | None = None,
+        user_supplied_source_urls: list[str] | None = None,
     ) -> dict:
         thread_id = current_thread_id.get()
         if not thread_id:
@@ -125,6 +140,33 @@ def build_chat_tools(
         if action == "create" and exists:
             return {"error": f"{name} already exists; use append"}
         similar_names = [item.strip() for item in similar.split(",") if item.strip()]
+        evidence = current_source_evidence.get()
+        if (action != "delete" and evidence is not None
+                and (evidence.fetched_ok or evidence.user_provided_after_failure)
+                and source_urls is None and user_supplied_source_urls is None):
+            return {"error": "网页笔记必须明确传入 source_urls 和 user_supplied_source_urls；未采用网页时传空列表"}
+        # Only sources this session can prove reach the note; the section is rendered here
+        # so the approval preview and the written file already contain the final block.
+        sources, provided = select_sources(
+            source_urls or [], user_supplied_source_urls or [], evidence
+        )
+        if action in ("append", "replace"):
+            old = notes.read(name)
+            old_sources, old_provided = source_urls_in_section(old)
+            if old_sources or old_provided:
+                # An append after a source section would place old sources in the
+                # middle. Show the complete merged file and write it as replace.
+                if action == "append":
+                    content = old.rstrip() if not content.strip() else (
+                        strip_source_section(old).rstrip() + "\n\n" +
+                        strip_source_section(content).lstrip()
+                    )
+                    action = "replace"
+                if strip_source_section(old).strip() in strip_source_section(content):
+                    sources = list(dict.fromkeys([*old_sources, *sources]))
+                    provided = list(dict.fromkeys([*old_provided, *provided]))
+        if action != "delete" and (sources or provided or "## 来源" in content):
+            content = merge_source_section(content, render_source_section(sources, provided))
         draft = NoteDraft(
             action=action,
             file_name=name,
@@ -132,8 +174,36 @@ def build_chat_tools(
             reason=reason,
             similar=similar_names,
             existing_files=notes.list_notes(),
+            source_urls=sources,
+            user_supplied_source_urls=provided,
         )
         drafts.put(thread_id, draft)
         return {"status": "pending_review", "action": action, "file_name": name}
 
-    return [list_files, read_file, search_relative_from_chromadb, propose_note]
+    tools: list[BaseTool] = [list_files, read_file, search_relative_from_chromadb, propose_note]
+
+    if web_reader is not None:
+        @tool(
+            "read_webpage",
+            description=(
+                "读取用户给出的一个网页 URL，返回页面标题与抽取后的正文。"
+                "用户本句里出现的每个 URL 都要逐个调用本工具；不要自行搜索或替换来源。"
+                "status：ok 表示完整读取；partial 表示正文过长或响应过大被截断；"
+                "login_required/blocked/unsupported/failed 表示未读取成功，此时 content 为空、error 为简短原因。"
+                "未成功读取的 URL 不得当作已读内容使用。"
+            ),
+        )
+        async def read_webpage(url: str) -> dict:
+            result = await web_reader.read(url)
+            return {
+                "url": result.url,
+                "final_url": result.final_url,
+                "status": result.status,
+                "title": result.title,
+                "content": result.content,
+                "error": result.error,
+            }
+
+        tools.append(read_webpage)
+
+    return tools

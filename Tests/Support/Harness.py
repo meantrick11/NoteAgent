@@ -55,6 +55,7 @@ class ConversationHarness:
         libpq_dsn: str | None = None,
         notes=None,
         model: FakeChatModel | None = None,
+        web_reader=None,
     ) -> None:
         self._sqlalchemy_url = sqlalchemy_url
         self._libpq_dsn = libpq_dsn
@@ -64,6 +65,7 @@ class ConversationHarness:
         self.history: ConversationStore | None = None
         self.notes = notes
         self.model = model
+        self.web_reader = web_reader
         self.summaries: list[str] = []
 
     @property
@@ -152,7 +154,7 @@ class ConversationHarness:
         drafts = DraftStore(self.history)
         return GraphRuntime(
             model=self.model,
-            tools=build_chat_tools(self.notes, FakeRetrieval(), drafts),
+            tools=build_chat_tools(self.notes, FakeRetrieval(), drafts, web_reader=self.web_reader),
             drafts=drafts,
             budget=budget or TEST_BUDGET,
             system_prompt="SYSTEM",
