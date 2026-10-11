@@ -29,6 +29,7 @@
 | 点 | 含义 |
 |----|------|
 | 人审写盘 | 模型不能直接改文件。`propose_note` 将待审草稿保存到会话；同意后才 `create` / `append` / `replace` / `delete`。细节：[聊天工具](docs/02-api/chat-tools.md) |
+| 指定网页读取（V2.4 实现分支，待验收） | 用户给出固定 URL 后，Agent 逐个读取并提取正文；按用户意图回答或生成待审草稿。获取失败、登录验证和截断会告知用户；网页正文不另存本地文件。细节：[聊天工具](docs/02-api/chat-tools.md)、[执行结果](docs/05-records/plans/2026-10-11-v24-user-url-reading-results.md) |
 | 五个页面 | 顶部固定 **Home → Assistant → Records → Library** 四个工作入口，右上角齿轮进入 **Settings**。Assistant 管会话与问答，Library 管磁盘上的笔记，Settings 分「模型与连接」「检索与索引」两类。布局：[前端](docs/03-modules/frontend/frontend.md) |
 | 一层目录 | 允许 `notes/Folder/Note.md`，禁止两层和 `..`。根下 `notes/*.md` 为未进文件夹的篇 |
 | 派生检索 | Chroma 由 Markdown 重建。索引失败不回滚已写入的笔记。现行配置是 `intfloat/multilingual-e5-small` + 章节感知切块，collection 存配置指纹，改配置必须重建。[检索](docs/03-modules/retrieval/retrieval.md)、[为什么这样选](evals/reports/rag-v1-retrospective.md) |
@@ -53,16 +54,19 @@
 
 Library 页：左树、右编辑器 + Markdown 预览。保存、新建、移动、删除都是人写盘，不经过 Agent。保存后按该相对路径删旧向量再整篇索引。树上看「已索引 / 未索引」芯片（未索引可点入库）。只拖笔记、不拖文件夹；一层目录。拖拽、芯片、弹窗细节见 [前端](docs/03-modules/frontend/frontend.md)。
 
-### 四工具
+### 聊天工具
 
 | 工具 | 作用 |
 |------|------|
 | `list_files` | 列出笔记相对路径（只读） |
 | `read_file` | 读一篇正文（只读） |
 | `search_relative_from_chromadb` | 语义检索已索引片段（只读） |
+| `read_webpage` | 读取用户给定的单个 URL，返回正文与获取状态（只读；生产装配启用） |
 | `propose_note` | 持久化会话待审草稿，**不修改正式笔记** |
 
 参数、返回值和审批动作：[聊天工具](docs/02-api/chat-tools.md)。系统提示词在 [`src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/system.txt`](src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/system.txt)。
+
+网页笔记的 `## 来源` 栏随草稿一起预览，审批通过后才写入正式笔记。首版只读取用户提供的 URL，不按主题搜索网页；当前分支尚需 PostgreSQL 集成补验和真实模型网页笔记成稿验收。
 
 ### 索引
 

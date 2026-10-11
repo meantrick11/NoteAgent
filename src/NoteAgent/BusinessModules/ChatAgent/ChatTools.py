@@ -7,6 +7,8 @@ from NoteAgent.BusinessModules.ChatAgent.NoteSources import (
     merge_source_section,
     render_source_section,
     select_sources,
+    source_urls_in_section,
+    strip_source_section,
 )
 from NoteAgent.BusinessModules.ChatAgent.WebReading import WebPageReader
 from NoteAgent.BusinessModules.ConversationState.PendingDrafts import WRITE_ACTIONS, DraftStore, NoteDraft, ProposeNoteInput, current_thread_id, markdown_name
@@ -138,12 +140,32 @@ def build_chat_tools(
         if action == "create" and exists:
             return {"error": f"{name} already exists; use append"}
         similar_names = [item.strip() for item in similar.split(",") if item.strip()]
+        evidence = current_source_evidence.get()
+        if (action != "delete" and evidence is not None
+                and (evidence.fetched_ok or evidence.user_provided_after_failure)
+                and source_urls is None and user_supplied_source_urls is None):
+            return {"error": "网页笔记必须明确传入 source_urls 和 user_supplied_source_urls；未采用网页时传空列表"}
         # Only sources this session can prove reach the note; the section is rendered here
         # so the approval preview and the written file already contain the final block.
         sources, provided = select_sources(
-            source_urls or [], user_supplied_source_urls or [], current_source_evidence.get()
+            source_urls or [], user_supplied_source_urls or [], evidence
         )
-        if action != "delete" and (sources or provided):
+        if action in ("append", "replace"):
+            old = notes.read(name)
+            old_sources, old_provided = source_urls_in_section(old)
+            if old_sources or old_provided:
+                # An append after a source section would place old sources in the
+                # middle. Show the complete merged file and write it as replace.
+                if action == "append":
+                    content = old.rstrip() if not content.strip() else (
+                        strip_source_section(old).rstrip() + "\n\n" +
+                        strip_source_section(content).lstrip()
+                    )
+                    action = "replace"
+                if strip_source_section(old).strip() in strip_source_section(content):
+                    sources = list(dict.fromkeys([*old_sources, *sources]))
+                    provided = list(dict.fromkeys([*old_provided, *provided]))
+        if action != "delete" and (sources or provided or "## 来源" in content):
             content = merge_source_section(content, render_source_section(sources, provided))
         draft = NoteDraft(
             action=action,

@@ -244,13 +244,26 @@ async def tools_node(state: GraphState, runtime: GraphRuntime) -> dict[str, Any]
             logger.info("tool start tool=%s turn=%s", name, state.get("current_turn_id"))
             web_status = None
             token_sources = None
+            missing_source_selection = False
             if name == "propose_note":
-                token_sources = current_source_evidence.set(
-                    build_source_evidence(user_texts, steps)
+                evidence = build_source_evidence(
+                    user_texts, steps,
+                    history=state.get("ui_messages") or [],
+                    current_question=state.get("current_question") or "",
+                )
+                token_sources = current_source_evidence.set(evidence)
+                missing_source_selection = bool(
+                    args.get("action") != "delete"
+                    and (evidence.fetched_ok or evidence.user_provided_after_failure)
+                    and ("source_urls" not in args or "user_supplied_source_urls" not in args)
                 )
             try:
-                raw = await tool_map[name].ainvoke(args)
-                status = "ok"
+                if missing_source_selection:
+                    raw = {"error": "网页笔记必须明确传入 source_urls 和 user_supplied_source_urls；未采用网页时传空列表"}
+                    status = "error"
+                else:
+                    raw = await tool_map[name].ainvoke(args)
+                    status = "ok"
             except Exception as exc:  # noqa: BLE001 - surfaced to the model and the trace
                 raw = {"error": str(exc)}
                 status = "error"

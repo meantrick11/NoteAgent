@@ -1,6 +1,6 @@
 # 聊天工具（现行契约）
 
-> 以代码为准。描述 Agent 四个 `@tool`、何时调用、参数与返回、以及人审后如何落盘。执行装配见 [architecture.md](../01-architecture/architecture.md)，人审与恢复见 [recovery.md](../03-modules/recovery/recovery.md)。\
+> 以代码为准。描述 Agent 的工具、何时调用、参数与返回、以及人审后如何落盘。执行装配见 [architecture.md](../01-architecture/architecture.md)，人审与恢复见 [recovery.md](../03-modules/recovery/recovery.md)。\
 > 工具 hop、stub 截断、Runtime vs Persistent 见 [context-management.md](../03-modules/chat/context-management.md)。\
 > 切块、Chroma 点、审批后同步见 [retrieval.md](../03-modules/retrieval/retrieval.md)。
 
@@ -16,10 +16,10 @@
 
 ## 1. 范围与原则
 
-四个工具：`list_files`、`read_file`、`search_relative_from_chromadb`、`propose_note`。
+基础工具为 `list_files`、`read_file`、`search_relative_from_chromadb`、`propose_note`。装配了 `WebPageReader` 时另注册 `read_webpage`；当前生产装配提供 HTTPX + Trafilatura 读取器。
 
 - LLM 只出提案或问答；禁止在回复里声称已经写入或删除文件。
-- `list_files` / `read_file` / `search_relative_from_chromadb` **只读**。
+- `list_files` / `read_file` / `search_relative_from_chromadb` / `read_webpage` **只读**；网页正文仅进入会话工具消息与 checkpoint，不创建独立网页文件或来源库。
 - `propose_note` 在 graph 工具节点的 DraftWorkspace 中生成提案，再保存为 checkpoint 的 pending_draft；不写正文或 Chroma。
 - 正式审批由 ChatAgent.review 和 ConversationService 校验运行占用及版本，走统一 NoteMutationService 记录前像、写盘、影子 Git 与索引维修，清稿发布前保留 approval 维护记录。
 - 索引由 IndexRepairService 按文件维修，检索校验正文哈希和当前索引配置，拒绝陈旧片段。故障与重启处理见 recovery.md；不能把正文已写当作索引已完成。
@@ -56,6 +56,7 @@ flowchart TD
 | 用户本句 | 工具 | 禁止 |
 |----------|------|------|
 | 闲聊、寒暄、与笔记无关的问答 | 不调 `propose_note` | 提案 |
+| 本句给出一个或多个固定 http/https URL | 先逐个调用 `read_webpage`；再按用户意图回答、提案或询问用途；逐项告知失败和部分读取 | 自动搜索、替换 URL、因给出 URL 就自动提案 |
 | 问以前学过什么、笔记里怎么写的 | 先 `search_relative_from_chromadb`，必要时 `read_file` | 编造旧笔记；顺便提案 |
 | 只贴长文/外文，没说要记、翻译、润色、摘要或抽取 | 一两句话问要做什么 | 因材料长而自动提案 |
 | 已说明要记下来 / 翻译 / 润色 / 摘要 / 只保留某部分 | 必须先 `list_files`；可能撞车时 `read_file` 或 search；相近文件则 `propose_note(append)`，否则 `create` | 把「再记一笔」做成 `replace` |
@@ -66,9 +67,9 @@ flowchart TD
 
 ---
 
-## 4. 四工具契约
+## 4. 工具契约
 
-均由 `build_chat_tools(notes, retrieval, drafts)` 闭包捕获依赖。异常普遍变成 `{error: str}`，不抛给模型循环（循环里另有一层 try，见 agent）。
+由 `build_chat_tools(notes, retrieval, drafts, web_reader=None)` 闭包捕获依赖。未注入读取器时不注册 `read_webpage`。笔记工具异常普遍变成 `{error: str}`，不抛给模型循环（循环里另有一层 try，见 agent）。
 
 ### 4.1 `list_files`
 
@@ -104,7 +105,19 @@ flowchart TD
 
 未索引或空库时 fragments 可为空列表，不算工具实现错误；**空结果是"没检索到"，与工具执行错误（`{error}`）是两种状态**。点上的 `file_name` / `distance` 与审批后如何写入见 [retrieval.md](../03-modules/retrieval/retrieval.md)。最终答案里真正出现的引用才写入该条 assistant 的 checkpoint 展示消息 citations，编号按该条正文首次出现重排为 1..n。渲染见 [frontend.md](../03-modules/frontend/frontend.md)。
 
-### 4.4 `propose_note`
+### 4.4 `read_webpage`（装配读取器时）
+
+| | |
+|--|--|
+| 参数 | `url: str`，用户提供的固定 http/https URL；多个 URL 分别调用 |
+| 返回 | `{url, final_url, status, title, content, error}`；`status` 为 `ok`、`partial`、`login_required`、`blocked`、`unsupported` 或 `failed` |
+| 读取 | 服务端 HTTPX 请求 HTML，Trafilatura 抽取正文；逐次重定向和实际连接地址校验公网目标，限制超时、响应字节、正文长度 |
+| 失败 | 登录或人机验证、非 HTML、网络失败等返回状态和简短原因；未成功抽取时 `content` 为空，不能据此编造正文 |
+| 副作用 | 不写独立网页文件；完整工具结果随会话 checkpoint 保存，SSE / `tool_steps` 仅展示简短预览 |
+
+`partial` 表示可能只拿到部分正文，回答时应告知截断。页面文字为低信任材料，不能改变 Agent 指令或工具权限。后续回合模型输入不自动重放上一回合完整正文；材料不足时重新读取。实现见 [WebReading.py](../../src/NoteAgent/BusinessModules/ChatAgent/WebReading.py)，执行与验收状态见 [V2.4 结果](../05-records/plans/2026-10-11-v24-user-url-reading-results.md)。
+
+### 4.5 `propose_note`
 
 `args_schema` 为 [BusinessModules/ConversationState/PendingDrafts.py](../../src/NoteAgent/BusinessModules/ConversationState/PendingDrafts.py)。`action` 合法值即 `WRITE_ACTIONS`：`append` / `create` / `replace` / `delete`。
 
@@ -115,6 +128,8 @@ flowchart TD
 | `content` | str | `""` | Markdown。`delete` 可空；其它 action 空则 `{error: "content is required"}` |
 | `reason` | str | `""` | 一句话分类理由 |
 | `similar` | str | `""` | 逗号分隔相近已有文件名，拆成 `NoteDraft.similar: list[str]` |
+| `source_urls` | list[str] | `[]` | 草稿正文实际采用且本会话已成功或部分读取的 URL |
+| `user_supplied_source_urls` | list[str] | `[]` | 抓取失败后用户明确粘贴正文的 URL |
 
 校验顺序（失败则**不** `put`）：
 
@@ -124,8 +139,9 @@ flowchart TD
 4. 非 `delete` 且无 `content`
 5. `append` / `replace` / `delete` 且文件不存在
 6. `create` 且文件已存在 → 提示改用 `append`
+7. 网页相关草稿未明确传入两个来源选择字段，或选用本会话无法证实的 URL → 拒绝或过滤；未采用网页时显式传两个空数组
 
-成功：`drafts.put(thread_id, NoteDraft(...))`，`existing_files=notes.list_notes()`。返回 `{status: "pending_review", action, file_name}`（`file_name` 已规范化）。同一 `thread_id` 再提案会覆盖上一份 pending。
+成功：`drafts.put(thread_id, NoteDraft(...))`，`existing_files=notes.list_notes()`。返回 `{status: "pending_review", action, file_name}`（`file_name` 已规范化）。同一 `thread_id` 再提案会覆盖上一份 pending。网页来源在提案时合并成草稿末尾的 `## 来源` 栏，审批预览即最终写盘内容；失败后用户提供的正文标注“内容由用户提供，网页未成功获取”。来源证据限本会话的用户消息与 `read_webpage` 工具步骤，历史步骤也可用于跨回合提案。
 
 ---
 
@@ -141,6 +157,8 @@ flowchart TD
 | `delete` | 必须存在 | 可空 | `notes.delete`（`unlink`） |
 
 `replace` 没有节级 patch：模型必须先 `read_file`，再交合并后的全文。
+
+若已有笔记末尾带来源栏，网页内容追加时工具先生成完整合并草稿并改为 `replace`；保留仍被正文使用的旧来源，确保审批预览与写盘都只有一个末尾来源栏。
 
 ---
 
@@ -174,7 +192,8 @@ PUT /chat/draft 接收 thread_id、content、expected_revision，可选 file_nam
 
 | 文件 | 角色 |
 |------|------|
-| [BusinessModules/ChatAgent/ChatTools.py](../../src/NoteAgent/BusinessModules/ChatAgent/ChatTools.py) | 四个工具 |
+| [BusinessModules/ChatAgent/ChatTools.py](../../src/NoteAgent/BusinessModules/ChatAgent/ChatTools.py) | 基础四工具与可选的 `read_webpage` |
+| [BusinessModules/ChatAgent/WebReading.py](../../src/NoteAgent/BusinessModules/ChatAgent/WebReading.py)、[BusinessModules/ChatAgent/NoteSources.py](../../src/NoteAgent/BusinessModules/ChatAgent/NoteSources.py) | 指定 URL 读取与笔记来源栏 |
 | [BusinessModules/ConversationState/PendingDrafts.py](../../src/NoteAgent/BusinessModules/ConversationState/PendingDrafts.py) | schema、DraftStore、`commit_review` |
 | [BusinessModules/ChatAgent/ChatAgent.py](../../src/NoteAgent/BusinessModules/ChatAgent/ChatAgent.py) | 正式图执行 facade、checkpoint 草稿审批 |
 | [AppBootstrap/ChatAgentFactory.py](../../src/NoteAgent/AppBootstrap/ChatAgentFactory.py)、[BusinessModules/ChatAgent/ChatNodes.py](../../src/NoteAgent/BusinessModules/ChatAgent/ChatNodes.py) | 图装配、上下文、模型和工具节点 |

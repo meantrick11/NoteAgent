@@ -19,13 +19,16 @@
 
 | 文件 | 状态 | 说明 |
 |---|---|---|
+| [2026-10-11-v24-user-url-reading.md](2026-10-11-v24-user-url-reading.md) | 指定 URL 读取已在 `feat/user-url-reading` 实现，待验收 | [结果与复审修复](2026-10-11-v24-user-url-reading-results.md)：定向及相邻回归 125 passed / 1 deselected；PostgreSQL 集成补验、真实模型网页笔记成稿仍待完成；未合并/发布 |
 | [2026-10-04-checkpoint-shadow-git-completion.md](2026-10-04-checkpoint-shadow-git-completion.md) | B1–B9 修复补验通过，未合并/推送 | [结果](2026-10-04-checkpoint-shadow-git-completion-results.md)：646 后端/1 skip、143 单测/61 E2E/build；G12/G14 真实演练、G16 双仓追溯；Docker 未运行 |
 | [2026-10-04-rollback-acceptance-fixes.md](2026-10-04-rollback-acceptance-fixes.md) | 修复补验完成 | [原问题](2026-10-04-checkpoint-shadow-git-completion-review-b.md) 已闭环，代码 ea6bb8c、上层文档 eb59aa5 |
 | [2026-10-01-checkpoint-shadow-git-rollback.md](2026-10-01-checkpoint-shadow-git-rollback.md) | 部分完成，剩余执行见 2026-10-04 计划 | 原始两阶段范围与接口合同；基础及验收修复已合并，正式聊天切换与影子 Git 等尚未完成，不能视为整体已验收 |
-| [2026-09-10-learning-note-quality.md](2026-09-10-learning-note-quality.md) | 部分完成（持续） | 学习型笔记 v0.2 准则、语义 Judge、Prompt 迭代留痕已交付；l01 的加工维度仍未达合格线（现行 prompt 见 [note-quality.md](../../../evals/criteria/note-quality.md)） |
+| [2026-09-10-learning-note-quality.md](2026-09-10-learning-note-quality.md) | 基线可用，V2.2 专项暂挂 | 学习型笔记 v0.2 准则、语义 Judge、Prompt 迭代留痕已交付；l01 两次复测一过一未过，正式 V2.2 固定集验收未完成（见 [note-quality.md](../../../evals/criteria/note-quality.md)） |
 
 V2.7 前端初始化计划的实现部分已完成（见下方"已完成"表），Tasks 1–8 逐项有验证证据。
-V2.2／V2.3 仍按当前可用处理，其余 V2 迭代在前端扩容后继续——前端扩容不等于 V2 整体验收通过。
+2026-10-07：V2.2／V2.3 基线能力继续可用，两个质量专项暂挂，阶段门槛和未完成证据保留；下一步准备 V2.4 指定网页来源。V2.3 引用按来源方式分开：`read_file` 到文件，RAG 到章节与原文片段。前端扩容不等于 V2 整体验收通过；产品状态以 [上层路线图](../../../../NoteAgent-docs/docs/02-requirements/REQ-CATALOG-产品能力与验收要求.md) 为准。
+
+2026-10-11：V2.4 指定 URL 网页读取已在实现分支完成并经复审修复；当前仍待 PostgreSQL 集成补验与真实模型网页笔记成稿验收。此处记录代码进度，产品阶段状态仍以上层路线图为准。
 
 ## 已完成或部分完成
 

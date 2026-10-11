@@ -250,6 +250,9 @@ def _read_message(*urls: str) -> AIMessage:
 
 
 def _propose_message(action: str, file_name: str, content: str, **extra) -> AIMessage:
+    if "source_urls" in extra or "user_supplied_source_urls" in extra:
+        extra.setdefault("source_urls", [])
+        extra.setdefault("user_supplied_source_urls", [])
     return AIMessage(
         content="",
         tool_calls=[
@@ -332,24 +335,40 @@ def test_url_that_was_not_read_is_not_written_as_a_source(tmp_path):
 
 
 def test_user_pasted_body_marks_the_failed_source(tmp_path):
-    reader = FakeWebReader({U3: _page(U3, status="failed", error="请求超时")})
+    reader = FakeWebReader({U3: _page(U3, status="failed", error="timeout")})
+    app = build_checkpoint_app(
+        tmp_path,
+        reply_batches=[[_read_message(U3), "Please paste the article text."]],
+        web_reader=reader,
+    )
+    conv = _run_turn(app, f"Read {U3}")
+    app.model.replies.extend([
+        _propose_message("create", "T.md", "## T\n\nPasted body.", user_supplied_source_urls=[U3]),
+        AIMessage(content="Draft ready"),
+    ])
+    pasted = "Here is the article body: " + ("Detailed original page content. " * 4)
+    response = app.client.post("/chat", json={"conversation_id": conv, "question": pasted})
+    assert response.status_code == 200
+    draft = _draft(app, conv)
+    assert draft["user_supplied_source_urls"] == [U3]
+    assert U3 in draft["content"]
+
+
+def test_failed_page_is_not_marked_user_provided_without_later_paste(tmp_path):
+    reader = FakeWebReader({U3: _page(U3, status="failed", error="timeout")})
     app = build_checkpoint_app(
         tmp_path,
         reply_batches=[[
             _read_message(U3),
-            _propose_message(
-                "create", "T.md", "## T\n\n用户粘贴的正文。",
-                user_supplied_source_urls=[U3],
-            ),
-            "ok",
+            _propose_message("create", "T.md", "## T\n\nInvented body.", user_supplied_source_urls=[U3]),
+            "Draft ready",
         ]],
         web_reader=reader,
     )
-    conv = _run_turn(app, f"读 {U3} 失败了，我把正文贴给你")
-
+    conv = _run_turn(app, f"Read {U3}; I will paste it later")
     draft = _draft(app, conv)
-    assert draft["user_supplied_source_urls"] == [U3]
-    assert f"- {U3}（内容由用户提供，网页未成功获取）" in draft["content"]
+    assert draft["user_supplied_source_urls"] == []
+    assert U3 not in draft["content"]
 
 
 def test_editing_a_web_draft_keeps_the_source_section(tmp_path):
@@ -401,8 +420,96 @@ def test_replace_merges_into_a_single_trailing_source_section(tmp_path):
 
     draft = _draft(app, conv)
     assert draft["content"].count("## 来源") == 1
-    assert "old.test" not in draft["content"]
+    assert "https://old.test/x" in draft["content"]
     assert U2 in draft["content"]
+
+
+def test_append_to_sourced_note_previews_and_writes_one_merged_source_section(tmp_path):
+    reader = FakeWebReader({U2: _page(U2, content="Rust ownership details")})
+    app = build_checkpoint_app(
+        tmp_path,
+        reply_batches=[[
+            _read_message(U2),
+            _propose_message("append", "GIL.md", "\n## New\n\nRust details.\n", source_urls=[U2]),
+            "Draft ready",
+        ]],
+        web_reader=reader,
+    )
+    app.notes.create("GIL.md", "GIL")
+    app.notes.write("GIL.md", "## Old\n\nOld details.\n\n## 来源\n\n- https://old.test/x\n")
+
+    conv = _run_turn(app, f"Combine {U2} into GIL.md")
+    draft = _draft(app, conv)
+    assert draft["action"] == "replace"
+    assert draft["content"].count("## 来源") == 1
+    assert draft["content"].index("Old details") < draft["content"].index("Rust details")
+    assert draft["content"].index("https://old.test/x") < draft["content"].index(U2)
+    assert draft["content"].rstrip().endswith(f"- {U2}")
+    review = app.client.post("/chat/review", json={"thread_id": conv, "action": "approve"})
+    assert review.json()["status"] == "written"
+    assert app.notes.read("GIL.md") == draft["content"]
+
+
+def test_web_source_survives_read_then_note_in_next_turn(tmp_path):
+    reader = FakeWebReader({U1: _page(U1, content="GIL details")})
+    app = build_checkpoint_app(
+        tmp_path,
+        reply_batches=[[
+            _read_message(U1), "I read it."
+        ]],
+        web_reader=reader,
+    )
+    conv = _run_turn(app, f"Read {U1}")
+    app.model.replies.extend([
+        _propose_message("create", "GIL.md", "## GIL\n\nDetails.", source_urls=[U1]),
+        AIMessage(content="Draft ready"),
+    ])
+    response = app.client.post("/chat", json={"conversation_id": conv, "question": "Make a note from that page"})
+    assert response.status_code == 200
+    assert U1 in _draft(app, conv)["content"]
+
+
+def test_web_note_without_explicit_source_selection_is_rejected(tmp_path):
+    reader = FakeWebReader({U1: _page(U1, content="GIL details")})
+    app = build_checkpoint_app(
+        tmp_path,
+        reply_batches=[[
+            _read_message(U1),
+            _propose_message("create", "GIL.md", "## GIL\n\nDetails."),
+            "Done",
+        ]],
+        web_reader=reader,
+    )
+    conv = _run_turn(app, f"Make a note from {U1}")
+    assert app.client.get(f"/conversations/{conv}").json()["pending_draft"] is None
+
+
+def test_web_note_with_only_one_source_field_is_rejected(tmp_path):
+    reader = FakeWebReader({U1: _page(U1, content="GIL details")})
+    incomplete = AIMessage(content="", tool_calls=[{
+        "name": "propose_note", "id": "p1",
+        "args": {"action": "create", "file_name": "GIL.md", "content": "## GIL\n\nDetails.",
+                 "user_supplied_source_urls": []},
+    }])
+    app = build_checkpoint_app(
+        tmp_path,
+        reply_batches=[[_read_message(U1), incomplete, "Done"]],
+        web_reader=reader,
+    )
+    conv = _run_turn(app, f"Make a note from {U1}")
+    assert app.client.get(f"/conversations/{conv}").json()["pending_draft"] is None
+
+
+def test_delete_draft_does_not_need_web_source_fields(tmp_path):
+    reader = FakeWebReader({U1: _page(U1, content="GIL details")})
+    app = build_checkpoint_app(
+        tmp_path,
+        reply_batches=[[_read_message(U1), _propose_message("delete", "GIL.md", ""), "Done"]],
+        web_reader=reader,
+    )
+    app.notes.create("GIL.md", "GIL")
+    conv = _run_turn(app, f"Read {U1} and delete GIL.md")
+    assert _draft(app, conv)["action"] == "delete"
 
 
 def test_rejecting_a_web_draft_writes_nothing(tmp_path):

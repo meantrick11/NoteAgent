@@ -23,6 +23,7 @@ from typing import Literal, Protocol
 from urllib.parse import urljoin, urlsplit
 
 import httpx
+import httpcore
 import trafilatura
 
 _logger = logging.getLogger(__name__)
@@ -76,13 +77,75 @@ class _Unsupported(Exception):
 
 
 def _is_public_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Only globally routable addresses may be contacted."""
     return ip.is_global
 
 
 async def _default_resolve(host: str) -> list[str]:
+    """Resolve all IPv4 and IPv6 addresses before selecting a connection target."""
     loop = asyncio.get_running_loop()
     infos = await loop.getaddrinfo(host, None, type=socket.SOCK_STREAM)
     return sorted({info[4][0] for info in infos})
+
+
+async def _public_addresses(
+    host: str, resolver: Callable[[str], Awaitable[list[str]]]
+) -> list[str]:
+    """Reject internal hosts and return only checked, globally routable addresses."""
+    name = host.strip().strip(".").lower()
+    if not name:
+        raise _Unsupported("链接缺少主机名")
+    if name == "localhost" or name.endswith((".localhost", ".local", ".internal")):
+        raise _Blocked("目标指向本机或内网主机")
+    try:
+        literal = ipaddress.ip_address(name)
+    except ValueError:
+        literal = None
+    addresses = [name] if literal is not None else await resolver(name)
+    if not addresses:
+        raise _Blocked("无法解析目标主机")
+    for address in addresses:
+        try:
+            resolved = ipaddress.ip_address(address)
+        except ValueError:
+            raise _Blocked("目标主机解析到无效地址") from None
+        if not _is_public_ip(resolved):
+            raise _Blocked("目标主机解析到非公网地址")
+    return addresses
+
+
+class _PublicNetworkBackend(httpcore.AsyncNetworkBackend):
+    """Pin every TCP connection to an address checked at connection time."""
+
+    def __init__(self, resolver: Callable[[str], Awaitable[list[str]]]) -> None:
+        self._resolver = resolver
+        self._delegate = httpcore.AnyIOBackend()
+
+    async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        """Resolve and validate again, then connect to the checked IP itself."""
+        addresses = await _public_addresses(host, self._resolver)
+        return await self._delegate.connect_tcp(
+            addresses[0], port, timeout=timeout, local_address=local_address,
+            socket_options=socket_options,
+        )
+
+    async def connect_unix_socket(self, path, timeout=None, socket_options=None):
+        """Never permit a webpage request to use a local Unix socket."""
+        raise _Blocked("不允许通过本地套接字读取网页")
+
+    async def sleep(self, seconds):
+        """Keep HTTP core's retry timing delegated to its normal backend."""
+        await self._delegate.sleep(seconds)
+
+
+class _PublicHTTPTransport(httpx.AsyncHTTPTransport):
+    """Use HTTPX's HTTP/TLS handling with an address-pinning network backend."""
+
+    def __init__(self, resolver: Callable[[str], Awaitable[list[str]]]) -> None:
+        super().__init__(trust_env=False)
+        # HTTPX 0.28.1 / httpcore 1.0.9 expose this pool backend. Keep TLS
+        # hostname verification on the original URL while pinning only TCP.
+        self._pool._network_backend = _PublicNetworkBackend(resolver)
 
 
 class HttpTrafilaturaReader:
@@ -127,10 +190,16 @@ class HttpTrafilaturaReader:
 
         current = url
         async with httpx.AsyncClient(
-            transport=self._transport, follow_redirects=False, timeout=self._timeout
+            transport=self._transport or _PublicHTTPTransport(self._resolver),
+            follow_redirects=False, timeout=self._timeout, trust_env=False,
         ) as client:
             for _hop in range(self._max_redirects + 1):
-                host = urlsplit(current).hostname or ""
+                hop = urlsplit(current)
+                if hop.scheme not in ("http", "https"):
+                    raise _Unsupported("仅支持 http/https 链接")
+                if hop.username or hop.password:
+                    raise _Blocked("链接中不允许包含凭据")
+                host = hop.hostname or ""
                 await self._ensure_public(host)
                 async with client.stream("GET", current) as response:
                     if response.status_code in _REDIRECT_CODES:
@@ -160,29 +229,7 @@ class HttpTrafilaturaReader:
 
     async def _ensure_public(self, host: str) -> None:
         """Validate the address set this host resolves to, before connecting."""
-        name = host.strip().strip(".").lower()
-        if not name:
-            raise _Unsupported("链接缺少主机名")
-        if name == "localhost" or name.endswith((".localhost", ".local", ".internal")):
-            raise _Blocked("目标指向本机或内网主机")
-        try:
-            literal = ipaddress.ip_address(name)
-        except ValueError:
-            literal = None
-        if literal is not None:
-            if not _is_public_ip(literal):
-                raise _Blocked("目标是非公网地址")
-            return
-        addresses = await self._resolver(name)
-        if not addresses:
-            raise _Blocked("无法解析目标主机")
-        for address in addresses:
-            try:
-                resolved = ipaddress.ip_address(address)
-            except ValueError:
-                raise _Blocked("目标主机解析到无效地址")
-            if not _is_public_ip(resolved):
-                raise _Blocked("目标主机解析到非公网地址")
+        await _public_addresses(host, self._resolver)
 
     async def _read_capped(self, response: httpx.Response) -> tuple[bytes, bool]:
         """Read at most ``max_response_bytes``; report whether the cap was hit."""
@@ -264,6 +311,7 @@ class HttpTrafilaturaReader:
 
 
 def _charset_of(content_type: str) -> str:
+    """Extract the declared HTML charset, defaulting to UTF-8."""
     for part in content_type.split(";")[1:]:
         key, _, value = part.strip().partition("=")
         if key.lower() == "charset" and value:

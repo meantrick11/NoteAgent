@@ -12,6 +12,7 @@ from NoteAgent.BusinessModules.ChatAgent.NoteSources import (
     normalize_url,
     render_source_section,
     select_sources,
+    source_urls_in_section,
 )
 
 U1 = "https://example.com/gil"
@@ -40,6 +41,12 @@ def test_render_lists_sources_in_order_with_user_provided_marker():
     assert body[0] == f"- {U2}"
     assert body[1] == f"- {U1}"
     assert body[2] == f"- https://x.test/pasted（{USER_PROVIDED_NOTE}）"
+
+
+def test_existing_user_provided_url_is_parsed_without_its_label():
+    content = "# Note\n\nBody\n\n" + render_source_section([], [U1])
+    assert source_urls_in_section(content) == ([], [U1])
+    assert build_source_evidence([f"Read {U1}（article）"], []).user_urls == (U1,)
 
 
 def test_render_is_none_without_sources():
@@ -91,6 +98,27 @@ def test_build_source_evidence_splits_ok_and_failed_from_steps():
     assert evidence.fetched_failed == frozenset({"https://example.com/bad"})
 
 
+def test_unrelated_later_message_does_not_certify_failed_page_as_pasted():
+    history = [
+        {"role": "user", "content": f"Read {U1}"},
+        {"role": "assistant", "tool_steps": _steps((U1, "failed"))},
+        {"role": "user", "content": "Unrelated sentence. " * 10},
+    ]
+    evidence = build_source_evidence([f"Read {U1}"], [], history=history)
+    assert evidence.user_provided_after_failure == frozenset()
+
+
+def test_raw_body_counts_after_assistant_explicitly_asks_for_paste():
+    history = [
+        {"role": "user", "content": f"Read {U1}"},
+        {"role": "assistant", "content": "Please paste the article text.",
+         "tool_steps": _steps((U1, "failed"))},
+        {"role": "user", "content": "A technical article about Python internals. " * 4},
+    ]
+    evidence = build_source_evidence([f"Read {U1}"], [], history=history)
+    assert evidence.user_provided_after_failure == frozenset({U1})
+
+
 def test_extract_urls_ignores_trailing_chinese_punctuation():
     evidence = build_source_evidence(["看这个 " + U1 + "，还有别的"], [])
     assert evidence.user_urls == (U1,)
@@ -116,7 +144,8 @@ def test_select_sources_requires_a_failed_fetch_for_user_provided():
 
 def test_select_sources_keeps_user_provided_after_a_failed_fetch():
     evidence = SourceEvidence(
-        user_urls=(U1,), fetched_ok=frozenset(), fetched_failed=frozenset({U1})
+        user_urls=(U1,), fetched_ok=frozenset(), fetched_failed=frozenset({U1}),
+        user_provided_after_failure=frozenset({U1}),
     )
     sources, provided = select_sources([], [U1], evidence)
     assert sources == []

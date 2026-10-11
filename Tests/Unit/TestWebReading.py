@@ -8,6 +8,7 @@ validates the addresses it would actually connect to, not the URL string alone.
 from __future__ import annotations
 
 import httpx
+import httpcore
 
 from NoteAgent.BusinessModules.ChatAgent.WebReading import (
     HttpTrafilaturaReader,
@@ -188,6 +189,54 @@ async def test_private_domain_resolution_is_blocked():
 
     assert result.status == "blocked"
     assert result.content == ""
+
+
+async def test_connection_uses_validated_ip_instead_of_resolving_hostname_again(monkeypatch):
+    attempted: list[str] = []
+
+    async def capture_connect(self, host, port, **kwargs):
+        attempted.append(host)
+        raise httpcore.ConnectError("stop before network")
+
+    async def public_resolver(host: str) -> list[str]:
+        return [PUBLIC_IP]
+
+    monkeypatch.setattr(httpcore.AnyIOBackend, "connect_tcp", capture_connect)
+    result = await HttpTrafilaturaReader(resolver=public_resolver).read("https://example.com/article")
+    assert result.status == "failed"
+    assert attempted == [PUBLIC_IP]
+
+
+async def test_dns_change_to_private_address_is_blocked_before_connect(monkeypatch):
+    calls = 0
+    attempted: list[str] = []
+
+    async def alternating_resolver(host: str) -> list[str]:
+        nonlocal calls
+        calls += 1
+        return [PUBLIC_IP] if calls == 1 else ["127.0.0.1"]
+
+    async def capture_connect(self, host, port, **kwargs):
+        attempted.append(host)
+        raise httpcore.ConnectError("unexpected connection")
+
+    monkeypatch.setattr(httpcore.AnyIOBackend, "connect_tcp", capture_connect)
+    result = await HttpTrafilaturaReader(resolver=alternating_resolver).read("https://example.com/article")
+    assert result.status == "blocked"
+    assert calls == 2
+    assert attempted == []
+
+
+async def test_redirect_with_embedded_credentials_is_blocked():
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return httpx.Response(302, headers={"location": "https://user:pass@example.com/private"})
+
+    result = await _reader(handler).read("https://example.com/start")
+    assert result.status == "blocked"
+    assert requested == ["https://example.com/start"]
 
 
 async def test_redirect_to_private_is_blocked():

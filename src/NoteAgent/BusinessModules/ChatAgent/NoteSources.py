@@ -20,7 +20,7 @@ USER_PROVIDED_NOTE = "内容由用户提供，网页未成功获取"
 # A markdown heading line ``## 来源`` (also tolerates extra spaces).
 _SOURCE_SECTION_RE = re.compile(r"(?m)^##\s*来源\s*$")
 # Enough to spot the URLs in a user message; CJK punctuation ends the URL.
-_URL_RE = re.compile(r"https?://[^\s<>\"'，。、；：）)】\]]+")
+_URL_RE = re.compile(r"https?://[^\s<>\"'，。、；：(（）)】\]]+")
 
 # Web tool statuses that mean the article body was actually obtained.
 FETCHED_OK = frozenset({"ok", "partial"})
@@ -34,6 +34,7 @@ class SourceEvidence:
     user_urls: tuple[str, ...]
     fetched_ok: frozenset[str]
     fetched_failed: frozenset[str]
+    user_provided_after_failure: frozenset[str] = frozenset()
 
 
 current_source_evidence: ContextVar[SourceEvidence | None] = ContextVar(
@@ -90,6 +91,23 @@ def strip_source_section(content: str) -> str:
     return head
 
 
+def source_urls_in_section(content: str) -> tuple[list[str], list[str]]:
+    """Read URLs already approved in a note's trailing source section."""
+    matches = list(_SOURCE_SECTION_RE.finditer(content))
+    if not matches:
+        return [], []
+    fetched: list[str] = []
+    provided: list[str] = []
+    for line in content[matches[-1].end():].splitlines():
+        if not line.startswith("- "):
+            continue
+        urls = extract_urls(line.split("（", 1)[0])
+        if not urls:
+            continue
+        (provided if USER_PROVIDED_NOTE in line else fetched).append(urls[0])
+    return dedupe_urls(fetched), dedupe_urls(provided)
+
+
 def merge_source_section(content: str, section: str | None) -> str:
     """Replace any existing source block with ``section``; None just removes it."""
     body = strip_source_section(content)
@@ -105,6 +123,7 @@ def extract_urls(text: str) -> list[str]:
 
 
 def _url_from_step(step: dict) -> str | None:
+    """Read the original URL from a structured webpage tool step."""
     try:
         args = json.loads(str(step.get("arguments") or "") or "{}")
     except ValueError:
@@ -112,7 +131,10 @@ def _url_from_step(step: dict) -> str | None:
     return args.get("url") if isinstance(args, dict) else None
 
 
-def build_source_evidence(user_texts: Iterable[str], steps: Iterable[dict]) -> SourceEvidence:
+def build_source_evidence(
+    user_texts: Iterable[str], steps: Iterable[dict], *,
+    history: Iterable[dict] = (), current_question: str = "",
+) -> SourceEvidence:
     """Collect the session's user-provided URLs and how each webpage read turned out."""
     user_urls: list[str] = []
     seen: set[str] = set()
@@ -124,7 +146,12 @@ def build_source_evidence(user_texts: Iterable[str], steps: Iterable[dict]) -> S
                 user_urls.append(name)
     ok: set[str] = set()
     failed: set[str] = set()
-    for step in steps:
+    history_rows = list(history)
+    historical_steps = [
+        step for row in history_rows if row.get("role") == "assistant"
+        for step in (row.get("tool_steps") or [])
+    ]
+    for step in [*historical_steps, *steps]:
         if str(step.get("name") or "") != "read_webpage":
             continue
         name = normalize_url(_url_from_step(step) or "")
@@ -135,7 +162,48 @@ def build_source_evidence(user_texts: Iterable[str], steps: Iterable[dict]) -> S
             ok.add(name)
         elif status in FETCHED_FAILED:
             failed.add(name)
-    return SourceEvidence(tuple(user_urls), frozenset(ok), frozenset(failed))
+    # A failed fetch can be marked user-provided only after a later user message
+    # supplies substantial text. If several URLs failed, the message must name the
+    # matching URL so an unrelated paste cannot certify all of them.
+    pending: set[str] = set()
+    provided_after_failure: set[str] = set()
+    awaiting_paste = False
+    for row in [*history_rows, {"role": "user", "content": current_question}]:
+        if row.get("role") == "assistant":
+            for step in row.get("tool_steps") or []:
+                if step.get("name") == "read_webpage" and step.get("web_status") in FETCHED_FAILED:
+                    name = normalize_url(_url_from_step(step) or "")
+                    if name:
+                        pending.add(name)
+            answer = str(row.get("content") or "").lower()
+            awaiting_paste = bool(pending and ("paste" in answer or "粘贴" in answer))
+        elif row.get("role") == "user" and pending:
+            content = str(row.get("content") or "")
+            body = content
+            prompted = awaiting_paste
+            awaiting_paste = False
+            for url in extract_urls(content):
+                body = body.replace(url, "")
+            if len(body.strip()) < 20:
+                continue
+            named = pending.intersection(extract_urls(content))
+            if named:
+                provided_after_failure.update(named)
+            elif len(pending) == 1 and (_declares_pasted_body(body) or prompted):
+                provided_after_failure.update(pending)
+    return SourceEvidence(
+        tuple(user_urls), frozenset(ok), frozenset(failed),
+        frozenset(provided_after_failure),
+    )
+
+
+def _declares_pasted_body(text: str) -> bool:
+    """Require an explicit paste cue when the user did not repeat the URL."""
+    prefix = text.strip().lower()[:100]
+    return any(cue in prefix for cue in (
+        "网页正文", "网页内容", "粘贴的内容", "粘贴的正文", "以下是正文",
+        "here is the article", "here is the page", "pasted article", "pasted page",
+    ))
 
 
 def select_sources(
@@ -161,6 +229,7 @@ def select_sources(
         for url in dedupe_urls(claimed_user_provided)
         if url in evidence.user_urls
         and url in evidence.fetched_failed
+        and url in evidence.user_provided_after_failure
         and url not in set(sources)
     ]
     return sources, provided
@@ -178,5 +247,6 @@ __all__ = [
     "normalize_url",
     "render_source_section",
     "select_sources",
+    "source_urls_in_section",
     "strip_source_section",
 ]
