@@ -15,6 +15,7 @@ from NoteAgent.BusinessModules.ChatAgent.ChatAgent import ChatAgent
 from NoteAgent.BusinessModules.ChatAgent.ConversationContext.ContextBudget import ContextBudget, budget_from_settings
 from NoteAgent.AppBootstrap.ChatAgentFactory import build_graph_agent
 from NoteAgent.BusinessModules.ChatAgent.ChatTools import build_chat_tools
+from NoteAgent.BusinessModules.ChatAgent.WebReading import HttpTrafilaturaReader
 from NoteAgent.BusinessModules.ModelSettings.ModelClients import create_chat_model_from_config
 from NoteAgent.BusinessModules.NoteRetrieval.MarkdownChunker import MarkdownChunker
 from NoteAgent.BusinessModules.NoteRetrieval.TextEmbedder import build_embedder
@@ -148,7 +149,13 @@ class BootstrapAssembler:
         model = self.build_chat_model(profile)
         return build_graph_agent(
             model=model,
-            tools=build_chat_tools(self._notes, retrieval, self._drafts, repairs=self._mutations.index_repairs if self._mutations else None),
+            tools=build_chat_tools(
+                self._notes,
+                retrieval,
+                self._drafts,
+                repairs=self._mutations.index_repairs if self._mutations else None,
+                web_reader=HttpTrafilaturaReader(),
+            ),
             notes=self._notes,
             drafts=self._drafts,
             budget=budget_for_window(self._settings, profile.context_window),

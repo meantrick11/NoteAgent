@@ -2,6 +2,7 @@ from langchain_core.tools import BaseTool
 from langchain.tools import tool
 
 from NoteAgent.BusinessModules.ChatAgent.CitationRegistry import current_citations
+from NoteAgent.BusinessModules.ChatAgent.WebReading import WebPageReader
 from NoteAgent.BusinessModules.ConversationState.PendingDrafts import WRITE_ACTIONS, DraftStore, NoteDraft, ProposeNoteInput, current_thread_id, markdown_name
 from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
 from NoteAgent.BusinessModules.NoteRetrieval.NoteRetrievalService import RetrievalService
@@ -12,12 +13,16 @@ def build_chat_tools(
     retrieval: RetrievalService | None,
     drafts: DraftStore,
     repairs=None,
+    web_reader: WebPageReader | None = None,
 ) -> list[BaseTool]:
     """Build list/read/search/propose tools. Disk writes happen only after review.
 
     ``retrieval`` may be None while the embedding index is unavailable (for example after
     a model switch that has not been rebuilt yet); the search tool then reports that
     instead of returning an empty result that would read as "no matching note".
+
+    ``web_reader`` is optional: without it the reader tool is not registered at all, so a
+    test container can never make an unexpected network request.
     """
     #列处所有文件的工具
     @tool("list_files", description="列出 notes/ 下已有笔记相对路径（含 Folder/Note.md）和一层文件夹名。提案前必须先调用。")
@@ -136,4 +141,30 @@ def build_chat_tools(
         drafts.put(thread_id, draft)
         return {"status": "pending_review", "action": action, "file_name": name}
 
-    return [list_files, read_file, search_relative_from_chromadb, propose_note]
+    tools: list[BaseTool] = [list_files, read_file, search_relative_from_chromadb, propose_note]
+
+    if web_reader is not None:
+        @tool(
+            "read_webpage",
+            description=(
+                "读取用户给出的一个网页 URL，返回页面标题与抽取后的正文。"
+                "用户本句里出现的每个 URL 都要逐个调用本工具；不要自行搜索或替换来源。"
+                "status：ok 表示完整读取；partial 表示正文过长或响应过大被截断；"
+                "login_required/blocked/unsupported/failed 表示未读取成功，此时 content 为空、error 为简短原因。"
+                "未成功读取的 URL 不得当作已读内容使用。"
+            ),
+        )
+        async def read_webpage(url: str) -> dict:
+            result = await web_reader.read(url)
+            return {
+                "url": result.url,
+                "final_url": result.final_url,
+                "status": result.status,
+                "title": result.title,
+                "content": result.content,
+                "error": result.error,
+            }
+
+        tools.append(read_webpage)
+
+    return tools

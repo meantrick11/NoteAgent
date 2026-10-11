@@ -103,6 +103,36 @@ class FakeRetrieval:
         return None
 
 
+class FakeWebReader:
+    """Scripted ``WebPageReader``; records the URLs it was asked to read."""
+
+    def __init__(self, results=None, default=None) -> None:
+        self._results = dict(results or {})
+        self._default = default
+        self.calls: list[str] = []
+
+    async def read(self, url: str):
+        from NoteAgent.BusinessModules.ChatAgent.WebReading import WebPageResult
+
+        self.calls.append(url)
+        result = self._results.get(url) or self._default
+        if result is None:
+            return WebPageResult(
+                url=url, final_url=url, status="failed", title=None, content="",
+                error="no scripted page",
+            )
+        if result.url == url:
+            return result
+        return WebPageResult(
+            url=url,
+            final_url=result.final_url or url,
+            status=result.status,
+            title=result.title,
+            content=result.content,
+            error=result.error,
+        )
+
+
 class FakeChatModel:
     """Scripted chat model: one queued reply per hop, streamed like a real one.
 

@@ -237,6 +237,7 @@ async def tools_node(state: GraphState, runtime: GraphRuntime) -> dict[str, Any]
             call_id, name, args = events.tool_call_triple(call)
             tool_call_id = events.tool_call_id_of(call)
             logger.info("tool start tool=%s turn=%s", name, state.get("current_turn_id"))
+            web_status = None
             try:
                 raw = await tool_map[name].ainvoke(args)
                 status = "ok"
@@ -244,9 +245,19 @@ async def tools_node(state: GraphState, runtime: GraphRuntime) -> dict[str, Any]
                 raw = {"error": str(exc)}
                 status = "error"
             output = raw if isinstance(raw, str) else events.json_args(raw)
-            preview, _truncated = _preview(output, runtime.budget.stub_preview_tokens)
+            if name == "read_webpage" and isinstance(raw, dict) and "status" in raw:
+                # The step status reflects how much of the page was read; the raw value is
+                # kept so draft sources can tell a successful fetch from a failed one.
+                web_status = str(raw.get("status") or "")
+                status = _web_step_status(web_status)
+                preview, _truncated = _preview(_web_preview(raw), runtime.budget.stub_preview_tokens)
+            else:
+                preview, _truncated = _preview(output, runtime.budget.stub_preview_tokens)
             arguments = events.json_args(args)
-            steps.append({"name": name, "status": status, "preview": preview, "arguments": arguments})
+            step: dict = {"name": name, "status": status, "preview": preview, "arguments": arguments}
+            if web_status is not None:
+                step["web_status"] = web_status
+            steps.append(step)
             writer(events.tool_done_event(name, status, preview, arguments))
             produced.append(
                 ToolMessage(content=output, tool_call_id=tool_call_id, name=name)
@@ -268,6 +279,29 @@ async def tools_node(state: GraphState, runtime: GraphRuntime) -> dict[str, Any]
 def _preview(text: str, stub_preview_tokens: int) -> tuple[str, bool]:
     """Display stub preview, mirroring the character budget of the legacy stub."""
     return prefix_until_tokens(text, stub_preview_tokens)
+
+
+def _web_step_status(web_status: str) -> str:
+    """Map a ``WebPageResult.status`` to the step status shown on the trace.
+
+    A truncated read still counts as ``partial``; anything that did not yield the
+    article body reads as ``error`` so it can never look like a successful fetch.
+    """
+    if web_status == "ok":
+        return "ok"
+    if web_status == "partial":
+        return "partial"
+    return "error"
+
+
+def _web_preview(result: dict) -> str:
+    """Short trace line for a webpage step: never the extracted body."""
+    parts = [f"url={result.get('url') or ''}", f"status={result.get('status') or ''}"]
+    if result.get("title"):
+        parts.append(f"title={result['title']}")
+    if result.get("error"):
+        parts.append(f"error={result['error']}")
+    return " ".join(parts)
 
 
 async def finalize_node(state: GraphState, runtime: GraphRuntime) -> dict[str, Any]:

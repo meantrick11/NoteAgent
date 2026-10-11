@@ -3,9 +3,11 @@ from pathlib import Path
 from NoteAgent.BusinessModules.ConversationState.PendingDrafts import DraftStore, current_thread_id
 from NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.LegacyConversationStore import ConversationStore
 from NoteAgent.BusinessModules.ChatAgent.ChatTools import build_chat_tools
+from NoteAgent.BusinessModules.ChatAgent.WebReading import WebPageResult
 from NoteAgent.TechnicalSupport.DatabaseAccess import Base, create_engine_from_url, create_session_factory
 from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
 from NoteAgent.BusinessModules.NoteRetrieval.RetrievalModels import SearchHit
+from Support.Fakes import FakeWebReader
 
 
 class FakeRetrieval:
@@ -241,3 +243,60 @@ def test_propose_create_accepts_folder_path(tmp_path: Path):
     assert result["file_name"] == "Python/GIL.md"
     assert drafts.get(tid).file_name == "Python/GIL.md"
     assert not repo.exists("Python/GIL.md")
+
+
+def _web_tool_map(repo: FileNoteRepository, reader) -> dict:
+    drafts, _ = _draft_store()
+    tools = build_chat_tools(repo, FakeRetrieval(), drafts, web_reader=reader)
+    return {tool.name: tool for tool in tools}
+
+
+def _page(url: str, *, status: str = "ok", title=None, content: str = "", error=None) -> WebPageResult:
+    return WebPageResult(url=url, final_url=url, status=status, title=title, content=content, error=error)
+
+
+def test_web_reader_absent_does_not_register_tool(tmp_path: Path):
+    """Without a reader the container can never make an unexpected network request."""
+    assert "read_webpage" not in _tool_map(FileNoteRepository(tmp_path))
+
+
+async def test_read_webpage_returns_title_and_content(tmp_path: Path):
+    reader = FakeWebReader({"https://a.test/x": _page("https://a.test/x", title="标题", content="网页正文")})
+    tools = _web_tool_map(FileNoteRepository(tmp_path), reader)
+    result = await tools["read_webpage"].ainvoke({"url": "https://a.test/x"})
+    assert result == {
+        "url": "https://a.test/x",
+        "final_url": "https://a.test/x",
+        "status": "ok",
+        "title": "标题",
+        "content": "网页正文",
+        "error": None,
+    }
+    assert reader.calls == ["https://a.test/x"]
+
+
+async def test_read_webpage_failure_has_no_fake_body(tmp_path: Path):
+    reader = FakeWebReader(
+        {"https://a.test/bad": _page("https://a.test/bad", status="login_required", error="需要登录")}
+    )
+    tools = _web_tool_map(FileNoteRepository(tmp_path), reader)
+    result = await tools["read_webpage"].ainvoke({"url": "https://a.test/bad"})
+    assert result["url"] == "https://a.test/bad"
+    assert result["status"] == "login_required"
+    assert result["content"] == ""
+    assert result["error"] == "需要登录"
+
+
+async def test_two_calls_return_independent_results(tmp_path: Path):
+    reader = FakeWebReader(
+        {
+            "https://a.test/1": _page("https://a.test/1", content="第一篇"),
+            "https://a.test/2": _page("https://a.test/2", content="第二篇"),
+        }
+    )
+    tools = _web_tool_map(FileNoteRepository(tmp_path), reader)
+    first = await tools["read_webpage"].ainvoke({"url": "https://a.test/1"})
+    second = await tools["read_webpage"].ainvoke({"url": "https://a.test/2"})
+    assert first["content"] == "第一篇"
+    assert second["content"] == "第二篇"
+    assert reader.calls == ["https://a.test/1", "https://a.test/2"]
