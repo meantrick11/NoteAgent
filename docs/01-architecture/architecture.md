@@ -23,7 +23,7 @@ POST /chat 校验版本并认领运行→保存输入前 boundary 与 user→从
 
 草稿保持 pending_draft；编辑只发布状态。批准经统一 mutation 写正文、Git 和按文件 RAG，随后发布清草稿状态。写正文时持久 approval maintenance，取消/崩溃后启动继续完成，避免重复写盘。未迁移 legacy 会话保持只读，禁止旁路审批。
 
-V2.4 实现分支接入指定 URL 读取：用户提供 URL 后，模型逐个调用 `read_webpage`；生产读取器使用 HTTPX 获取 HTML、Trafilatura 抽取正文，结果作为 `ToolMessage` 随会话 checkpoint 保存。工具步骤与 SSE 只展示简短状态，不建立独立网页正文库；后续回合缺少正文时重新读取。模型仅按用户意图提交笔记草稿，采用网页的草稿末尾含来源 URL，仍由现有人审写盘。接口和待验收项见 [聊天工具](../02-api/chat-tools.md) 与 [V2.4 执行结果](../05-records/plans/2026-10-11-v24-user-url-reading-results.md)。
+V2.4 已接入指定 URL 读取：用户提供 URL 后，模型逐个调用 `read_webpage`；生产读取器使用 HTTPX 获取 HTML、Trafilatura 抽取正文，结果作为 `ToolMessage` 随会话 checkpoint 保存。工具步骤与 SSE 只展示简短状态，不建立独立网页正文库；后续回合缺少正文时重新读取。模型仅按用户意图提交笔记草稿，采用网页的草稿末尾含来源 URL，仍由现有人审写盘。接口和待验收项见 [聊天工具](../02-api/chat-tools.md) 与 [V2.4 执行结果](../05-records/plans/2026-10-11-v24-user-url-reading-results.md)。
 
 ## 整体恢复
 

@@ -13,7 +13,7 @@
 | 发布记录 | [发布说明规则](06-releases/README.md) |
 | 附件 | [历史画布](07-assets/README.md) |
 
-当前会话已使用 checkpoint 持久状态，笔记采用独立影子 Git，RAG 按文件持久维修；实现入口见 [恢复模块](03-modules/recovery/recovery.md) 与 [验收结果](05-records/plans/2026-10-04-checkpoint-shadow-git-completion-results.md)。V2.4 指定 URL 读取已在实现分支接入，契约见 [聊天工具](02-api/chat-tools.md)，进度、补验和未验收项见 [V2.4 执行结果](05-records/plans/2026-10-11-v24-user-url-reading-results.md)。
+当前会话已使用 checkpoint 持久状态，笔记采用独立影子 Git，RAG 按文件持久维修；实现入口见 [恢复模块](03-modules/recovery/recovery.md) 与 [验收结果](05-records/plans/2026-10-04-checkpoint-shadow-git-completion-results.md)。V2.4 指定 URL 读取已合入 `main`，契约见 [聊天工具](02-api/chat-tools.md)，补验和未验收项见 [V2.4 执行结果](05-records/plans/2026-10-11-v24-user-url-reading-results.md)。
 
 evals 的准则、报告和运行数据仍在 [evals](../evals/README.md)，不复制或改写历史指标。个人 [references](references/README.md)、roadmap 目录与根 TODO 保留原位置和内容，作为用户维护的例外，不是正式实现契约。业务术语见 [CONTEXT](../CONTEXT.md)。
 
