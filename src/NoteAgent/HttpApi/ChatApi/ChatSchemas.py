@@ -16,6 +16,7 @@ class RequestModel(BaseModel):
     prepared_turn_id: str | None = None
     # Optional guard: refuse the turn when the conversation revision has moved on.
     expected_revision: int | None = None
+    attachment_ids: list[str] = []
 
 #
 class ReviewRequest(BaseModel):

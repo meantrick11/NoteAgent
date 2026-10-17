@@ -494,7 +494,9 @@ def test_put_draft_saves_body_and_keeps_metadata(tmp_path: Path):
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "updated"
-    assert body["pending_draft"] == {
+    assert {key: body["pending_draft"][key] for key in (
+        "action", "file_name", "content", "reason", "similar", "existing_files"
+    )} == {
         "action": "append",
         "file_name": "Go.md",
         "content": "## 新正文\n\n改过了。\n",
@@ -502,6 +504,7 @@ def test_put_draft_saves_body_and_keeps_metadata(tmp_path: Path):
         "similar": ["Go.md"],
         "existing_files": ["Go.md"],
     }
+    assert body["pending_draft"]["source_file_ids"] == []
     detail = client.get(f"/conversations/{record.id}").json()["pending_draft"]
     assert detail == body["pending_draft"]
     # 只改待审状态：正式笔记既没被写也没被新建。

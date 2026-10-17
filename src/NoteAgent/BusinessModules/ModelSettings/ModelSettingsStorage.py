@@ -98,6 +98,7 @@ def _profile_to_file(profile: ChatProfile) -> dict[str, object]:
         "auth_mode": profile.auth_mode,
         "context_window": profile.context_window,
         "credential_source": profile.credential_source,
+        "capabilities": profile.capabilities,
     }
 
 
@@ -214,7 +215,7 @@ class ModelSettingsStore:
                 f"配置已被其他操作更新（磁盘 revision={current_revision}，"
                 f"请求 revision={expected_revision}），请重新获取后再提交"
             )
-        committed = settings.model_copy(update={"revision": current_revision + 1})
+        committed = settings.model_copy(update={"revision": current_revision + 1, "schema_version": SCHEMA_VERSION})
         self._write_atomic(committed)
         return committed
 

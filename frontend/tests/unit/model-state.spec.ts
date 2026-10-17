@@ -40,6 +40,7 @@ function newProfile(): ChatProfile {
     context_window: 32768,
     has_api_key: true,
     credential_source: 'ui',
+    capabilities: ['text'],
   }
 }
 

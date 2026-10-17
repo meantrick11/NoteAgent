@@ -34,6 +34,7 @@ def test_database_registry_keeps_existing_table_identities():
         "conversations", "messages", "conversation_branches", "conversation_runs",
         "user_message_boundaries", "workspace_state", "mutation_records",
         "recovery_previews", "recovery_jobs", "index_repairs",
+        "source_files", "source_fragments", "source_folders",
     }
 
 
@@ -49,11 +50,11 @@ def test_frontend_build_and_backend_serve_the_same_directory():
 def test_upper_modules_have_explicit_pascal_case_names():
     expected = {
         "HttpApi": {"ChatApi", "ConversationApi", "NoteApi", "ModelSettingsApi",
-                    "ConversationRecoveryApi", "WebFrontend"},
+                    "ConversationRecoveryApi", "SourceFileApi", "WebFrontend"},
         "BusinessModules": {"ChatAgent", "ConversationState", "NoteStorage",
-                            "NoteRetrieval", "ModelSettings", "ConversationRecovery"},
+                            "NoteRetrieval", "ModelSettings", "ConversationRecovery", "SourceFiles"},
         "ApplicationFlows": {"DraftApproval", "ModelRuntime", "ConversationRecovery"},
-        "TechnicalSupport": {"DatabaseAccess", "ExecutionLogging", "NoteAccessControl"},
+        "TechnicalSupport": {"DatabaseAccess", "ExecutionLogging", "NoteAccessControl", "SourceFileStorage"},
         "AppBootstrap": set(),
     }
     for parent, children in expected.items():

@@ -39,11 +39,12 @@ class ChatAgent:
 
     async def prepare(
         self, conversation_id: str, question: str, request_id: str,
-        *, expected_revision: int | None = None,
+        *, expected_revision: int | None = None, attachments: list[dict] | None = None,
     ) -> PreparedTurn:
         """Claim the turn and durably accept the user message before streaming."""
         return await self._service.prepare_turn(
-            conversation_id, question, request_id, expected_revision=expected_revision
+            conversation_id, question, request_id, expected_revision=expected_revision,
+            attachments=attachments,
         )
 
     def resume(self, run_id: str, *, conversation_id: str | None = None,

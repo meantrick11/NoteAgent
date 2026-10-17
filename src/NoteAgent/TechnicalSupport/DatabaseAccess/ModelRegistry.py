@@ -8,3 +8,4 @@ def load_all_models() -> None:
     import NoteAgent.BusinessModules.NoteStorage.ChangeJournal.NoteChangeModels  # noqa: F401
     import NoteAgent.BusinessModules.ConversationRecovery.RecoveryModels  # noqa: F401
     import NoteAgent.BusinessModules.NoteRetrieval.IndexRepair.IndexRepairModels  # noqa: F401
+    import NoteAgent.BusinessModules.SourceFiles.SourceFileModels  # noqa: F401

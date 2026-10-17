@@ -14,6 +14,9 @@ from NoteAgent.BusinessModules.ChatAgent.WebReading import WebPageReader
 from NoteAgent.BusinessModules.ConversationState.PendingDrafts import WRITE_ACTIONS, DraftStore, NoteDraft, ProposeNoteInput, current_thread_id, markdown_name
 from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
 from NoteAgent.BusinessModules.NoteRetrieval.NoteRetrievalService import RetrievalService
+from NoteAgent.BusinessModules.SourceFiles.SourceFileAccess import authorized_source_ids, read_source_ids
+from NoteAgent.BusinessModules.SourceFiles.SourceFileService import SourceFileService, SourceFileError
+from NoteAgent.BusinessModules.ChatAgent.NoteSources import SOURCE_SECTION_TITLE
 
 
 def build_chat_tools(
@@ -22,6 +25,7 @@ def build_chat_tools(
     drafts: DraftStore,
     repairs=None,
     web_reader: WebPageReader | None = None,
+    source_files: SourceFileService | None = None,
 ) -> list[BaseTool]:
     """Build list/read/search/propose tools. Disk writes happen only after review.
 
@@ -105,6 +109,7 @@ def build_chat_tools(
     @tool(
         "propose_note",
         description=(
+            "When a source file was read and used in the note body, include its ID in source_file_ids. "
             "提交笔记草稿供用户审批，不会写入磁盘。"
             "action：append 追加；create 新建；replace 覆盖已有全文；delete 删除文件。"
             "新内容默认 append 或 create。更正过时正文才 replace；明确删文件才 delete。"
@@ -123,6 +128,7 @@ def build_chat_tools(
         similar: str = "",
         source_urls: list[str] | None = None,
         user_supplied_source_urls: list[str] | None = None,
+        source_file_ids: list[str] | None = None,
     ) -> dict:
         thread_id = current_thread_id.get()
         if not thread_id:
@@ -150,10 +156,25 @@ def build_chat_tools(
         sources, provided = select_sources(
             source_urls or [], user_supplied_source_urls or [], evidence
         )
+        selected_files = list(dict.fromkeys(source_file_ids or []))
+        if any(file_id not in (read_source_ids.get() or set()) for file_id in selected_files):
+            return {"error": "来源文件必须先由本会话工具实际读取"}
+        file_lines = []
+        if source_files is not None:
+            for file_id in selected_files:
+                try:
+                    source = source_files.get(file_id)
+                    if source.status != "ready":
+                        return {"error": "来源文件已不可用"}
+                    file_lines.append(f"- 文件：{source.display_name} (`{file_id}`)")
+                except (SourceFileError, ValueError):
+                    return {"error": "来源文件已不可用"}
         if action in ("append", "replace"):
             old = notes.read(name)
             old_sources, old_provided = source_urls_in_section(old)
-            if old_sources or old_provided:
+            old_file_lines = [line for line in old.split(SOURCE_SECTION_TITLE, 1)[-1].splitlines()
+                              if line.startswith("- 文件：")] if SOURCE_SECTION_TITLE in old else []
+            if old_sources or old_provided or old_file_lines:
                 # An append after a source section would place old sources in the
                 # middle. Show the complete merged file and write it as replace.
                 if action == "append":
@@ -165,8 +186,12 @@ def build_chat_tools(
                 if strip_source_section(old).strip() in strip_source_section(content):
                     sources = list(dict.fromkeys([*old_sources, *sources]))
                     provided = list(dict.fromkeys([*old_provided, *provided]))
-        if action != "delete" and (sources or provided or "## 来源" in content):
-            content = merge_source_section(content, render_source_section(sources, provided))
+                    file_lines = list(dict.fromkeys([*old_file_lines, *file_lines]))
+        if action != "delete" and (sources or provided or file_lines or SOURCE_SECTION_TITLE in content):
+            section = render_source_section(sources, provided)
+            if file_lines:
+                section = (section.rstrip() + "\n" if section else SOURCE_SECTION_TITLE + "\n\n") + "\n".join(file_lines) + "\n"
+            content = merge_source_section(content, section)
         draft = NoteDraft(
             action=action,
             file_name=name,
@@ -176,11 +201,45 @@ def build_chat_tools(
             existing_files=notes.list_notes(),
             source_urls=sources,
             user_supplied_source_urls=provided,
+            source_file_ids=selected_files,
         )
         drafts.put(thread_id, draft)
         return {"status": "pending_review", "action": action, "file_name": name}
 
     tools: list[BaseTool] = [list_files, read_file, search_relative_from_chromadb, propose_note]
+
+    if source_files is not None:
+        @tool("list_source_files", description="列出本会话用户已发送的来源附件 ID、名称和状态。")
+        def list_source_files() -> dict:
+            result = []
+            for source_id in sorted(authorized_source_ids.get()):
+                try:
+                    source = source_files.get(source_id)
+                    result.append({"id": source_id, "name": source.display_name, "status": source.status})
+                except (SourceFileError, ValueError):
+                    result.append({"id": source_id, "status": "unavailable"})
+            return {"files": result}
+
+        @tool("read_source_file", description="按本会话附件 ID 读取解析内容；可选 locator 精确定位页或段落。单次最多返回 12000 字符。")
+        def read_source_file(source_id: str, locator: str = "") -> dict:
+            if source_id not in authorized_source_ids.get():
+                return {"error": "来源文件不属于当前会话"}
+            try:
+                source = source_files.get(source_id)
+                parts = source_files.read_fragments(source_id)
+            except (SourceFileError, ValueError):
+                return {"error": "来源文件已不可用或尚未解析完成"}
+            matching = [p for p in parts if not locator or p.locator == locator]
+            if not matching:
+                return {"error": "未找到指定定位"}
+            rendered = "\n\n".join(f"[{p.locator}] {p.text}" for p in matching)
+            used = read_source_ids.get()
+            if used is not None:
+                used.add(source_id)
+            return {"id": source_id, "name": source.display_name,
+                    "content": rendered[:12000], "truncated": len(rendered) > 12000}
+
+        tools.extend([list_source_files, read_source_file])
 
     if web_reader is not None:
         @tool(

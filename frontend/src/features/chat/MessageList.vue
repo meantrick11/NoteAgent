@@ -82,6 +82,9 @@ function onBodyClick(message: ChatMessage, index: number, event: MouseEvent): vo
             v-html="bodyHtml(message)"
           ></div>
           <div v-else class="msg-body">{{ message.content }}</div>
+          <div v-if="message.role === 'user' && message.attachments?.length" class="message-attachments">
+            <span v-for="file in message.attachments" :key="file.id" class="message-attachment">📎 {{ file.name }} <small>{{ file.id }}</small><em v-if="file.status === 'deleted' || file.status === 'unavailable'">已不可用</em></span>
+          </div>
         </div>
 
         <!-- 编辑态：只允许一条消息同时编辑，提交前必须看到预览。 -->

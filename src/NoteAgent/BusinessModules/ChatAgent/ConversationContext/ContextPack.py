@@ -67,7 +67,10 @@ def records_to_langchain(records: list[MessageRecord]) -> list:
     out = []
     for record in records:
         if record.role == "user":
-            out.append(HumanMessage(content=record.content))
+            attachment_hint = "\n附件来源：" + ", ".join(
+                f"{item.get('name', '')} ({item.get('id', '')})" for item in (record.attachments or [])
+            ) if record.attachments else ""
+            out.append(HumanMessage(content=record.content + attachment_hint))
         elif record.role == "assistant":
             out.append(AIMessage(content=strip_cite_markers(record.content)))
         elif record.role == "tool":

@@ -38,6 +38,7 @@ class Settings(BaseSettings):
         validation_alias="NOTES_HISTORY_DIR",
     )
     chroma_dir: Path = Path("chromadb_persist")
+    uploads_dir: Path = Field(default=Path("uploads"), validation_alias="UPLOADS_DIR")
     chroma_collection: str = "my_knowledge"
 
     # 默认向量模型由评测选出（见 docs/evaluations/rag-v1-report.md §6）：
@@ -98,6 +99,7 @@ class Settings(BaseSettings):
         "log_dir",
         "embedding_cache_dir",
         "model_settings_dir",
+        "uploads_dir",
         mode="after",
     )
     @classmethod

@@ -7,7 +7,8 @@ from NoteAgent.HttpApi.NoteApi.NoteRoutes import router as notes_router
 from NoteAgent.HttpApi.ModelSettingsApi.ModelSettingsRoutes import router as models_router
 from NoteAgent.HttpApi.ConversationRecoveryApi.ConversationRecoveryRoutes import router as recovery_router
 from NoteAgent.HttpApi.WebFrontend.WebRoutes import router as web_router
+from NoteAgent.HttpApi.SourceFileApi.SourceFileRoutes import router as source_file_router
 
 router = APIRouter()
-for child in (web_router, conversations_router, chat_router, notes_router, models_router, recovery_router):
+for child in (web_router, conversations_router, chat_router, notes_router, models_router, recovery_router, source_file_router):
     router.include_router(child)

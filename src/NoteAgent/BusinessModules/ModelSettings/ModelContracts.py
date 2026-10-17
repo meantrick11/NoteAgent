@@ -22,7 +22,8 @@ EmbeddingAvailability = Literal["available", "incomplete", "unsupported"]
 RetrievalState = Literal["ok", "empty", "missing", "config_mismatch", "unavailable"]
 
 DEFAULT_CONTEXT_WINDOW = 32768
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+ChatCapability = Literal["text", "vision"]
 # 从环境生成的默认 profile 使用固定 id，保证重启后 active 指针依然有效。
 ENV_PROFILE_ID = "env-default"
 
@@ -63,6 +64,14 @@ class ChatProfile(BaseModel):
     auth_mode: AuthMode = "api_key"
     context_window: int = DEFAULT_CONTEXT_WINDOW
     credential_source: CredentialSource = "ui"
+    capabilities: list[ChatCapability] = ["text"]
+
+    @field_validator("capabilities")
+    @classmethod
+    def _requires_text(cls, value: list[ChatCapability]) -> list[ChatCapability]:
+        if "text" not in value or len(set(value)) != len(value):
+            raise ValueError("聊天模型必须包含 text 且能力标签不能重复")
+        return value
 
     @field_validator("model")
     @classmethod
@@ -103,6 +112,7 @@ class ChatProfile(BaseModel):
             context_window=self.context_window,
             has_api_key=self.has_api_key(),
             credential_source=self.credential_source,
+            capabilities=self.capabilities,
         )
 
 
@@ -118,6 +128,7 @@ class ChatProfileOut(BaseModel):
     context_window: int
     has_api_key: bool
     credential_source: CredentialSource
+    capabilities: list[ChatCapability]
 
 
 class ChatProfileIn(BaseModel):
@@ -136,6 +147,14 @@ class ChatProfileIn(BaseModel):
     clear_api_key: bool = False
     auth_mode: AuthMode = "api_key"
     context_window: int = DEFAULT_CONTEXT_WINDOW
+    capabilities: list[ChatCapability] = ["text"]
+
+    @field_validator("capabilities")
+    @classmethod
+    def _requires_text(cls, value: list[ChatCapability]) -> list[ChatCapability]:
+        if "text" not in value or len(set(value)) != len(value):
+            raise ValueError("聊天模型必须包含 text 且能力标签不能重复")
+        return value
 
     @field_validator("label")
     @classmethod

@@ -25,6 +25,7 @@ const apiKey = ref('')
 const authNone = ref(false)
 const clearKey = ref(false)
 const contextWindow = ref('32768')
+const vision = ref(false)
 const labelEl = ref<HTMLInputElement | null>(null)
 
 const hasSavedKey = computed(() => Boolean(props.profile?.has_api_key))
@@ -43,6 +44,7 @@ function reset(): void {
   authNone.value = profile ? profile.auth_mode === 'none' : false
   clearKey.value = false
   contextWindow.value = profile ? String(profile.context_window) : '32768'
+  vision.value = profile?.capabilities.includes('vision') ?? false
 }
 
 function onProviderChange(): void {
@@ -76,6 +78,7 @@ function payload(): ChatProfileInput {
     base_url: baseUrl.value.trim(),
     context_window: Number(contextWindow.value) || 0,
     auth_mode: (authNone.value ? 'none' : 'api_key') as AuthMode,
+    capabilities: vision.value ? ['text', 'vision'] : ['text'],
   }
   if (props.profile) body.id = props.profile.id
   const key = apiKey.value.trim()
@@ -165,6 +168,11 @@ async function submit(activate: boolean): Promise<void> {
     <div v-if="active" class="ms-hint">
       这是当前启用的配置：请用「保存并启用」提交，普通保存会改变文件却不更换正在运行的客户端。
     </div>
+
+    <label class="ms-check">
+      <input v-model="vision" type="checkbox" />
+      <span>支持视觉输入（自行确认模型支持图片）</span>
+    </label>
 
     <div class="ms-actions">
       <button type="button" class="btn" :disabled="models.formBusy" @click="test">测试连接</button>

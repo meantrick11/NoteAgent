@@ -54,6 +54,7 @@ class MessageOut(BaseModel):
     # always false and edit_unavailable_reason explains why.
     editable: bool = False
     edit_unavailable_reason: str | None = None
+    attachments: list[dict] = Field(default_factory=list)
 
 
 class RenameConversation(BaseModel):

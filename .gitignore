@@ -31,6 +31,7 @@ evals/agent/rag_cases*.jsonl
 
 # chromadb persist data
 chromadb_persist/
+uploads/
 
 # runtime data (keep directory README)
 var/*

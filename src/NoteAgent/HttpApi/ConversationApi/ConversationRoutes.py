@@ -68,11 +68,20 @@ async def get_conversation(conversation_id: str, request: Request) -> Conversati
     )
 
 
-def _message_out(message, editable=False) -> MessageOut:
+def _message_out(message, editable=False, source_files=None) -> MessageOut:
     """Project one stored record into the HTTP contract, including editability."""
     reason = None
     if message.role == "user":
         reason = None if editable else message.edit_unavailable_reason or EDIT_RECOVERY_UNAVAILABLE
+    attachments = []
+    for item in message.attachments or []:
+        projected = dict(item)
+        if source_files is not None:
+            try:
+                projected["status"] = source_files.get(str(item.get("id"))).status
+            except (ValueError, KeyError):
+                projected["status"] = "unavailable"
+        attachments.append(projected)
     return MessageOut(
         id=message.id,
         role=message.role,
@@ -83,6 +92,7 @@ def _message_out(message, editable=False) -> MessageOut:
         tool_steps=[ToolStepOut.model_validate(item) for item in (message.tool_steps or [])],
         editable=editable,
         edit_unavailable_reason=reason,
+        attachments=attachments,
     )
 
 
@@ -106,7 +116,8 @@ async def list_messages(conversation_id: str, request: Request) -> list[MessageO
     editable_ids = set()
     if container.recovery is not None and container.conversations is not None:
         editable_ids = container.conversations.recoverable_message_ids(conversation_id)
-    return [_message_out(m, m.role == "user" and m.id in editable_ids) for m in records]
+    return [_message_out(m, m.role == "user" and m.id in editable_ids,
+                         getattr(container, "source_files", None)) for m in records]
 
 
 @router.patch("/conversations/{conversation_id}")

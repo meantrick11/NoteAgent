@@ -32,7 +32,7 @@ class ConversationRuns:
 
     async def prepare_turn(
         self, conversation_id: str, question: str, request_id: str,
-        *, expected_revision: int | None = None,
+        *, expected_revision: int | None = None, attachments: list[dict] | None = None,
     ) -> PreparedTurn:
         """Claim the run and write the user message before any model call.
 
@@ -91,7 +91,7 @@ class ConversationRuns:
             return await self._accept_turn(
                 conversation_id, question, branch_id, generation, run_id,
                 turn_id, user_message_id, before_checkpoint_id,
-                lease_token, request_id,
+                lease_token, request_id, attachments,
             )
         except BaseException:
             # An unpublished candidate is harmless history. Only remove a claim
@@ -109,7 +109,7 @@ class ConversationRuns:
 
     async def _accept_turn(self, conversation_id, question, branch_id, generation,
                            run_id, turn_id, user_message_id, before_checkpoint_id,
-                           lease_token, request_id):
+                           lease_token, request_id, attachments=None):
         before_config = thread_config(conversation_id, before_checkpoint_id)
         values = dict((await self.read_state(before_config)).values)
         user_record = MessageRecord(
@@ -124,6 +124,7 @@ class ConversationRuns:
             output_preview=None,
             truncated=False,
             status=None,
+            attachments=list(attachments or []),
         )
         entry = message_dict_from_record(user_record)
         values.update(

@@ -91,6 +91,7 @@ export interface ChatMessage {
   editable: boolean
   editUnavailableReason: string | null
   selectionAtStart: number
+  attachments?: Array<{ id: string; name: string; status?: string }>
 }
 
 let messageSeq = 0
@@ -112,6 +113,7 @@ function newMessage(role: 'user' | 'assistant', content: string): ChatMessage {
     editable: false,
     editUnavailableReason: null,
     selectionAtStart: 0,
+    attachments: [],
   }
 }
 
@@ -312,6 +314,7 @@ export const useChatStore = defineStore('chat', () => {
     message.turnId = item.turn_id ?? null
     message.editable = item.editable === true
     message.editUnavailableReason = item.edit_unavailable_reason ?? null
+    message.attachments = item.attachments ?? []
     message.citations = item.citations ?? []
     message.toolSteps = (item.tool_steps ?? []).map((step) => ({
       name: step.name,
@@ -681,9 +684,9 @@ export const useChatStore = defineStore('chat', () => {
    * 发送一轮问题。返回值告诉输入框要不要把文字还给用户：
    * `refused` 是维护窗口，`failed` 是请求没发出去。
    */
-  async function send(question: string): Promise<SendOutcome> {
+  async function send(question: string, attachments: Array<{ id: string; name: string }> = []): Promise<SendOutcome> {
     if (activeRun.value) return 'refused'
-    return runStream(question)
+    return runStream(question, undefined, undefined, undefined, attachments)
   }
 
   async function resumeRun(): Promise<SendOutcome> {
@@ -699,6 +702,7 @@ export const useChatStore = defineStore('chat', () => {
     resumeId?: string,
     preparedId?: string,
     ownerId?: string,
+    attachments: Array<{ id: string; name: string }> = [],
   ): Promise<SendOutcome> {
     // 同步门闩：必须在任何 await 之前置位。
     if (streaming.value) return 'refused'
@@ -734,6 +738,7 @@ export const useChatStore = defineStore('chat', () => {
     const userRow = newMessage('user', text)
     userRow.requestId = requestId
     userRow.ownerKey = turn.ownerKey
+    userRow.attachments = attachments
     // A recovered (prepared) turn already holds its edited user message on the server.
     if (!resumeId && !preparedId) messages.value = [...messages.value, userRow]
     liveTurn.value = turn
@@ -745,7 +750,7 @@ export const useChatStore = defineStore('chat', () => {
         ? await api.openChatStream('', owner === CITE_PENDING_KEY ? null : owner, undefined, preparedId)
         : resumeId
           ? await api.openResumeStream(owner, resumeId, revision)
-          : await api.openChatStream(text, owner === CITE_PENDING_KEY ? null : owner, requestId)
+          : await api.openChatStream(text, owner === CITE_PENDING_KEY ? null : owner, requestId, undefined, attachments.map(item => item.id))
       if (!response.ok) {
         const payload = await readJsonBody(response)
         const detail =

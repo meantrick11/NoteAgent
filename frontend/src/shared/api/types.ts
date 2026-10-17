@@ -21,6 +21,9 @@ export interface PendingDraft {
   reason?: string
   similar?: string[]
   existing_files?: string[]
+  source_urls?: string[]
+  user_supplied_source_urls?: string[]
+  source_file_ids?: string[]
 }
 
 export interface ConversationDetail extends Conversation {
@@ -110,6 +113,7 @@ export interface Message {
   /** 可回退编辑需要持久化的安全边界；阶段 B 未完成前一律为 false。 */
   editable?: boolean
   edit_unavailable_reason?: string | null
+  attachments?: Array<{ id: string; name: string; status?: string; parse_profile_revision?: number | null }>
 }
 
 export interface ReviewRequest {
@@ -187,6 +191,7 @@ export interface ChatProfile {
   context_window: number
   has_api_key: boolean
   credential_source: CredentialSource
+  capabilities: Array<'text' | 'vision'>
 }
 
 /** 提交用的配置体；省略 api_key 表示保留已保存的那一个。 */
@@ -200,6 +205,7 @@ export interface ChatProfileInput {
   clear_api_key?: boolean
   auth_mode?: AuthMode
   context_window?: number
+  capabilities?: Array<'text' | 'vision'>
 }
 
 export interface ChatProfileWriteIn extends ChatProfileInput {

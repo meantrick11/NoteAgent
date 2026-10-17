@@ -57,6 +57,7 @@ def merge_candidate(
             auth_mode=candidate.auth_mode,
             context_window=candidate.context_window,
             credential_source=source,
+            capabilities=candidate.capabilities,
         )
     except ValidationError as exc:
         raise InvalidProfileError(f"配置内容不合法：{exc.error_count()} 处问题") from exc

@@ -123,6 +123,7 @@ class MessageRecord:
     # history with no established 安全边界). None means editability is decided
     # by the presence of a recoverable boundary, not by this field.
     edit_unavailable_reason: str | None = None
+    attachments: list[dict] | None = None
 
 
 def message_dict_from_record(record: MessageRecord) -> dict[str, Any]:
@@ -141,6 +142,7 @@ def message_dict_from_record(record: MessageRecord) -> dict[str, Any]:
         "truncated": record.truncated,
         "status": record.status,
         "edit_unavailable_reason": record.edit_unavailable_reason,
+        "attachments": list(record.attachments or []),
     }
 
 
@@ -169,4 +171,5 @@ def record_from_ui(item: Mapping[str, Any]) -> MessageRecord:
         citations=list(item.get("citations") or []),
         tool_steps=list(item.get("tool_steps") or []),
         edit_unavailable_reason=item.get("edit_unavailable_reason"),
+        attachments=list(item.get("attachments") or []),
     )

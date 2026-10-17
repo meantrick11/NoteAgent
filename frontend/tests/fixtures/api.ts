@@ -131,6 +131,7 @@ export const modelSettings: ModelSettingsStatus = {
       context_window: 32768,
       has_api_key: true,
       credential_source: 'env',
+      capabilities: ['text'],
     },
     {
       id: 'local',
@@ -142,6 +143,7 @@ export const modelSettings: ModelSettingsStatus = {
       context_window: 16384,
       has_api_key: false,
       credential_source: 'ui',
+      capabilities: ['text'],
     },
   ],
   active_chat: {
@@ -154,6 +156,7 @@ export const modelSettings: ModelSettingsStatus = {
     context_window: 32768,
     has_api_key: true,
     credential_source: 'env',
+    capabilities: ['text'],
   },
   active_embedding: {
     model_id: 'intfloat/multilingual-e5-small',

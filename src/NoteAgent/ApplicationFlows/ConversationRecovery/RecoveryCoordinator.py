@@ -396,12 +396,16 @@ class RecoveryCoordinator:
         before_checkpoint_id = boundary["before_checkpoint_id"]
         base = self._conversations.get_state(conversation_id, _config(conversation_id, before_checkpoint_id))
         values = dict((await base).values)
+        current_messages = await self._conversations.list_messages(conversation_id)
+        original = next((item for item in (current_messages or []) if item.id == message_id), None)
+        attachments = list(original.attachments or []) if original is not None else []
         values["ui_messages"] = list(values.get("ui_messages") or [])
         values["ui_messages"].append(message_dict_from_record(MessageRecord(
             id=str(uuid.uuid4()), conversation_id=conversation_id, role="user",
             content=edited_content, created_at=datetime.now(timezone.utc),
             turn_id=None, tool_name=None, tool_arguments=None, output_preview=None,
             truncated=False, status=None,
+            attachments=attachments,
         )))
         values["working_records"] = list(values.get("working_records") or []) + [values["ui_messages"][-1]]
         values["current_question"] = edited_content

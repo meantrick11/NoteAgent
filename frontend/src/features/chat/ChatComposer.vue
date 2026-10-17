@@ -1,17 +1,130 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 
 import { useModelsStore } from '@/features/models/store'
 import { useChatStore } from './store'
+import { useSourceFilesStore } from '@/features/source-files/store'
+import { getSourceFile, retrySourceFile, uploadSourceFile } from '@/features/source-files/api'
+import type { SourceFile } from '@/features/source-files/api'
 
 const chat = useChatStore()
 const models = useModelsStore()
+const library = useSourceFilesStore()
+
+interface AttachmentItem {
+  key: string
+  file?: File
+  id?: string
+  name: string
+  status: 'uploading' | 'stored' | 'queued' | 'parsing' | 'ready' | 'failed'
+  progress: number
+  error: string
+  cancel?: () => void
+}
+const attachments = ref<AttachmentItem[]>([])
+const fileInput = ref<HTMLInputElement | null>(null)
+const libraryOpen = ref(false)
+let disposed = false
+
+function remove(item: AttachmentItem): void {
+  item.cancel?.()
+  attachments.value = attachments.value.filter(value => value.key !== item.key)
+}
+
+function clearAttachments(): void {
+  for (const item of attachments.value) item.cancel?.()
+  attachments.value = []
+}
+
+watch(() => chat.currentId, clearAttachments)
+onBeforeUnmount(() => { disposed = true; clearAttachments() })
+
+async function followStatus(item: AttachmentItem): Promise<void> {
+  while (!disposed && attachments.value.includes(item) && item.id) {
+    try {
+      const latest = await getSourceFile(item.id)
+      item.status = latest.status === 'deleted' ? 'failed' : latest.status
+      item.error = latest.status === 'stored'
+        ? '已保存到文件库；该格式暂不支持聊天解析，请移除此附件后发送。'
+        : latest.error ?? ''
+    } catch (error) {
+      item.error = `状态查询失败：${(error as Error).message}`
+      return
+    }
+    if (item.status === 'ready' || item.status === 'failed' || item.status === 'stored') return
+    await new Promise(resolve => setTimeout(resolve, 1000))
+  }
+}
+
+async function upload(item: AttachmentItem): Promise<void> {
+  if (!item.file) return
+  item.status = 'uploading'
+  item.error = ''
+  const request = uploadSourceFile(item.file, progress => { item.progress = progress })
+  item.cancel = request.cancel
+  try {
+    const source = await request.promise
+    item.cancel = undefined
+    if (!attachments.value.includes(item)) return
+    if (attachments.value.some(other => other !== item && other.id === source.id)) {
+      remove(item)
+      return
+    }
+    item.id = source.id
+    item.status = source.status === 'deleted' ? 'failed' : source.status
+    if (item.status === 'stored') item.error = '已保存到文件库；该格式暂不支持聊天解析，请移除此附件后发送。'
+    await followStatus(item)
+  } catch (error) {
+    if (attachments.value.includes(item)) { item.status = 'failed'; item.error = (error as Error).message }
+  }
+}
+
+function addFiles(files: FileList | File[]): void {
+  for (const file of Array.from(files)) {
+    if (attachments.value.length >= 5) break
+    const item = reactive<AttachmentItem>({
+      key: crypto.randomUUID(), file, name: file.name,
+      status: 'uploading', progress: 0, error: '',
+    })
+    attachments.value.push(item)
+    if (file.size > 20 * 1024 * 1024) {
+      item.status = 'failed'; item.error = '文件超过 20 MB'
+    } else void upload(item)
+  }
+  if (fileInput.value) fileInput.value.value = ''
+}
+
+async function retry(item: AttachmentItem): Promise<void> {
+  if (item.id) {
+    if (item.status !== 'failed') { item.error = ''; void followStatus(item); return }
+    try { const source = await retrySourceFile(item.id); item.status = source.status === 'deleted' ? 'failed' : source.status; void followStatus(item) }
+    catch (error) { item.error = (error as Error).message }
+  } else void upload(item)
+}
+
+async function openLibrary(): Promise<void> {
+  libraryOpen.value = !libraryOpen.value
+  if (libraryOpen.value) await library.refresh()
+}
+
+function selectExisting(file: SourceFile): void {
+  if (file.status !== 'ready' || attachments.value.length >= 5 || attachments.value.some(item => item.id === file.id)) return
+  attachments.value.push({ key: crypto.randomUUID(), id: file.id, name: file.display_name, status: 'ready', progress: 100, error: '' })
+  libraryOpen.value = false
+}
+
+function onDrop(event: DragEvent): void {
+  event.preventDefault()
+  if (event.dataTransfer?.files) addFiles(event.dataTransfer.files)
+}
 
 const text = ref('')
 const box = ref<HTMLTextAreaElement | null>(null)
 
 /** 发送按钮的禁用状态 = 空输入 或 维护窗口，两者都不能被对方覆盖。 */
-const sendDisabled = () => !models.canSend || !!chat.activeRun || text.value.trim().length === 0
+const sendDisabled = () => !models.canSend || !!chat.activeRun ||
+  (text.value.trim().length === 0 && attachments.value.length === 0) ||
+  attachments.value.some(item => item.status !== 'ready')
 
 function resize(): void {
   const el = box.value
@@ -29,15 +142,17 @@ async function restoreIfEmpty(question: string): Promise<void> {
 }
 
 async function send(): Promise<void> {
+  if (sendDisabled()) return
   const question = text.value.trim()
-  if (!question) return
+  if (!question && attachments.value.length === 0) return
   if (chat.streaming) return
   text.value = ''
   await nextTick()
   resize()
-  const outcome = await chat.send(question)
+  const selected = attachments.value.map(item => ({ id: item.id!, name: item.name }))
+  const outcome = await chat.send(question || '请分析附件内容', selected)
   if (outcome === 'failed' || outcome === 'refused') await restoreIfEmpty(question)
-  else await nextTick()
+  else { clearAttachments(); await nextTick() }
   box.value?.focus()
 }
 
@@ -50,7 +165,7 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <div class="input-area">
+  <div class="input-area" @dragover.prevent @drop="onDrop">
     <div v-if="chat.activeRun && !chat.streaming" class="resume-bar" role="status">
       <span>{{ ['interrupted', 'prepared'].includes(chat.activeRun.status) ? '上一条回复已中断，可继续生成。' : '上一条回复仍在处理中。' }}</span>
       <button v-if="['interrupted', 'prepared'].includes(chat.activeRun.status)" type="button"
@@ -58,6 +173,9 @@ function onKeydown(event: KeyboardEvent): void {
       <button v-else type="button" @click="chat.currentId && chat.loadMessages(chat.currentId)">刷新状态</button>
     </div>
     <div class="input-inner">
+      <input ref="fileInput" class="file-input" type="file" multiple @change="event => addFiles((event.target as HTMLInputElement).files!)" />
+      <button type="button" class="btn" title="上传文件" @click="fileInput?.click()">＋</button>
+      <button type="button" class="btn" @click="openLibrary">文件库</button>
       <textarea
         ref="box"
         v-model="text"
@@ -89,6 +207,17 @@ function onKeydown(event: KeyboardEvent): void {
         </svg>
       </button>
     </div>
+    <div v-if="libraryOpen" class="file-picker">
+      <button v-for="file in library.files.filter(item => item.status === 'ready')" :key="file.id" type="button" @click="selectExisting(file)">{{ file.display_name }}</button>
+    </div>
+    <div v-if="attachments.length" class="attachment-list">
+      <div v-for="item in attachments" :key="item.key" class="attachment-chip">
+        <span>{{ item.name }} · {{ item.status === 'uploading' ? `${item.progress}%` : item.status }}</span>
+        <span v-if="item.error" class="attachment-error">{{ item.error }}</span>
+        <button v-if="item.status === 'failed' || (!!item.id && !!item.error && item.status !== 'stored')" type="button" @click="retry(item)">重试</button>
+        <button type="button" aria-label="移除附件" @click="remove(item)">×</button>
+      </div>
+    </div>
     <slot />
   </div>
 </template>
@@ -99,6 +228,12 @@ function onKeydown(event: KeyboardEvent): void {
   border-top: 1px solid var(--border);
   padding: var(--space-4) var(--space-5);
 }
+.file-input { display: none; }
+.file-picker, .attachment-list { max-width: 900px; margin: 8px auto 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.file-picker button, .attachment-chip { border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; background: var(--bg); }
+.attachment-chip { display: flex; gap: 6px; align-items: center; }
+.attachment-chip button { border: 0; background: none; cursor: pointer; }
+.attachment-error { color: var(--danger, #b33); }
 
 .resume-bar {
   display: flex;

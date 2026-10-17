@@ -1,10 +1,22 @@
 import logging
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 
 _logger = logging.getLogger(__name__)
+
+
+async def _run_source_worker(worker):
+    while True:
+        try:
+            worked = await asyncio.to_thread(worker.run_once)
+        except Exception:
+            _logger.exception("source worker cycle failed")
+            worked = False
+        if not worked:
+            await asyncio.sleep(1)
 
 
 @asynccontextmanager
@@ -39,7 +51,18 @@ async def lifespan(app: FastAPI):
             if retrieval is not None and container.workspace.maintenance() is None:
                 with container.workspace.operation("mutate"):
                     container.mutations.index_repairs.reconcile(retrieval)
-        yield
+        if container.source_worker:
+            await asyncio.to_thread(container.source_worker.reset_incomplete)
+        source_task = asyncio.create_task(_run_source_worker(container.source_worker)) if container.source_worker else None
+        try:
+            yield
+        finally:
+            if source_task is not None:
+                source_task.cancel()
+                try:
+                    await source_task
+                except asyncio.CancelledError:
+                    pass
     finally:
         if container.checkpoints is not None:
             await container.checkpoints.close()

@@ -19,6 +19,7 @@
 
 | 文件 | 状态 | 说明 |
 |---|---|---|
+| [2026-10-16-chat-file-upload-note-generation.md](2026-10-16-chat-file-upload-note-generation.md) | 聊天文件上传已实现，数据库与真实视觉模型待验收 | [执行结果](2026-10-16-chat-file-upload-note-generation-results.md)：任意文件记录、三重校验、聊天附件与文件库；记录已通过测试及未运行项 |
 | [2026-10-11-v24-user-url-reading.md](2026-10-11-v24-user-url-reading.md) | 指定 URL 读取已合入 `main`，待验收 | [结果与复审修复](2026-10-11-v24-user-url-reading-results.md)：定向及相邻回归 125 passed / 1 deselected；PostgreSQL 集成补验、真实模型网页笔记成稿仍待完成 |
 | [2026-10-04-checkpoint-shadow-git-completion.md](2026-10-04-checkpoint-shadow-git-completion.md) | B1–B9 修复补验通过，未合并/推送 | [结果](2026-10-04-checkpoint-shadow-git-completion-results.md)：646 后端/1 skip、143 单测/61 E2E/build；G12/G14 真实演练、G16 双仓追溯；Docker 未运行 |
 | [2026-10-04-rollback-acceptance-fixes.md](2026-10-04-rollback-acceptance-fixes.md) | 修复补验完成 | [原问题](2026-10-04-checkpoint-shadow-git-completion-review-b.md) 已闭环，代码 ea6bb8c、上层文档 eb59aa5 |

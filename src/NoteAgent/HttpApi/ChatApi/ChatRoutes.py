@@ -13,6 +13,7 @@ from NoteAgent.HttpApi.ChatApi.ChatSchemas import DraftContentRequest, RequestMo
 from NoteAgent.BusinessModules.ConversationState.ConversationContracts import ConversationBusy, PreparedTurn, StaleConversation, TurnAlreadyClaimed
 from NoteAgent.HttpApi.RequestDependencies import chat_lease, require_same_origin, write_lease
 from NoteAgent.ApplicationFlows.ModelRuntime.ModelRuntime import RuntimeSnapshot
+from NoteAgent.BusinessModules.SourceFiles.SourceFileService import SourceFileError
 
 _logger = logging.getLogger(__name__)
 #APIRouter 本身不会直接接收请求，必须用 app.include_router(router) 挂载到主 app 才生效。
@@ -57,6 +58,18 @@ async def claim_turn(
         raise HTTPException(status_code=503, detail="conversation service unavailable")
     agent = snapshot.chat_agent
 
+    if (require.prepared_turn_id or require.run_id) and require.attachment_ids:
+        raise HTTPException(status_code=400, detail="恢复请求不能携带新附件")
+    attachments = []
+    if require.attachment_ids:
+        service = getattr(container, "source_files", None)
+        if service is None:
+            raise HTTPException(status_code=503, detail="source file service unavailable")
+        try:
+            attachments = service.ready_attachments(require.attachment_ids)
+        except SourceFileError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     if require.prepared_turn_id:
         return _claim_prepared_turn(conversations, require, agent)
     if require.run_id:
@@ -84,6 +97,7 @@ async def claim_turn(
             require.question,
             request_id,
             expected_revision=require.expected_revision,
+            **({"attachments": attachments} if attachments else {}),
         )
     except TurnAlreadyClaimed:
         raise HTTPException(status_code=409, detail="request already accepted")

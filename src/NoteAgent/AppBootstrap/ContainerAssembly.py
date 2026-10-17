@@ -20,6 +20,10 @@ from NoteAgent.TechnicalSupport.NoteAccessControl.NoteAccessGate import Workspac
 from NoteAgent.ApplicationFlows.ConversationRecovery.RecoveryCoordinator import RecoveryCoordinator
 from NoteAgent.BusinessModules.NoteRetrieval.IndexRepair.IndexRepairService import IndexRepairService
 from NoteAgent.BusinessModules.NoteRetrieval.NoteRetrievalService import RetrievalService
+from NoteAgent.BusinessModules.SourceFiles.SourceFileService import SourceFileService
+from NoteAgent.TechnicalSupport.SourceFileStorage.LocalSourceFileStore import LocalSourceFileStore
+from NoteAgent.BusinessModules.SourceFiles.SourceFileWorker import SourceFileWorker
+from NoteAgent.AppBootstrap.SourceVision import vision_factory
 
 _logger = logging.getLogger(__name__)
 
@@ -46,6 +50,8 @@ class AppContainer:
     history_required: bool = False
     # 整体回退协调器：预览、启动、重试。
     recovery: RecoveryCoordinator | None = None
+    source_files: SourceFileService | None = None
+    source_worker: SourceFileWorker | None = None
 
     @property
     def retrieval(self) -> RetrievalService | None:
@@ -74,6 +80,7 @@ def build_container(settings: Settings) -> AppContainer:
     # 只构造，不连接：异步 saver 必须由 lifespan 打开，否则没有地方关闭它。
     checkpoints = CheckpointRuntime.from_conn_string(postgres_uri(settings.database_url))
     session_factory = create_session_factory(engine)
+    source_files = SourceFileService(session_factory, LocalSourceFileStore(settings.uploads_dir))
     # 门禁只用 libpq 连接（PostgreSQL）。SQLite 测试走进程内读写锁。
     workspace = WorkspaceGate(
         session_factory,
@@ -103,7 +110,7 @@ def build_container(settings: Settings) -> AppContainer:
     # 装配器是 bootstrap 与 model_management 之间唯一的接口，避免两边互相导入。
     # 它拿到共享的会话服务与 checkpointer：切换模型只重建图运行对象，不换状态存储。
     assembler = BootstrapAssembler(
-        settings, notes, drafts, history, conversations, checkpoints, mutations
+        settings, notes, drafts, history, conversations, checkpoints, mutations, source_files
     )
     model_runtime = ModelRuntimeService(
         settings=settings,
@@ -114,6 +121,12 @@ def build_container(settings: Settings) -> AppContainer:
     )
     # 持久化的 active 选择决定本次启动用哪个聊天模型与向量 collection。
     model_runtime.initialize()
+    model_settings_store = ModelSettingsStore(settings.model_settings_dir)
+    source_worker = SourceFileWorker(
+        source_files,
+        vision_factory=lambda source: vision_factory(source, model_settings_store, settings)
+        if source.media_type in ("image/png", "image/jpeg", "application/pdf") else None,
+    )
 
     recovery = None
     if mutations is not None:
@@ -140,4 +153,6 @@ def build_container(settings: Settings) -> AppContainer:
         mutations=mutations,
         history_required=True,
         recovery=recovery,
+        source_files=source_files,
+        source_worker=source_worker,
     )   ##返回一个AppContainer对象，包含所有初始化好的组件

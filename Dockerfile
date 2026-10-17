@@ -61,7 +61,7 @@ RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTr
 
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
 RUN chmod +x /app/docker/entrypoint.sh \
-    && mkdir -p notes var/logs chromadb_persist
+    && mkdir -p notes var/logs chromadb_persist uploads
 
 EXPOSE 8000
 ENTRYPOINT ["/app/docker/entrypoint.sh"]

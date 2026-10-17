@@ -28,6 +28,7 @@ from NoteAgent.BusinessModules.ChatAgent.ConversationContext.ContextPack import 
 from NoteAgent.BusinessModules.ChatAgent.ConversationContext.TokenCounter import prefix_until_tokens
 from NoteAgent.BusinessModules.ConversationState.PendingDrafts import DraftStore, NoteDraft, DraftWorkspace, current_draft_workspace, current_thread_id as draft_thread_var, current_turn_id as draft_turn_var
 from NoteAgent.BusinessModules.ConversationState.ConversationRecords import GraphState, MessageRecord, message_dict_from_record, record_from_ui
+from NoteAgent.BusinessModules.SourceFiles.SourceFileAccess import authorized_source_ids, read_source_ids
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +124,18 @@ def pending_draft_of(state: GraphState) -> NoteDraft | None:
 
 def build_graph_pack(state: GraphState, runtime: GraphRuntime) -> PackResult:
     """Assemble the model input from checkpointed state (never from the DB)."""
+    source_directory = []
+    for item in state.get("ui_messages") or []:
+        if item.get("role") == "user":
+            source_directory.extend(item.get("attachments") or [])
+    prompt = runtime.system_prompt
+    if source_directory:
+        directory = ", ".join(f"{item.get('name')} ({item.get('id')})" for item in source_directory)
+        prompt += ("\n当前会话可按需读取以下用户附件来源：" + directory +
+                   "。先用 list_source_files/read_source_file 工具按 ID 和定位读取，"+
+                   "不得根据文件名猜测正文。仅用户要求生成笔记时提出草稿。")
     return build_pack(
-        system_prompt=runtime.system_prompt,
+        system_prompt=prompt,
         tool_defs=runtime.tool_defs,
         summary=state.get("running_summary"),
         persistent=window_records(state),
@@ -230,6 +241,19 @@ async def tools_node(state: GraphState, runtime: GraphRuntime) -> dict[str, Any]
     token_turn = draft_turn_var.set(str(state.get("current_turn_id") or ""))
     workspace = DraftWorkspace(graph_thread_id(), state.get("pending_draft"))
     token_draft = current_draft_workspace.set(workspace)
+    allowed = {str(part.get("id")) for entry in (state.get("ui_messages") or [])
+               if entry.get("role") == "user" for part in (entry.get("attachments") or [])}
+    used = set()
+    for steps in [*(entry.get("tool_steps") or [] for entry in state.get("ui_messages") or []), state.get("tool_steps") or []]:
+        for step in steps:
+            if step.get("name") == "read_source_file" and step.get("status") == "ok":
+                try:
+                    import json
+                    used.add(str(json.loads(step.get("arguments") or "{}").get("source_id")))
+                except (ValueError, TypeError):
+                    pass
+    token_allowed = authorized_source_ids.set(allowed)
+    token_used = read_source_ids.set(used & allowed)
     steps = list(state.get("tool_steps") or [])
     # Source evidence for propose_note: what URLs the user gave, and how each read ended.
     user_texts = [state.get("current_question") or ""] + [
@@ -263,7 +287,7 @@ async def tools_node(state: GraphState, runtime: GraphRuntime) -> dict[str, Any]
                     status = "error"
                 else:
                     raw = await tool_map[name].ainvoke(args)
-                    status = "ok"
+                    status = "error" if isinstance(raw, dict) and "error" in raw else "ok"
             except Exception as exc:  # noqa: BLE001 - surfaced to the model and the trace
                 raw = {"error": str(exc)}
                 status = "error"
@@ -293,6 +317,8 @@ async def tools_node(state: GraphState, runtime: GraphRuntime) -> dict[str, Any]
         draft_thread_var.reset(token_thread)
         draft_turn_var.reset(token_turn)
         current_draft_workspace.reset(token_draft)
+        authorized_source_ids.reset(token_allowed)
+        read_source_ids.reset(token_used)
     return {
         "runtime_messages": runtime_messages + produced,
         "tool_steps": steps,

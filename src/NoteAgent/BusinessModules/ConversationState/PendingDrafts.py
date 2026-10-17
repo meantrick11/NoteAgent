@@ -60,6 +60,7 @@ class ProposeNoteInput(BaseModel):
         default_factory=list,
         description="抓取失败后由用户粘贴正文的网页 URL；没有则留空数组",
     )
+    source_file_ids: list[str] = Field(default_factory=list, description="实际读取并用于正文的附件来源 ID")
 
 
 #获取对应的笔记文件
@@ -83,6 +84,7 @@ class NoteDraft:
     existing_files: list[str] = field(default_factory=list)
     source_urls: list[str] = field(default_factory=list)
     user_supplied_source_urls: list[str] = field(default_factory=list)
+    source_file_ids: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         """JSON payload for the SSE draft event and the frontend card."""
@@ -95,6 +97,7 @@ class NoteDraft:
             "existing_files": self.existing_files,
             "source_urls": self.source_urls,
             "user_supplied_source_urls": self.user_supplied_source_urls,
+            "source_file_ids": self.source_file_ids,
         }
 
     @classmethod
@@ -115,6 +118,7 @@ class NoteDraft:
             user_supplied_source_urls=[
                 str(item) for item in (data.get("user_supplied_source_urls") or [])
             ],
+            source_file_ids=[str(item) for item in (data.get("source_file_ids") or [])],
         )
 
 
