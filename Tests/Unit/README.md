@@ -32,5 +32,5 @@
 
 ```bash
 uv run pytest Tests/Unit -q
-uv run pytest Tests/Unit/TestDrafts.py -q
+uv run pytest Tests/Unit/Modules/Chat/TestDrafts.py -q
 ```

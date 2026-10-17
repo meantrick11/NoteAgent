@@ -11,31 +11,31 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from NoteAgent.BusinessModules.ChatAgent.ChatAgent import ChatAgent
-from NoteAgent.BusinessModules.ChatAgent.ConversationContext.ContextBudget import ContextBudget, budget_from_settings
+from NoteAgent.Modules.Chat.Agent.Graph.ChatAgent import ChatAgent
+from NoteAgent.Modules.Chat.Agent.Context.ContextBudget import ContextBudget, budget_from_settings
 from NoteAgent.AppBootstrap.ChatAgentFactory import build_graph_agent
-from NoteAgent.BusinessModules.ChatAgent.ChatTools import build_chat_tools
-from NoteAgent.BusinessModules.ChatAgent.WebReading import HttpTrafilaturaReader
-from NoteAgent.BusinessModules.ModelSettings.ModelClients import create_chat_model_from_config
-from NoteAgent.BusinessModules.NoteRetrieval.MarkdownChunker import MarkdownChunker
-from NoteAgent.BusinessModules.NoteRetrieval.TextEmbedder import build_embedder
-from NoteAgent.BusinessModules.NoteRetrieval.NoteRetrievalService import RetrievalService, index_fingerprint_for_model
-from NoteAgent.BusinessModules.NoteRetrieval.ChromaVectorStore import ChromaVectorStore
+from NoteAgent.Modules.Chat.Agent.Tools.ChatTools import build_chat_tools
+from NoteAgent.Modules.Chat.Agent.Tools.WebReading import HttpTrafilaturaReader
+from NoteAgent.Modules.Models.Provider.ModelClients import create_chat_model_from_config
+from NoteAgent.Modules.Retrieval.Engine.Chunking.MarkdownChunker import MarkdownChunker
+from NoteAgent.Modules.Retrieval.Engine.Embedding.TextEmbedder import build_embedder
+from NoteAgent.Modules.Retrieval.Service.NoteRetrievalService import RetrievalService, index_fingerprint_for_model
+from NoteAgent.Modules.Retrieval.Engine.VectorStore.ChromaVectorStore import ChromaVectorStore
 
 if TYPE_CHECKING:
     from langchain_core.language_models.chat_models import BaseChatModel
 
     from NoteAgent.AppBootstrap.AppSettings import Settings
-    from NoteAgent.BusinessModules.ConversationState.PendingDrafts import DraftStore
-    from NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.LegacyConversationStore import ConversationStore
-    from NoteAgent.BusinessModules.ConversationState.ConversationCheckpoints import CheckpointRuntime
-    from NoteAgent.BusinessModules.ConversationState.ConversationStateService import ConversationService
-    from NoteAgent.BusinessModules.ModelSettings.ModelContracts import ChatProfile
-    from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
+    from NoteAgent.Modules.Conversations.Service.PendingDrafts import DraftStore
+    from NoteAgent.Modules.Conversations.Legacy.LegacyConversationStore import ConversationStore
+    from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import CheckpointRuntime
+    from NoteAgent.Modules.Conversations.Service.ConversationStateService import ConversationService
+    from NoteAgent.Modules.Models.Domain.Vo.ModelContracts import ChatProfile
+    from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
 
 _logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT_PATH = Path(__file__).resolve().parents[1] / "BusinessModules" / "ChatAgent" / "SystemPrompts" / "system.txt"
+SYSTEM_PROMPT_PATH = Path(__file__).resolve().parents[1] / "Modules" / "Chat" / "Agent" / "SystemPrompts" / "system.txt"
 
 # 用户显式选择"无需认证"时给 SDK 的占位值：部分客户端要求非空字符串才肯构造。
 NO_AUTH_PLACEHOLDER = "no-auth-required"

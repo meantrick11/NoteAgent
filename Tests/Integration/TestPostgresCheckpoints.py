@@ -8,7 +8,7 @@ import pytest
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from sqlalchemy import inspect
 
-from NoteAgent.BusinessModules.ConversationState.ConversationCheckpoints import checkpoint_id_of, thread_config
+from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import checkpoint_id_of, thread_config
 
 
 async def test_state_and_head_survive_close_and_reopen(postgres_harness):

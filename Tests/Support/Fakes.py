@@ -112,7 +112,7 @@ class FakeWebReader:
         self.calls: list[str] = []
 
     async def read(self, url: str):
-        from NoteAgent.BusinessModules.ChatAgent.WebReading import WebPageResult
+        from NoteAgent.Modules.Chat.Agent.Tools.WebReading import WebPageResult
 
         self.calls.append(url)
         result = self._results.get(url) or self._default

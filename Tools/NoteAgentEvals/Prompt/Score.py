@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from NoteAgent.BusinessModules.ChatAgent.ConversationContext.ContextPack import extract_source_headings
+from NoteAgent.Modules.Chat.Agent.Context.ContextPack import extract_source_headings
 from NoteAgentEvals.Prompt.Cases import EvalCase
 
 RUBRIC_VERSION = "v0.2"

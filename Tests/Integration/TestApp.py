@@ -7,14 +7,14 @@ from langchain_core.messages import AIMessage
 from NoteAgent.AppBootstrap.ContainerAssembly import AppContainer
 from NoteAgent.AppBootstrap.HttpApp import create_app
 from NoteAgent.AppBootstrap.AppSettings import Settings
-from NoteAgent.BusinessModules.ConversationState.PendingDrafts import DraftStore, NoteDraft
-from NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.LegacyDraftReview import commit_review
-from NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.LegacyConversationStore import ConversationStore, start_turn
-from NoteAgent.TechnicalSupport.DatabaseAccess import Base, create_engine_from_url, create_session_factory
-from NoteAgent.ApplicationFlows.ModelRuntime.ModelRuntime import ModelRuntimeService
-from NoteAgent.BusinessModules.ModelSettings.ModelSettingsStorage import ModelSettingsStore
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
-from NoteAgent.HttpApi.WebFrontend import read_home_html
+from NoteAgent.Modules.Conversations.Service.PendingDrafts import DraftStore, NoteDraft
+from NoteAgent.Modules.Conversations.Legacy.LegacyDraftReview import commit_review
+from NoteAgent.Modules.Conversations.Legacy.LegacyConversationStore import ConversationStore, start_turn
+from NoteAgent.Common.Database import Base, create_engine_from_url, create_session_factory
+from NoteAgent.Modules.Models.Service.ModelRuntime import ModelRuntimeService
+from NoteAgent.Modules.Models.Mapper.ModelSettingsStorage import ModelSettingsStore
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
+from NoteAgent.WebFrontend import read_home_html
 from Support.Webapp import build_checkpoint_app
 
 
@@ -436,8 +436,8 @@ def test_get_conversation_unknown_id(tmp_path: Path):
 
 
 def test_review_clears_pending_draft(tmp_path: Path):
-    from NoteAgent.BusinessModules.ConversationState.PendingDrafts import DraftStore, NoteDraft
-    from NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.LegacyDraftReview import commit_review
+    from NoteAgent.Modules.Conversations.Service.PendingDrafts import DraftStore, NoteDraft
+    from NoteAgent.Modules.Conversations.Legacy.LegacyDraftReview import commit_review
 
     notes = FileNoteRepository(tmp_path)
     engine, history = _sqlite_history()

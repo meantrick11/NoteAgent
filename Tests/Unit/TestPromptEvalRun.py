@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from langchain_core.messages import AIMessage
 
 from NoteAgent.AppBootstrap.AppSettings import Settings
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
 from NoteAgentEvals.Prompt.Cases import EvalCase, case_rubric_version, load_cases
 from NoteAgentEvals.Prompt.Report import _sorted_runs, case_filename, render_case_md, result_dest, write_stage
 from NoteAgentEvals.Prompt.Run import CaseRun, ToolHop, build_eval_agent, run_case, run_eval, seed_notes
@@ -42,7 +42,7 @@ class ScriptedJudge:
 
 
 _CASES = Path(__file__).resolve().parents[2] / "evals" / "prompt" / "cases.jsonl"
-_PROMPT = Path(__file__).resolve().parents[2] / "src" / "NoteAgent" / "BusinessModules" / "ChatAgent" / "SystemPrompts" / "system.txt"
+_PROMPT = Path(__file__).resolve().parents[2] / "src" / "NoteAgent" / "Modules" / "Chat" / "Agent" / "SystemPrompts" / "system.txt"
 
 _SEMANTIC_PAYLOAD = {
     "hard_gates": {"task_alignment": True, "faithful": True, "complete": True},
@@ -768,7 +768,7 @@ def test_write_stage_layout(tmp_path: Path):
             "rubric_version": RUBRIC_VERSION,
             "chat_model": "deepseek-v4-flash",
             "prompt_sha256": "abc",
-            "prompt_path": "src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/system.txt",
+            "prompt_path": "src/NoteAgent/Modules/Chat/Agent/SystemPrompts/system.txt",
             "cases_path": "evals/prompt/cases.jsonl",
             "case_filter": ["n00"],
             "label": "v8-test",

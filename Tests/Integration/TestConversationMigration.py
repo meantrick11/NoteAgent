@@ -13,10 +13,10 @@ import uuid
 import pytest
 from sqlalchemy import func, select
 
-from NoteAgent.TechnicalSupport.DatabaseAccess import create_session_factory
-from NoteAgent.BusinessModules.ConversationState.ConversationModels import Conversation
-from NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.LegacyConversationMigration import HISTORY_NOT_RECOVERABLE, ConversationMigrator
-from NoteAgent.BusinessModules.ConversationState.ConversationModels import ConversationBranch, UserMessageBoundary
+from NoteAgent.Common.Database import create_session_factory
+from NoteAgent.Modules.Conversations.Domain.Po.ConversationModels import Conversation
+from NoteAgent.Modules.Conversations.Legacy.LegacyConversationMigration import HISTORY_NOT_RECOVERABLE, ConversationMigrator
+from NoteAgent.Modules.Conversations.Domain.Po.ConversationModels import ConversationBranch, UserMessageBoundary
 
 
 def _migrator(harness) -> ConversationMigrator:

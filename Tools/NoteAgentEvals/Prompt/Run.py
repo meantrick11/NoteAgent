@@ -11,15 +11,15 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from NoteAgent.AppBootstrap.AppSettings import Settings
-from NoteAgent.BusinessModules.ChatAgent.ChatAgent import ChatAgent
-from NoteAgent.BusinessModules.ChatAgent.ConversationContext.ContextBudget import budget_from_settings
-from NoteAgent.BusinessModules.ConversationState.PendingDrafts import DraftStore
-from NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.LegacyConversationStore import ConversationStore
+from NoteAgent.Modules.Chat.Agent.Graph.ChatAgent import ChatAgent
+from NoteAgent.Modules.Chat.Agent.Context.ContextBudget import budget_from_settings
+from NoteAgent.Modules.Conversations.Service.PendingDrafts import DraftStore
+from NoteAgent.Modules.Conversations.Legacy.LegacyConversationStore import ConversationStore
 from NoteAgent.AppBootstrap.ChatAgentFactory import build_graph_agent, conversation_tool_steps, local_checkpoints
-from NoteAgent.BusinessModules.ChatAgent.ChatTools import build_chat_tools
-from NoteAgent.BusinessModules.ConversationState.ConversationStateService import ConversationService
-from NoteAgent.TechnicalSupport.DatabaseAccess import Base, create_engine_from_url, create_session_factory
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
+from NoteAgent.Modules.Chat.Agent.Tools.ChatTools import build_chat_tools
+from NoteAgent.Modules.Conversations.Service.ConversationStateService import ConversationService
+from NoteAgent.Common.Database import Base, create_engine_from_url, create_session_factory
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
 from NoteAgentEvals.Prompt.Cases import EvalCase, case_rubric_version
 from NoteAgentEvals.Prompt.Judge import JUDGE_PROMPT_PATH, judge_learning_note, judge_prompt_sha256
 from NoteAgentEvals.Prompt.Report import case_filename, write_stage

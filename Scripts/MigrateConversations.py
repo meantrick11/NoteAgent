@@ -15,10 +15,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from NoteAgent.AppBootstrap.AppSettings import Settings
-from NoteAgent.BusinessModules.ConversationState.ConversationCheckpoints import CheckpointRuntime, postgres_uri
-from NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.LegacyConversationMigration import ConversationMigrator
-from NoteAgent.BusinessModules.ConversationState.ConversationStateService import ConversationService
-from NoteAgent.TechnicalSupport.DatabaseAccess import create_engine_from_url, create_session_factory
+from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import CheckpointRuntime, postgres_uri
+from NoteAgent.Modules.Conversations.Legacy.LegacyConversationMigration import ConversationMigrator
+from NoteAgent.Modules.Conversations.Service.ConversationStateService import ConversationService
+from NoteAgent.Common.Database import create_engine_from_url, create_session_factory
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 _logger = logging.getLogger("migrate_conversations")

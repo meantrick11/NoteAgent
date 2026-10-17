@@ -7,7 +7,7 @@
 | 项 | 内容 |
 |---|---|
 | 输出 | 同一份 `var/logs/noteagent.log`（`LOG_DIR`）+ 彩色 stdout |
-| 配置 | [TechnicalSupport/ExecutionLogging/LoggingSetup.py](../../src/NoteAgent/TechnicalSupport/ExecutionLogging/LoggingSetup.py)；业务文案不写在这里 |
+| 配置 | [Common/Logging/LoggingSetup.py](../../src/NoteAgent/Common/Logging/LoggingSetup.py)；业务文案不写在这里 |
 | 不是 | 独立日志服务、把完整 prompt / 切块正文存进 PostgreSQL |
 
 ---
@@ -46,11 +46,11 @@ setup_logging          配 handler、轮转、第三方级别
 
 | 层 | 放哪 | 做什么 |
 |---|---|---|
-| 配置 | `TechnicalSupport/ExecutionLogging/LoggingSetup.py` | 彩色控制台、轮转文件、把 openai/httpx 等压到 WARNING |
+| 配置 | `Common/Logging/LoggingSetup.py` | 彩色控制台、轮转文件、把 openai/httpx 等压到 WARNING |
 | 专用轨迹 | `AgentTrace.py`、`IndexTrace.py` | 跨步骤、文案要稳定的 LLM/工具/索引事件 |
 | 业务事件 | 各模块 `logging.getLogger(__name__)` | HTTP、磁盘、会话、草稿、压缩、引用 |
 
-`main.py` 启动时调 `setup_logging`。看文件：`var/logs/noteagent.log`。按 logger 名过滤（如 `NoteAgent.BusinessModules.ChatAgent.agent` vs `noteagent.observability.index_trace`）。
+`main.py` 启动时调 `setup_logging`。看文件：`var/logs/noteagent.log`。按 logger 名过滤（如 `NoteAgent.Modules.Chat.Agent.Graph.ChatAgent` vs `NoteAgent.Common.Logging.IndexTrace`）。
 
 ---
 
@@ -67,7 +67,7 @@ LangChain `BaseCallbackHandler`。每次 `ChatAgent.stream` 的 `astream(..., ca
 | `on_tool_end` | `Tool end  tool=  duration=  output=`（出参最多 200 字） |
 | `on_tool_error` | `Tool error  tool=  duration=  error=` |
 
-`run_id` 对齐 start/end 算耗时。压缩触发、pack 体积、hop 上限在 **`BusinessModules/ChatAgent/ChatAgent.py` 的 `_logger`**，不在本 handler。
+`run_id` 对齐 start/end 算耗时。压缩触发、pack 体积、hop 上限在 **`Modules/Chat/Agent/Graph/ChatAgent.py` 的 `_logger`**，不在本 handler。
 
 ---
 
@@ -102,14 +102,14 @@ index done … elapsed_ms=           ← 从 start 起的总耗时
 | `main` | 嵌入模型路径、监听地址 |
 | `NoteAgent.AppBootstrap.app` | 缺 `DATABASE_URL` |
 | `noteagent.llm.factory` | `LLM client model=` |
-| `NoteAgent.HttpApi.ChatApi.router` | 列会话/消息、SSE 请求、落库 assistant、审批入参 |
-| `NoteAgent.BusinessModules.ChatAgent.agent` | `agent stream start/end`、`context pack`、`compact trigger/skipped/refused`、hop 上限 |
-| `NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.store` | 会话 create/rename/delete、append、tool stub、load persistent、compact watermark |
-| `NoteAgent.BusinessModules.ConversationState.drafts` | `draft pending/rejected/committed`、`draft indexed`、`draft index failed`、写盘失败 |
-| `NoteAgent.BusinessModules.ChatAgent.citations` | `citation register`、`citation sanitize` |
-| `NoteAgent.BusinessModules.ChatAgent.ConversationContext.pack` | 材料标题树条数 |
-| `NoteAgent.HttpApi.NoteApi.router` | `notes http create/save/move/delete/index/folder *`、索引失败 exception |
-| `NoteAgent.BusinessModules.NoteStorage.repository` | `note list/read/write/create/delete/move`、文件夹 CRUD |
+| `NoteAgent.Modules.Chat.Router.ChatRoutes` | 列会话/消息、SSE 请求、落库 assistant、审批入参 |
+| `NoteAgent.Modules.Chat.Agent.Graph.ChatAgent` | `agent stream start/end`、`context pack`、`compact trigger/skipped/refused`、hop 上限 |
+| `NoteAgent.Modules.Conversations.Legacy.LegacyConversationStore` | 会话 create/rename/delete、append、tool stub、load persistent、compact watermark |
+| `NoteAgent.Modules.Conversations.Service.PendingDrafts` | `draft pending/rejected/committed`、`draft indexed`、`draft index failed`、写盘失败 |
+| `NoteAgent.Modules.Chat.Agent.Citations.CitationRegistry` | `citation register`、`citation sanitize` |
+| `NoteAgent.Modules.Chat.Agent.Context.ContextPack` | 材料标题树条数 |
+| `NoteAgent.Modules.Notes.Router.NoteRoutes` | `notes http create/save/move/delete/index/folder *`、索引失败 exception |
+| `NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository` | `note list/read/write/create/delete/move`、文件夹 CRUD |
 | `NoteAgentEvals.Prompt.*` | 离线黄金集；不在 `POST /chat` 路径上 |
 
 人审写盘成功后，同一文件里会先后出现 `drafts` 的 committed/indexed、`IndexTrace` 的 start…done、`repository` 的 `note read`/`note write`。索引失败不回滚 Markdown，日志是 `draft index failed` 或 `notes index failed`。
@@ -140,7 +140,7 @@ index done … elapsed_ms=           ← 从 start 起的总耗时
 - 检索包内自拼 `index start` 文案
 - 多实例日志汇聚
 
-包内速查：[src/NoteAgent/TechnicalSupport/ExecutionLogging/README.md](../../src/NoteAgent/TechnicalSupport/ExecutionLogging/README.md)。运行时目录：[var/README.md](../../var/README.md)。
+包内速查：[src/NoteAgent/Common/Logging/README.md](../../src/NoteAgent/Common/Logging/README.md)。运行时目录：[var/README.md](../../var/README.md)。
 
 ---
 
@@ -148,9 +148,9 @@ index done … elapsed_ms=           ← 从 start 起的总耗时
 
 | 路径 | 职责 |
 |---|---|
-| [TechnicalSupport/ExecutionLogging/LoggingSetup.py](../../src/NoteAgent/TechnicalSupport/ExecutionLogging/LoggingSetup.py) | `setup_logging`、控制台着色 |
-| [TechnicalSupport/ExecutionLogging/AgentTrace.py](../../src/NoteAgent/TechnicalSupport/ExecutionLogging/AgentTrace.py) | LLM/工具 callback |
-| [TechnicalSupport/ExecutionLogging/IndexTrace.py](../../src/NoteAgent/TechnicalSupport/ExecutionLogging/IndexTrace.py) | 索引/检索步骤 INFO |
-| [BusinessModules/ChatAgent/ChatAgent.py](../../src/NoteAgent/BusinessModules/ChatAgent/ChatAgent.py) | 挂 callback；pack/compact/stream 业务日志 |
-| [BusinessModules/NoteRetrieval/NoteRetrievalService.py](../../src/NoteAgent/BusinessModules/NoteRetrieval/NoteRetrievalService.py) | 步骤边界调 `IndexTrace` |
+| [Common/Logging/LoggingSetup.py](../../src/NoteAgent/Common/Logging/LoggingSetup.py) | `setup_logging`、控制台着色 |
+| [Common/Logging/AgentTrace.py](../../src/NoteAgent/Common/Logging/AgentTrace.py) | LLM/工具 callback |
+| [Common/Logging/IndexTrace.py](../../src/NoteAgent/Common/Logging/IndexTrace.py) | 索引/检索步骤 INFO |
+| [Modules/Chat/Agent/Graph/ChatAgent.py](../../src/NoteAgent/Modules/Chat/Agent/Graph/ChatAgent.py) | 挂 callback；pack/compact/stream 业务日志 |
+| [Modules/Retrieval/Service/NoteRetrievalService.py](../../src/NoteAgent/Modules/Retrieval/Service/NoteRetrievalService.py) | 步骤边界调 `IndexTrace` |
 | [main.py](../../main.py) | 启动时 `setup_logging` |

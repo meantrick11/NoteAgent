@@ -11,8 +11,8 @@ import subprocess
 
 import pytest
 
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
-from NoteAgent.BusinessModules.NoteStorage.NoteVersions import NoteVersionError, NoteVersionStore
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
+from NoteAgent.Modules.Notes.Storage.Version.NoteVersions import NoteVersionError, NoteVersionStore
 
 
 @pytest.fixture

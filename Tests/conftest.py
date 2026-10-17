@@ -16,8 +16,8 @@ import psycopg
 import pytest
 
 from NoteAgent.AppBootstrap.AppSettings import Settings
-from NoteAgent.BusinessModules.ConversationState.ConversationCheckpoints import postgres_uri
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
+from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import postgres_uri
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
 from Support.Fakes import FailInjector, FakeChatModel, FakeEmbedder
 from Support.Harness import ConversationHarness, sqlalchemy_schema_url
 from Support.Webapp import pg_checkpoint_app  # noqa: F401  (pytest fixture)

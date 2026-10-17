@@ -4,17 +4,17 @@ import chromadb
 import pytest
 from chromadb.config import Settings as ChromaSettings
 
-from NoteAgent.BusinessModules.ConversationState.PendingDrafts import DraftStore, NoteDraft
-from NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.LegacyDraftReview import commit_review
-from NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.LegacyConversationStore import ConversationStore
-from NoteAgent.TechnicalSupport.DatabaseAccess import Base, create_engine_from_url, create_session_factory
-from NoteAgent.ApplicationFlows.ModelRuntime.ModelRuntime import COLLECTION_DIGEST_LENGTH, COLLECTION_MAX_LENGTH, embedding_collection_name
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
-from NoteAgent.BusinessModules.NoteRetrieval.MarkdownChunker import MarkdownChunker
-from NoteAgent.BusinessModules.NoteRetrieval.NoteRetrievalService import RetrievalService, index_config_fingerprint
-from NoteAgent.BusinessModules.NoteRetrieval.ChromaVectorStore import LEGACY_FINGERPRINT, ChromaVectorStore, CollectionMissingError, IndexConfigMismatch
+from NoteAgent.Modules.Conversations.Service.PendingDrafts import DraftStore, NoteDraft
+from NoteAgent.Modules.Conversations.Legacy.LegacyDraftReview import commit_review
+from NoteAgent.Modules.Conversations.Legacy.LegacyConversationStore import ConversationStore
+from NoteAgent.Common.Database import Base, create_engine_from_url, create_session_factory
+from NoteAgent.Modules.Models.Service.ModelRuntime import COLLECTION_DIGEST_LENGTH, COLLECTION_MAX_LENGTH, embedding_collection_name
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
+from NoteAgent.Modules.Retrieval.Engine.Chunking.MarkdownChunker import MarkdownChunker
+from NoteAgent.Modules.Retrieval.Service.NoteRetrievalService import RetrievalService, index_config_fingerprint
+from NoteAgent.Modules.Retrieval.Engine.VectorStore.ChromaVectorStore import LEGACY_FINGERPRINT, ChromaVectorStore, CollectionMissingError, IndexConfigMismatch
 
-_INDEX_TRACE = "NoteAgent.TechnicalSupport.ExecutionLogging.IndexTrace"
+_INDEX_TRACE = "NoteAgent.Common.Logging.IndexTrace"
 
 
 class FakeEmbedder:

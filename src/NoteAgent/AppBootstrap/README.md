@@ -26,5 +26,5 @@ ContainerAssembly.py: build_container；HttpApp.py: create_app；AppLifespan.py:
 从仓库根运行：
 
 ```powershell
-uv run pytest Tests/Unit/TestAppContainer.py Tests/Unit/TestSettings.py Tests/Integration/TestFrontendRoutes.py -q
+uv run pytest Tests/Unit/TestAppContainer.py Tests/Unit/Modules/Models/TestSettings.py Tests/Integration/TestFrontendRoutes.py -q
 ```

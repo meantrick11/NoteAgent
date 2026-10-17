@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from NoteAgent.BusinessModules.NoteStorage.NoteChanges import CREATE, WRITE, MutationCommand, Origin
-from NoteAgent.BusinessModules.NoteRetrieval.IndexRepair.IndexRepairModels import IndexRepair
-from NoteAgent.ApplicationFlows.ConversationRecovery.RecoveryCoordinator import PlanConflict
+from NoteAgent.Modules.Notes.Service.NoteChanges import CREATE, WRITE, MutationCommand, Origin
+from NoteAgent.Modules.Retrieval.Domain.Po.IndexRepairModels import IndexRepair
+from NoteAgent.Modules.Recovery.Service.RecoveryCoordinator import PlanConflict
 
 from TestRecoveryCoordinator import _Env
 

@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from NoteAgent.BusinessModules.ModelSettings.ModelContracts import ChatActivateIn, ChatProfileIn
+from NoteAgent.Modules.Models.Domain.Vo.ModelContracts import ChatActivateIn, ChatProfileIn
 from Support.Fakes import FakeChatModel
 from Support.Webapp import build_checkpoint_app
 
@@ -286,7 +286,7 @@ def test_detail_reconciles_a_run_that_expired_after_startup(tmp_path):
     import asyncio
     from datetime import datetime, timedelta, timezone
     from sqlalchemy import update
-    from NoteAgent.BusinessModules.ConversationState.ConversationModels import ConversationRun
+    from NoteAgent.Modules.Conversations.Domain.Po.ConversationModels import ConversationRun
     app = build_checkpoint_app(tmp_path, reply_batches=[["answer"]])
     conv = asyncio.run(app.service.create_conversation("A"))
     prepared = asyncio.run(app.service.prepare_turn(conv.id, "q", "expires-later"))
@@ -299,8 +299,8 @@ def test_detail_reconciles_a_run_that_expired_after_startup(tmp_path):
 
 @pytest.mark.parametrize('path', ['/notes', '/notes/A.md', '/chat'])
 def test_durable_maintenance_blocks_real_http(tmp_path, path):
-    from NoteAgent.TechnicalSupport.DatabaseAccess import create_session_factory
-    from NoteAgent.TechnicalSupport.NoteAccessControl.NoteAccessGate import WorkspaceGate
+    from NoteAgent.Common.Database import create_session_factory
+    from NoteAgent.Common.WorkspaceAccess.NoteAccessGate import WorkspaceGate
     app = build_checkpoint_app(tmp_path, reply_batches=[['answer']])
     gate = WorkspaceGate(create_session_factory(app.container.engine))
     gate.ensure_row()

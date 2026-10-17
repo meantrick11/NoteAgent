@@ -16,14 +16,14 @@ import shutil
 from datetime import datetime
 
 from NoteAgent.AppBootstrap.AppSettings import Settings, project_root
-from NoteAgent.BusinessModules.ModelSettings.ModelClients import create_chat_model, create_judge_model
-from NoteAgent.TechnicalSupport.ExecutionLogging.LoggingSetup import setup_logging
+from NoteAgent.Modules.Models.Provider.ModelClients import create_chat_model, create_judge_model
+from NoteAgent.Common.Logging.LoggingSetup import setup_logging
 from NoteAgentEvals.Prompt.Cases import load_cases
 from NoteAgentEvals.Prompt.Report import result_dest
 from NoteAgentEvals.Prompt.Run import run_eval
 
 DEFAULT_CASES = Path("evals/prompt/cases.jsonl")
-DEFAULT_PROMPT = Path("src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/system.txt")
+DEFAULT_PROMPT = Path("src/NoteAgent/Modules/Chat/Agent/SystemPrompts/system.txt")
 RESULTS_ROOT = Path("evals/prompt/results")
 
 

@@ -7,11 +7,11 @@ import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 from sqlalchemy import select
 
-from NoteAgent.BusinessModules.ChatAgent.ChatExecution import execute_turn
-from NoteAgent.BusinessModules.ChatAgent.ChatGraph import build_chat_graph
-from NoteAgent.BusinessModules.ConversationState.ConversationCheckpoints import thread_config
-from NoteAgent.BusinessModules.ConversationState.ConversationModels import ConversationRun
-from NoteAgent.BusinessModules.ConversationState.ConversationStateService import ConversationBusy, ConversationService
+from NoteAgent.Modules.Chat.Agent.Graph.ChatExecution import execute_turn
+from NoteAgent.Modules.Chat.Agent.Graph.ChatGraph import build_chat_graph
+from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import thread_config
+from NoteAgent.Modules.Conversations.Domain.Po.ConversationModels import ConversationRun
+from NoteAgent.Modules.Conversations.Service.ConversationStateService import ConversationBusy, ConversationService
 from Support.Fakes import FakeChatModel
 
 
@@ -71,7 +71,7 @@ def test_new_migration_excludes_duplicate_active_runs(pg_target, monkeypatch):
     from alembic import command
     from alembic.config import Config
     from sqlalchemy import inspect
-    from NoteAgent.TechnicalSupport.DatabaseAccess import create_engine_from_url
+    from NoteAgent.Common.Database import create_engine_from_url
     config = Config(str(Path("alembic.ini").resolve()))
     # env.py resolves Settings itself; pin that source too, never migrate public.
     monkeypatch.setenv("DATABASE_URL", pg_target.sqlalchemy_url)
@@ -113,7 +113,7 @@ async def test_uncaught_process_loss_is_reconciled_after_lease_expiry(postgres_h
 async def test_stale_completion_cannot_overwrite_a_new_resume_lease(postgres_harness):
     from datetime import datetime, timezone, timedelta
     from sqlalchemy import event
-    from NoteAgent.BusinessModules.ConversationState.ConversationStateService import StaleConversation
+    from NoteAgent.Modules.Conversations.Service.ConversationStateService import StaleConversation
     h = postgres_harness
     c = await h.create_conversation()
     prepared = await h.service.prepare_turn(c.id, "question", "lease-race")
@@ -152,7 +152,7 @@ def test_migration_refuses_legacy_active_claims_without_deleting_them(pg_target,
     from alembic import command
     from alembic.config import Config
     from sqlalchemy import text
-    from NoteAgent.TechnicalSupport.DatabaseAccess import create_engine_from_url
+    from NoteAgent.Common.Database import create_engine_from_url
     monkeypatch.setenv("DATABASE_URL", pg_target.sqlalchemy_url)
     config = Config("alembic.ini")
     command.upgrade(config, "b1e7c4a90d23")

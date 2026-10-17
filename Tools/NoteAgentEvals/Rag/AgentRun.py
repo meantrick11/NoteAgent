@@ -19,23 +19,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from NoteAgent.AppBootstrap.AppSettings import Settings
-from NoteAgent.BusinessModules.ChatAgent.ChatAgent import ChatAgent
-from NoteAgent.BusinessModules.ChatAgent.ConversationContext.ContextBudget import budget_from_settings
-from NoteAgent.BusinessModules.ConversationState.PendingDrafts import WRITE_ACTIONS, DraftStore
-from NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.LegacyConversationStore import ConversationStore
+from NoteAgent.Modules.Chat.Agent.Graph.ChatAgent import ChatAgent
+from NoteAgent.Modules.Chat.Agent.Context.ContextBudget import budget_from_settings
+from NoteAgent.Modules.Conversations.Service.PendingDrafts import WRITE_ACTIONS, DraftStore
+from NoteAgent.Modules.Conversations.Legacy.LegacyConversationStore import ConversationStore
 from NoteAgent.AppBootstrap.ChatAgentFactory import build_graph_agent, conversation_tool_steps, local_checkpoints, seed_dialogue
-from NoteAgent.BusinessModules.ChatAgent.ChatTools import build_chat_tools
-from NoteAgent.BusinessModules.ConversationState.ConversationStateService import ConversationService
-from NoteAgent.TechnicalSupport.DatabaseAccess import Base, create_engine_from_url, create_session_factory
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
+from NoteAgent.Modules.Chat.Agent.Tools.ChatTools import build_chat_tools
+from NoteAgent.Modules.Conversations.Service.ConversationStateService import ConversationService
+from NoteAgent.Common.Database import Base, create_engine_from_url, create_session_factory
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
 from NoteAgentEvals.Rag.Dataset import AgentCase, Corpus, QueryCase
 from NoteAgentEvals.Rag.Metrics import Interval, covered_units
 from NoteAgentEvals.Rag.Run import HitRecord, chunk_spans
-from NoteAgent.BusinessModules.NoteRetrieval.MarkdownChunker import MarkdownChunker
-from NoteAgent.BusinessModules.NoteRetrieval.TextEmbedder import build_embedder
-from NoteAgent.BusinessModules.NoteRetrieval.MarkdownSections import heading_path_at
-from NoteAgent.BusinessModules.NoteRetrieval.NoteRetrievalService import RetrievalService
-from NoteAgent.BusinessModules.NoteRetrieval.ChromaVectorStore import ChromaVectorStore
+from NoteAgent.Modules.Retrieval.Engine.Chunking.MarkdownChunker import MarkdownChunker
+from NoteAgent.Modules.Retrieval.Engine.Embedding.TextEmbedder import build_embedder
+from NoteAgent.Modules.Retrieval.Engine.Chunking.MarkdownSections import heading_path_at
+from NoteAgent.Modules.Retrieval.Service.NoteRetrievalService import RetrievalService
+from NoteAgent.Modules.Retrieval.Engine.VectorStore.ChromaVectorStore import ChromaVectorStore
 
 _logger = logging.getLogger(__name__)
 
@@ -724,7 +724,7 @@ def run_agent_eval(
     embed_heading_prefix: bool | None = None,
 ) -> dict:
     """Run every case in the split ``repeats`` times and write local + committed reports."""
-    from NoteAgent.BusinessModules.ModelSettings.ModelClients import create_chat_model
+    from NoteAgent.Modules.Models.Provider.ModelClients import create_chat_model
     from NoteAgentEvals.Rag.Dataset import load_agent_cases, load_corpus, load_queries
 
     corpus = load_corpus(corpus_dir)

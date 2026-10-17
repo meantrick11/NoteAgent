@@ -17,17 +17,17 @@ from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import InMemorySaver
 
-from NoteAgent.BusinessModules.ChatAgent.ChatAgent import ChatAgent
-from NoteAgent.ApplicationFlows.DraftApproval.DraftApprovalWorkflow import DraftApprovalWorkflow
-from NoteAgent.BusinessModules.ChatAgent.ConversationContext.ContextBudget import ContextBudget
-from NoteAgent.BusinessModules.ConversationState.PendingDrafts import DraftStore
-from NoteAgent.BusinessModules.ChatAgent.ChatEvents import chunk_text
-from NoteAgent.BusinessModules.ChatAgent.ChatNodes import GraphRuntime
-from NoteAgent.BusinessModules.ConversationState.ConversationCheckpoints import CheckpointRuntime, checkpoint_id_of
-from NoteAgent.BusinessModules.ConversationState.ConversationRecords import MessageRecord, message_dict_from_record
-from NoteAgent.BusinessModules.ConversationState.ConversationStateService import ConversationService
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
-from NoteAgent.BusinessModules.NoteRetrieval.NoteRetrievalService import RetrievalService
+from NoteAgent.Modules.Chat.Agent.Graph.ChatAgent import ChatAgent
+from NoteAgent.Modules.Chat.Service.DraftApprovalWorkflow import DraftApprovalWorkflow
+from NoteAgent.Modules.Chat.Agent.Context.ContextBudget import ContextBudget
+from NoteAgent.Modules.Conversations.Service.PendingDrafts import DraftStore
+from NoteAgent.Modules.Chat.Domain.Vo.ChatEvents import chunk_text
+from NoteAgent.Modules.Chat.Agent.Graph.ChatNodes import GraphRuntime
+from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import CheckpointRuntime, checkpoint_id_of
+from NoteAgent.Modules.Conversations.Domain.Vo.ConversationRecords import MessageRecord, message_dict_from_record
+from NoteAgent.Modules.Conversations.Service.ConversationStateService import ConversationService
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
+from NoteAgent.Modules.Retrieval.Service.NoteRetrievalService import RetrievalService
 
 
 def local_checkpoints() -> CheckpointRuntime:

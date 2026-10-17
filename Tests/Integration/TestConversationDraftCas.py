@@ -10,8 +10,8 @@ from __future__ import annotations
 import pytest
 from langchain_core.messages import AIMessage
 
-from NoteAgent.BusinessModules.ConversationState.ConversationCheckpoints import checkpoint_id_of
-from NoteAgent.BusinessModules.ConversationState.ConversationContracts import ConversationBusy, StaleConversation
+from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import checkpoint_id_of
+from NoteAgent.Modules.Conversations.Domain.Vo.ConversationContracts import ConversationBusy, StaleConversation
 from Support.Fakes import FakeChatModel
 
 
@@ -140,8 +140,8 @@ async def test_metadata_route_keeps_event_loop_live_during_review(postgres_harne
     import asyncio
     from types import SimpleNamespace
     from sqlalchemy import event
-    from NoteAgent.HttpApi.ConversationApi.ConversationRoutes import rename_conversation
-    from NoteAgent.HttpApi.ConversationApi.ConversationSchemas import RenameConversation
+    from NoteAgent.Modules.Conversations.Router.ConversationRoutes import rename_conversation
+    from NoteAgent.Modules.Conversations.Domain.Dto.ConversationSchemas import RenameConversation
     h = postgres_harness
     record = await _conversation_with_draft(h)
     original = h.service.read_state

@@ -10,7 +10,7 @@ from alembic.config import Config
 from NoteAgent.AppBootstrap.ContainerAssembly import build_container
 from NoteAgent.AppBootstrap.HttpApp import create_app
 from NoteAgent.AppBootstrap.AppSettings import Settings  #设置文件
-from NoteAgent.TechnicalSupport.ExecutionLogging.LoggingSetup import setup_logging
+from NoteAgent.Common.Logging.LoggingSetup import setup_logging
 
 _logger = logging.getLogger(__name__)
 

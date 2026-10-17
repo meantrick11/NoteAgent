@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
                 container.mutations.reconcile_pending()
             maintenance = container.workspace.maintenance()
             if maintenance is not None and maintenance[1] == "approval":
-                from NoteAgent.BusinessModules.NoteStorage.ChangeJournal.NoteChangeModels import MutationRecord
+                from NoteAgent.Modules.Notes.Domain.Po.NoteChangeModels import MutationRecord
                 from sqlalchemy import select
                 with container.mutations._session_factory() as session:
                     pending = session.scalar(select(MutationRecord).where(MutationRecord.operation_id == maintenance[0]))

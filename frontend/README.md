@@ -2,7 +2,7 @@
 
 NoteAgent 的现行界面：Vue 3 + TypeScript + Vite 单页应用，顶部四个工作入口
 （Home / Assistant / Records / Library）加右上角设置齿轮，共五个页面。构建产物由 FastAPI 从
-`src/NoteAgent/HttpApi/WebFrontend/dist/` 托管，挂在 `/ui-assets/` 下。
+`src/NoteAgent/WebFrontend/dist/` 托管，挂在 `/ui-assets/` 下。
 
 ## 环境
 
@@ -14,7 +14,7 @@ Node 20.19+ 或 22.12+（Vite 7 的 `engines`，写在 `package.json` 里）。
 ```bash
 npm ci                # 按 lockfile 安装（首次或依赖变更后）
 npm run dev           # 开发服务器 http://127.0.0.1:5173，接口代理到 127.0.0.1:8000
-npm run build         # 先 vue-tsc 类型检查，再 vite build，产物写到 ../src/NoteAgent/HttpApi/WebFrontend/dist
+npm run build         # 先 vue-tsc 类型检查，再 vite build，产物写到 ../src/NoteAgent/WebFrontend/dist
 npm run type-check    # 只做类型检查
 npm run test:unit     # Vitest：状态与协议（不需要后端）
 npm run test:e2e      # Playwright：交互回归（用固定 fixtures，不需要后端）

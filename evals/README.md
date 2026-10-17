@@ -9,7 +9,7 @@
 | 黄金集（考题）、语料与 fixture | [prompt/](prompt/README.md)、[rag/](rag/README.md)、[agent/](agent/README.md) |
 | 离线跑分结果 | 各数据目录下的 `results/` |
 
-评测**不是**运行时模块：不在 `POST /chat` 上拦截草稿，不按分数自动再生成，不把分数写入 `notes/`。产品路径仍是提案 → 人审 → 落盘。尺子是给以后**离线迭代** [system.txt](../src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/system.txt) 用的。
+评测**不是**运行时模块：不在 `POST /chat` 上拦截草稿，不按分数自动再生成，不把分数写入 `notes/`。产品路径仍是提案 → 人审 → 落盘。尺子是给以后**离线迭代** [system.txt](../src/NoteAgent/Modules/Chat/Agent/SystemPrompts/system.txt) 用的。
 
 架构书里的索引：[architecture.md 第 6 节](../docs/01-architecture/architecture.md#6-评测)。
 
@@ -50,7 +50,7 @@
 
 ```bash
 python Scripts/EvalNotes.py --ids b06,n05
-python Scripts/EvalNotes.py --name v8 --ids n01,n03 --prompt src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/system.txt
+python Scripts/EvalNotes.py --name v8 --ids n01,n03 --prompt src/NoteAgent/Modules/Chat/Agent/SystemPrompts/system.txt
 python Scripts/EvalNotes.py --name v9 --judge --cases evals/prompt/learning_notes.jsonl --ids l01
 python Scripts/CalibrateLearningNotes.py
 
@@ -79,7 +79,7 @@ python Scripts/EvalRagAgent.py --split dev --variant baseline --run-id agent-v1-
 
 语义 Judge 缺失或解析失败会标为未完成；生成模型与 Judge 模型相同时必须记 `judge_independent=false`，不构成独立校准。契约细节见 [criteria/note-quality.md](criteria/note-quality.md) §5–§6。
 
-2026-09-10 同模型四候选校准（`deepseek-v4-flash`，[calibration_l01_20260910-135238-835257](prompt/results/learning_notes/calibration_l01_20260910-135238-835257)，`judge_independent=false`）暴露：Judge 给 `good` / `literal` 的 `fluent` 均为 4，仅旧的「优秀 fluent 严格高于机械译文」契约失败。标准据此修正为**双方 fluent 均须达阈值**，结构与加工增益仍要求优秀领先；Judge 与 fixtures 未为通过契约而改动。同日 v9 生成 + Judge（[v9-learning_l01_20260910-215727](prompt/results/learning_notes/v9-learning_l01_20260910-215727)）硬门与复习题通过，structure 2/4、processing 1/4，不合格。生成提示词此后于 2026-09-25 升到 v10（用户要更正时先指出冲突再问）、2026-09-26 升到 v11（草稿面板措辞），现行版本见 [prompts/README.md](../src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/README.md) 与 [iterations/](prompt/iterations/README.md)。
+2026-09-10 同模型四候选校准（`deepseek-v4-flash`，[calibration_l01_20260910-135238-835257](prompt/results/learning_notes/calibration_l01_20260910-135238-835257)，`judge_independent=false`）暴露：Judge 给 `good` / `literal` 的 `fluent` 均为 4，仅旧的「优秀 fluent 严格高于机械译文」契约失败。标准据此修正为**双方 fluent 均须达阈值**，结构与加工增益仍要求优秀领先；Judge 与 fixtures 未为通过契约而改动。同日 v9 生成 + Judge（[v9-learning_l01_20260910-215727](prompt/results/learning_notes/v9-learning_l01_20260910-215727)）硬门与复习题通过，structure 2/4、processing 1/4，不合格。生成提示词此后于 2026-09-25 升到 v10（用户要更正时先指出冲突再问）、2026-09-26 升到 v11（草稿面板措辞），现行版本见 [prompts/README.md](../src/NoteAgent/Modules/Chat/Agent/SystemPrompts/README.md) 与 [iterations/](prompt/iterations/README.md)。
 
 字符比、句子边界重合度和标题数量均不能用作语义质量代理。单个 Python 教程样本只用于第一阶段校准，不表示对所有教程的泛化能力。
 
@@ -92,4 +92,4 @@ python Scripts/EvalRagAgent.py --split dev --variant baseline --run-id agent-v1-
 
 ## 数据与实现的位置
 
-本目录存放评测数据、准则和结果。评测代码见 [Tools/NoteAgentEvals](../Tools/NoteAgentEvals/README.md)，命令入口保持在 [scripts](../Scripts/README.md)。当前系统提示词属于 [ChatAgent/SystemPrompts](../src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/README.md)，历史版本归档在 [prompt/iterations](prompt/iterations/README.md)。
+本目录存放评测数据、准则和结果。评测代码见 [Tools/NoteAgentEvals](../Tools/NoteAgentEvals/README.md)，命令入口保持在 [scripts](../Scripts/README.md)。当前系统提示词属于 [ChatAgent/SystemPrompts](../src/NoteAgent/Modules/Chat/Agent/SystemPrompts/README.md)，历史版本归档在 [prompt/iterations](prompt/iterations/README.md)。

@@ -1,6 +1,6 @@
 # 整体恢复实现与故障处理
 
-代码分区：`recovery/` 负责门禁、预览、协调与 HTTP；`notes/` 负责正文 mutation 和影子 Git；`BusinessModules/NoteRetrieval/IndexRepair/IndexRepairService.py` 负责索引维修；`conversations/` 负责候选状态和活动指针。上层契约见 [REQ-018](../../../../NoteAgent-docs/docs/02-requirements/REQ-018-历史消息编辑与整体回退.md)。
+代码分区：`recovery/` 负责门禁、预览、协调与 HTTP；`notes/` 负责正文 mutation 和影子 Git；`Modules/Retrieval/Service/IndexRepairService.py` 负责索引维修；`conversations/` 负责候选状态和活动指针。上层契约见 [REQ-018](../../../../NoteAgent-docs/docs/02-requirements/REQ-018-历史消息编辑与整体回退.md)。
 
 ## 材料写入
 

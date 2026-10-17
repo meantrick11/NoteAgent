@@ -5,7 +5,7 @@ from pathlib import Path
 from NoteAgentEvals.Rag.AgentRun import CaseOutcome, RecordingRetrieval, attach_searches, SearchRecord, _citation_intervals, _read_before_propose, _task_success, evaluate_checks, summarize
 from NoteAgentEvals.Rag.Dataset import AgentCase, Corpus, EvidenceLocation, EvidenceUnit, NoteRecord, QueryCase
 from NoteAgentEvals.Rag.Metrics import Interval
-from NoteAgent.BusinessModules.NoteRetrieval.RetrievalModels import SearchHit
+from NoteAgent.Modules.Retrieval.Domain.Vo.RetrievalModels import SearchHit
 
 NOTE_TEXT = "# Alpha\n\n## 第一节\n\n回溯是递归的副产品。\n"
 QUOTE = "回溯是递归的副产品。"

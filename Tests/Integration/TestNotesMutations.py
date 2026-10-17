@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from NoteAgent.TechnicalSupport.DatabaseAccess import Base, create_engine_from_url, create_session_factory, load_all_models
-from NoteAgent.BusinessModules.NoteStorage.NoteChanges import CREATE, DELETE, FOLDER_CREATE, MOVE, WRITE, ConflictError, GitFailure, MutationCommand, NoteMutationService, Origin
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
-from NoteAgent.BusinessModules.NoteStorage.NoteVersions import NoteVersionStore
-from NoteAgent.TechnicalSupport.NoteAccessControl.NoteAccessGate import WorkspaceGate
-from NoteAgent.BusinessModules.NoteStorage.ChangeJournal.NoteChangeModels import MutationRecord
+from NoteAgent.Common.Database import Base, create_engine_from_url, create_session_factory, load_all_models
+from NoteAgent.Modules.Notes.Service.NoteChanges import CREATE, DELETE, FOLDER_CREATE, MOVE, WRITE, ConflictError, GitFailure, MutationCommand, NoteMutationService, Origin
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
+from NoteAgent.Modules.Notes.Storage.Version.NoteVersions import NoteVersionStore
+from NoteAgent.Common.WorkspaceAccess.NoteAccessGate import WorkspaceGate
+from NoteAgent.Modules.Notes.Domain.Po.NoteChangeModels import MutationRecord
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ def _ledger(factory, operation_id):
 
 
 def test_worker_death_before_git_keeps_gate_closed_until_compensation(env, monkeypatch):
-    from NoteAgent.TechnicalSupport.NoteAccessControl.NoteAccessGate import WorkspaceBusy
+    from NoteAgent.Common.WorkspaceAccess.NoteAccessGate import WorkspaceBusy
     service, notes, versions, gate, _ = env
     service.initialize_locked()
     def terminate(*args, **kwargs):

@@ -8,9 +8,9 @@
 
 | 项 | 内容 |
 |---|---|
-| 装配 | [BusinessModules/ChatAgent/ChatTools.py](../../src/NoteAgent/BusinessModules/ChatAgent/ChatTools.py) → `ChatAgent` `bind_tools` |
+| 装配 | [Modules/Chat/Agent/Tools/ChatTools.py](../../src/NoteAgent/Modules/Chat/Agent/Tools/ChatTools.py) → `ChatAgent` `bind_tools` |
 | 落盘 | 正式审批经 `ChatAgent.review` → `NoteMutationService`；commit_review 仅兼容路径，工具不写 notes |
-| 意图门 | [`prompts/system.txt`](../../src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/system.txt) Task；无单独分类器服务 |
+| 意图门 | [`prompts/system.txt`](../../src/NoteAgent/Modules/Chat/Agent/SystemPrompts/system.txt) Task；无单独分类器服务 |
 
 ---
 
@@ -24,7 +24,7 @@
 - 正式审批由 ChatAgent.review 和 ConversationService 校验运行占用及版本，走统一 NoteMutationService 记录前像、写盘、影子 Git 与索引维修，清稿发布前保留 approval 维护记录。
 - 索引由 IndexRepairService 按文件维修，检索校验正文哈希和当前索引配置，拒绝陈旧片段。故障与重启处理见 recovery.md；不能把正文已写当作索引已完成。
 
-路径规则在 [BusinessModules/NoteStorage/MarkdownRepository.py](../../src/NoteAgent/BusinessModules/NoteStorage/MarkdownRepository.py)：拒绝空名、绝对路径、`..`、两层以上目录；允许一层 `Folder/Note.md`。工具侧把异常收成 `{error: str}`。
+路径规则在 [Modules/Notes/Storage/Markdown/MarkdownRepository.py](../../src/NoteAgent/Modules/Notes/Storage/Markdown/MarkdownRepository.py)：拒绝空名、绝对路径、`..`、两层以上目录；允许一层 `Folder/Note.md`。工具侧把异常收成 `{error: str}`。
 
 ---
 
@@ -115,11 +115,11 @@ flowchart TD
 | 失败 | 登录或人机验证、非 HTML、网络失败等返回状态和简短原因；未成功抽取时 `content` 为空，不能据此编造正文 |
 | 副作用 | 不写独立网页文件；完整工具结果随会话 checkpoint 保存，SSE / `tool_steps` 仅展示简短预览 |
 
-`partial` 表示可能只拿到部分正文，回答时应告知截断。页面文字为低信任材料，不能改变 Agent 指令或工具权限。后续回合模型输入不自动重放上一回合完整正文；材料不足时重新读取。实现见 [WebReading.py](../../src/NoteAgent/BusinessModules/ChatAgent/WebReading.py)，执行与验收状态见 [V2.4 结果](../05-records/plans/2026-10-11-v24-user-url-reading-results.md)。
+`partial` 表示可能只拿到部分正文，回答时应告知截断。页面文字为低信任材料，不能改变 Agent 指令或工具权限。后续回合模型输入不自动重放上一回合完整正文；材料不足时重新读取。实现见 [WebReading.py](../../src/NoteAgent/Modules/Chat/Agent/Tools/WebReading.py)，执行与验收状态见 [V2.4 结果](../05-records/plans/2026-10-11-v24-user-url-reading-results.md)。
 
 ### 4.5 `propose_note`
 
-`args_schema` 为 [BusinessModules/ConversationState/PendingDrafts.py](../../src/NoteAgent/BusinessModules/ConversationState/PendingDrafts.py)。`action` 合法值即 `WRITE_ACTIONS`：`append` / `create` / `replace` / `delete`。
+`args_schema` 为 [Modules/Conversations/Service/PendingDrafts.py](../../src/NoteAgent/Modules/Conversations/Service/PendingDrafts.py)。`action` 合法值即 `WRITE_ACTIONS`：`append` / `create` / `replace` / `delete`。
 
 | 字段 | 类型 | 默认 | 含义 |
 |------|------|------|------|
@@ -192,16 +192,16 @@ PUT /chat/draft 接收 thread_id、content、expected_revision，可选 file_nam
 
 | 文件 | 角色 |
 |------|------|
-| [BusinessModules/ChatAgent/ChatTools.py](../../src/NoteAgent/BusinessModules/ChatAgent/ChatTools.py) | 基础四工具与可选的 `read_webpage` |
-| [BusinessModules/ChatAgent/WebReading.py](../../src/NoteAgent/BusinessModules/ChatAgent/WebReading.py)、[BusinessModules/ChatAgent/NoteSources.py](../../src/NoteAgent/BusinessModules/ChatAgent/NoteSources.py) | 指定 URL 读取与笔记来源栏 |
-| [BusinessModules/ConversationState/PendingDrafts.py](../../src/NoteAgent/BusinessModules/ConversationState/PendingDrafts.py) | schema、DraftStore、`commit_review` |
-| [BusinessModules/ChatAgent/ChatAgent.py](../../src/NoteAgent/BusinessModules/ChatAgent/ChatAgent.py) | 正式图执行 facade、checkpoint 草稿审批 |
-| [AppBootstrap/ChatAgentFactory.py](../../src/NoteAgent/AppBootstrap/ChatAgentFactory.py)、[BusinessModules/ChatAgent/ChatNodes.py](../../src/NoteAgent/BusinessModules/ChatAgent/ChatNodes.py) | 图装配、上下文、模型和工具节点 |
-| [BusinessModules/NoteStorage/NoteChanges.py](../../src/NoteAgent/BusinessModules/NoteStorage/NoteChanges.py) | 正式正文写入与持久操作 |
-| [HttpApi/ChatApi/ChatRoutes.py](../../src/NoteAgent/HttpApi/ChatApi/ChatRoutes.py) | `GET /conversations/{id}`、`POST /chat`、`PUT /chat/draft`、`POST /chat/review` |
-| [HttpApi/ChatApi/ChatSchemas.py](../../src/NoteAgent/HttpApi/ChatApi/ChatSchemas.py) | `ReviewRequest`、`DraftContentRequest`、`ConversationDetailOut` |
-| [`prompts/system.txt`](../../src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/system.txt) | 意图门与七条质量约束（现行 v9） |
+| [Modules/Chat/Agent/Tools/ChatTools.py](../../src/NoteAgent/Modules/Chat/Agent/Tools/ChatTools.py) | 基础四工具与可选的 `read_webpage` |
+| [Modules/Chat/Agent/Tools/WebReading.py](../../src/NoteAgent/Modules/Chat/Agent/Tools/WebReading.py)、[Modules/Chat/Agent/Tools/NoteSources.py](../../src/NoteAgent/Modules/Chat/Agent/Tools/NoteSources.py) | 指定 URL 读取与笔记来源栏 |
+| [Modules/Conversations/Service/PendingDrafts.py](../../src/NoteAgent/Modules/Conversations/Service/PendingDrafts.py) | schema、DraftStore、`commit_review` |
+| [Modules/Chat/Agent/Graph/ChatAgent.py](../../src/NoteAgent/Modules/Chat/Agent/Graph/ChatAgent.py) | 正式图执行 facade、checkpoint 草稿审批 |
+| [AppBootstrap/ChatAgentFactory.py](../../src/NoteAgent/AppBootstrap/ChatAgentFactory.py)、[Modules/Chat/Agent/Graph/ChatNodes.py](../../src/NoteAgent/Modules/Chat/Agent/Graph/ChatNodes.py) | 图装配、上下文、模型和工具节点 |
+| [Modules/Notes/Service/NoteChanges.py](../../src/NoteAgent/Modules/Notes/Service/NoteChanges.py) | 正式正文写入与持久操作 |
+| [Modules/Chat/Router/ChatRoutes.py](../../src/NoteAgent/Modules/Chat/Router/ChatRoutes.py) | `GET /conversations/{id}`、`POST /chat`、`PUT /chat/draft`、`POST /chat/review` |
+| [Modules/Chat/Domain/Dto/ChatSchemas.py](../../src/NoteAgent/Modules/Chat/Domain/Dto/ChatSchemas.py) | `ReviewRequest`、`DraftContentRequest`、`ConversationDetailOut` |
+| [`prompts/system.txt`](../../src/NoteAgent/Modules/Chat/Agent/SystemPrompts/system.txt) | 意图门与七条质量约束（现行 v9） |
 | [`frontend/src/features/chat/NotePane.vue`](../../frontend/src/features/chat/NotePane.vue) | 引用面板（citation / draft 两种模式）；`DraftActions.vue` 是草稿动作 |
-| [BusinessModules/NoteStorage/MarkdownRepository.py](../../src/NoteAgent/BusinessModules/NoteStorage/MarkdownRepository.py) | 真正 IO |
+| [Modules/Notes/Storage/Markdown/MarkdownRepository.py](../../src/NoteAgent/Modules/Notes/Storage/Markdown/MarkdownRepository.py) | 真正 IO |
 | [retrieval.md](../03-modules/retrieval/retrieval.md) | 切块、Chroma、审批后同步（不在本文展开） |
 | [`evals/prompt/`](../../evals/prompt/README.md) | 人工意图门（含 replace/delete） |

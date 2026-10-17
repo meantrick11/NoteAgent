@@ -2,9 +2,9 @@
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from NoteAgent.HttpApi.HttpErrors import register_exception_handlers
-from NoteAgent.HttpApi.ApiRoutes import router
-from NoteAgent.HttpApi.WebFrontend import DIST_DIR, STATIC_DIR
+from NoteAgent.Common.Http.HttpErrors import register_exception_handlers
+from NoteAgent.AppBootstrap.ApiRoutes import router
+from NoteAgent.WebFrontend import DIST_DIR, STATIC_DIR
 from NoteAgent.AppBootstrap.ContainerAssembly import AppContainer
 from NoteAgent.AppBootstrap.AppLifespan import lifespan
 

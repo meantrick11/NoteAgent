@@ -134,7 +134,7 @@ collection 自身的 metadata 另存上面两项身份记录（见 §4 的开头
 
 ## 5. 切块与向量化
 
-[BusinessModules/NoteRetrieval/MarkdownChunker.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/MarkdownChunker.py)：`RecursiveCharacterTextSplitter`，`chunk_size=500`，`chunk_overlap=50`，`length_function=len`。分隔符优先段落、换行、中文句读。
+[Modules/Retrieval/Engine/Chunking/MarkdownChunker.py](../../../src/NoteAgent/Modules/Retrieval/Engine/Chunking/MarkdownChunker.py)：`RecursiveCharacterTextSplitter`，`chunk_size=500`，`chunk_overlap=50`，`length_function=len`。分隔符优先段落、换行、中文句读。
 
 两种策略，`split()` 保持返回字符串列表的兼容入口，索引走 `split_with_metadata()`：
 
@@ -143,7 +143,7 @@ collection 自身的 metadata 另存上面两项身份记录（见 §4 的开头
 
 每个块都带 `heading_path` 与 `start_char`/`end_char`，偏移由切分器给出并在写入前用切片校验（`text[start:end] == content`），不靠事后字符串搜索猜位置。
 
-[BusinessModules/NoteRetrieval/TextEmbedder.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/TextEmbedder.py)：本地 `SentenceTransformer`，`cache_folder` 为 `EMBEDDING_CACHE_DIR`。`embed_documents` 与 `embed_query` 必须是同一模型。默认 `intfloat/multilingual-e5-small`，编码指令见 [BusinessModules/NoteRetrieval/TextEmbedder.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/TextEmbedder.py)。`EMBEDDING_LOCAL_FILES_ONLY=true` 时不联网下载。
+[Modules/Retrieval/Engine/Embedding/TextEmbedder.py](../../../src/NoteAgent/Modules/Retrieval/Engine/Embedding/TextEmbedder.py)：本地 `SentenceTransformer`，`cache_folder` 为 `EMBEDDING_CACHE_DIR`。`embed_documents` 与 `embed_query` 必须是同一模型。默认 `intfloat/multilingual-e5-small`，编码指令见 [Modules/Retrieval/Engine/Embedding/TextEmbedder.py](../../../src/NoteAgent/Modules/Retrieval/Engine/Embedding/TextEmbedder.py)。`EMBEDDING_LOCAL_FILES_ONLY=true` 时不联网下载。
 
 **被嵌入的文本可以不是引用原文。** `embed_heading_prefix=True` 时嵌入文本为 `heading_path + 换行 + 正文`，而 Chroma 的 `document` 始终存正文切片，保证引用可映射回原文。
 
@@ -189,7 +189,7 @@ collection 自身的 metadata 另存上面两项身份记录（见 §4 的开头
 
 ### 7.1 界面切换向量模型（维护窗口）
 
-单进程串行维护，不做双写或增量追赶。`ModelRuntimeService`（[ApplicationFlows/ModelRuntime/ModelRuntime.py](../../../src/NoteAgent/ApplicationFlows/ModelRuntime/ModelRuntime.py)）持有唯一的 `RuntimeSnapshot`（chat agent + retrieval + embedding 状态 + revision），请求通过 `read` / `write` / `chat` 取一次快照并在整个操作内使用：
+单进程串行维护，不做双写或增量追赶。`ModelRuntimeService`（[Modules/Models/Service/ModelRuntime.py](../../../src/NoteAgent/Modules/Models/Service/ModelRuntime.py)）持有唯一的 `RuntimeSnapshot`（chat agent + retrieval + embedding 状态 + revision），请求通过 `read` / `write` / `chat` 取一次快照并在整个操作内使用：
 
 1. 门禁锁内确认没有正在进行的聊天/写操作，再开维护窗口（检查与设置必须原子）。已有请求继续持有旧快照到 `finally` 释放。
 2. **先在锁外算出目标身份**（`index_fingerprint`，不加载权重），据此得到目标 collection 名；后台线程再用 `local_files_only=true` 加载目标模型并写这个新 collection。
@@ -235,23 +235,23 @@ collection 自身的 metadata 另存上面两项身份记录（见 §4 的开头
 
 | 路径 | 职责 |
 |------|------|
-| [BusinessModules/NoteRetrieval/MarkdownChunker.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/MarkdownChunker.py) | 字符 / 章节切块，输出块与偏移 |
-| [BusinessModules/NoteRetrieval/MarkdownSections.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/MarkdownSections.py) | 围栏感知的标题解析与 `heading_path`（检索与评测共用） |
-| [BusinessModules/NoteRetrieval/TextEmbedder.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/TextEmbedder.py) | 本地句向量 |
-| [BusinessModules/NoteRetrieval/EmbeddingInstructions.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/EmbeddingInstructions.py) | 各模型的编码指令表；单独成模块，让指纹能在不加载权重时算出来 |
-| [BusinessModules/NoteRetrieval/ChromaVectorStore.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/ChromaVectorStore.py) | upsert / query / `delete_by_file_name` / 存在性与身份校验（`exists`、`stored_config`、`ensure_config`） |
-| [BusinessModules/NoteRetrieval/NoteRetrievalService.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/NoteRetrievalService.py) | `index_note`、`delete_note`、`search`、`indexed_files`、`index_targets`、身份指纹（`canonical_index_config` / `index_fingerprint_for_model`）、`verify_index` |
-| [TechnicalSupport/ExecutionLogging/IndexTrace.py](../../../src/NoteAgent/TechnicalSupport/ExecutionLogging/IndexTrace.py) | 索引/检索步骤 INFO |
-| [BusinessModules/NoteRetrieval/RetrievalModels.py](../../../src/NoteAgent/BusinessModules/NoteRetrieval/RetrievalModels.py) | `SearchHit`、`NoteChunk` |
-| [BusinessModules/ConversationState/PendingDrafts.py](../../../src/NoteAgent/BusinessModules/ConversationState/PendingDrafts.py) | `_sync_index` |
-| [BusinessModules/ChatAgent/ChatAgent.py](../../../src/NoteAgent/BusinessModules/ChatAgent/ChatAgent.py) | `review` 注入 `retrieval` |
+| [Modules/Retrieval/Engine/Chunking/MarkdownChunker.py](../../../src/NoteAgent/Modules/Retrieval/Engine/Chunking/MarkdownChunker.py) | 字符 / 章节切块，输出块与偏移 |
+| [Modules/Retrieval/Engine/Chunking/MarkdownSections.py](../../../src/NoteAgent/Modules/Retrieval/Engine/Chunking/MarkdownSections.py) | 围栏感知的标题解析与 `heading_path`（检索与评测共用） |
+| [Modules/Retrieval/Engine/Embedding/TextEmbedder.py](../../../src/NoteAgent/Modules/Retrieval/Engine/Embedding/TextEmbedder.py) | 本地句向量 |
+| [Modules/Retrieval/Engine/Embedding/EmbeddingInstructions.py](../../../src/NoteAgent/Modules/Retrieval/Engine/Embedding/EmbeddingInstructions.py) | 各模型的编码指令表；单独成模块，让指纹能在不加载权重时算出来 |
+| [Modules/Retrieval/Engine/VectorStore/ChromaVectorStore.py](../../../src/NoteAgent/Modules/Retrieval/Engine/VectorStore/ChromaVectorStore.py) | upsert / query / `delete_by_file_name` / 存在性与身份校验（`exists`、`stored_config`、`ensure_config`） |
+| [Modules/Retrieval/Service/NoteRetrievalService.py](../../../src/NoteAgent/Modules/Retrieval/Service/NoteRetrievalService.py) | `index_note`、`delete_note`、`search`、`indexed_files`、`index_targets`、身份指纹（`canonical_index_config` / `index_fingerprint_for_model`）、`verify_index` |
+| [Common/Logging/IndexTrace.py](../../../src/NoteAgent/Common/Logging/IndexTrace.py) | 索引/检索步骤 INFO |
+| [Modules/Retrieval/Domain/Vo/RetrievalModels.py](../../../src/NoteAgent/Modules/Retrieval/Domain/Vo/RetrievalModels.py) | `SearchHit`、`NoteChunk` |
+| [Modules/Conversations/Service/PendingDrafts.py](../../../src/NoteAgent/Modules/Conversations/Service/PendingDrafts.py) | `_sync_index` |
+| [Modules/Chat/Agent/Graph/ChatAgent.py](../../../src/NoteAgent/Modules/Chat/Agent/Graph/ChatAgent.py) | `review` 注入 `retrieval` |
 | [AppBootstrap/RuntimeAssembler.py](../../../src/NoteAgent/AppBootstrap/RuntimeAssembler.py) | 唯一的 Agent/工具/检索装配入口（`BootstrapAssembler`） |
 | [AppBootstrap/HttpApp.py](../../../src/NoteAgent/AppBootstrap/HttpApp.py) | 装配 `ModelRuntimeService` 并注册路由 |
-| [ApplicationFlows/ModelRuntime/ModelRuntime.py](../../../src/NoteAgent/ApplicationFlows/ModelRuntime/ModelRuntime.py) | 运行快照、门禁、向量重建任务 |
+| [Modules/Models/Service/ModelRuntime.py](../../../src/NoteAgent/Modules/Models/Service/ModelRuntime.py) | 运行快照、门禁、向量重建任务 |
 | [IndexNotes.py](../../../Scripts/IndexNotes.py) | 按篇重建（与界面共用 `index_targets`） |
 | [AppBootstrap/AppSettings.py](../../../src/NoteAgent/AppBootstrap/AppSettings.py) | `CHROMA_*`、`EMBEDDING_*`、`MODEL_SETTINGS_DIR` |
 
-包说明（与代码同步的目录表）：[`src/NoteAgent/BusinessModules/NoteRetrieval/README.md`](../../../src/NoteAgent/BusinessModules/NoteRetrieval/README.md)。
+包说明（与代码同步的目录表）：[`src/NoteAgent/Modules/Retrieval/README.md`](../../../src/NoteAgent/Modules/Retrieval/README.md)。
 
 ## 恢复与可信索引
 

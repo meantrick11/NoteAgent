@@ -9,12 +9,12 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-import NoteAgent.HttpApi.WebFrontend as web
+import NoteAgent.WebFrontend as web
 from NoteAgent.AppBootstrap.HttpApp import create_app
 from NoteAgent.AppBootstrap.AppSettings import Settings
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
-from NoteAgent.HttpApi.WebFrontend import read_home_html
-from NoteAgent.HttpApi.WebFrontend.WebRoutes import SPA_PAGE_PATHS
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
+from NoteAgent.WebFrontend import read_home_html
+from NoteAgent.WebFrontend.WebRoutes import SPA_PAGE_PATHS
 
 from TestApp import FakeAgent, _container, _sqlite_history
 

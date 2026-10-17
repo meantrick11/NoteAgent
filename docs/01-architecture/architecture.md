@@ -46,8 +46,8 @@ IndexRepairService 先记 pending，再删旧向量并按当前正文重建，�
 
 ## 源码组织
 
-源码分为 HTTP、业务模块、跨模块流程、基础设施、装配五个入口，见 [源码导航](../../src/NoteAgent/README.md)。审批由 ApplicationFlows/DraftApproval 协调，模型运行由 ApplicationFlows/ModelRuntime 管理，恢复由 ApplicationFlows/ConversationRecovery 协调。笔记修改台账属于 BusinessModules/NoteStorage/ChangeJournal，恢复任务记录属于 BusinessModules/ConversationRecovery，共享访问状态属于 TechnicalSupport/NoteAccessControl，索引维修属于 BusinessModules/NoteRetrieval/IndexRepair，评测位于 Tools/noteagent_evals。HTTP、表名和磁盘数据格式不变。
+源码分为 HTTP、业务模块、跨模块流程、基础设施、装配五个入口，见 [源码导航](../../src/NoteAgent/README.md)。审批由 Modules/Chat/Service 协调，模型运行由 Modules/Models/Service 管理，恢复由 Modules/Recovery/Service 协调。笔记修改台账属于 Modules/Notes/ChangeJournal，恢复任务记录属于 Modules/Recovery，共享访问状态属于 Common/WorkspaceAccess，索引维修属于 Modules/Retrieval/IndexRepair，评测位于 Tools/noteagent_evals。HTTP、表名和磁盘数据格式不变。
 
 ## 上层模块命名与归属（2026-10-05）
 
-当前后端按 HttpApi、BusinessModules、ApplicationFlows、TechnicalSupport、AppBootstrap 五个职责入口组织，自有 Python 包和文件采用大驼峰。原 workspace 拆为 NoteStorage/ChangeJournal、TechnicalSupport/NoteAccessControl、BusinessModules/ConversationRecovery。最新目录及旧名映射见 [源码导航](../../src/NoteAgent/README.md)。同一数据库事务可以调用多个模块的 ORM，包归属变化不改变提交边界。
+当前后端按 AppBootstrap、Modules、Common、WebFrontend 组织。各业务模块内部归属 Router、Domain、Service、Mapper 及必要的存储或外部能力；跨模块流程由 Chat、Models、Recovery 各自协调，依赖统一在 AppBootstrap 装配。目录与阅读路径见[源码导航](../../src/NoteAgent/README.md)。目录迁移不改变 HTTP、数据库表和磁盘格式。

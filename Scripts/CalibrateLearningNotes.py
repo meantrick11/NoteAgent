@@ -16,8 +16,8 @@ import logging
 from datetime import datetime, timezone
 
 from NoteAgent.AppBootstrap.AppSettings import Settings, project_root
-from NoteAgent.BusinessModules.ModelSettings.ModelClients import create_judge_model
-from NoteAgent.TechnicalSupport.ExecutionLogging.LoggingSetup import setup_logging
+from NoteAgent.Modules.Models.Provider.ModelClients import create_judge_model
+from NoteAgent.Common.Logging.LoggingSetup import setup_logging
 from NoteAgentEvals.Prompt.Calibration import CANDIDATE_NAMES, calibrate_learning_note
 from NoteAgentEvals.Prompt.Cases import LEARNING_RUBRIC_VERSION
 from NoteAgentEvals.Prompt.Judge import JUDGE_PROMPT_PATH, judge_prompt_sha256

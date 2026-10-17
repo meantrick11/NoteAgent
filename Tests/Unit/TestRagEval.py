@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from NoteAgentEvals.Rag.Dataset import DatasetError, load_corpus, load_queries
-from NoteAgent.BusinessModules.NoteRetrieval.MarkdownSections import heading_path_at, note_headings
+from NoteAgent.Modules.Retrieval.Engine.Chunking.MarkdownSections import heading_path_at, note_headings
 from NoteAgentEvals.Rag.Metrics import Interval, covered_units, evidence_recall, hit_at, reciprocal_rank
 
 
@@ -267,7 +267,7 @@ def test_headings_ignore_hash_lines_inside_code_fences(tmp_path: Path):
 
 
 def test_chunk_spans_locate_every_production_chunk():
-    from NoteAgent.BusinessModules.NoteRetrieval.MarkdownChunker import MarkdownChunker
+    from NoteAgent.Modules.Retrieval.Engine.Chunking.MarkdownChunker import MarkdownChunker
 
     from NoteAgentEvals.Rag.Run import chunk_spans
 

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Literal
 
 from NoteAgentEvals.Rag.Metrics import Interval
-from NoteAgent.BusinessModules.NoteRetrieval.MarkdownSections import Heading, note_headings
+from NoteAgent.Modules.Retrieval.Engine.Chunking.MarkdownSections import Heading, note_headings
 
 _logger = logging.getLogger(__name__)
 

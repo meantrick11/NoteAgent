@@ -12,8 +12,8 @@ from Support.Webapp import build_checkpoint_app
 
 
 async def seed_edit(app):
-    from NoteAgent.BusinessModules.ConversationState.ConversationCheckpoints import checkpoint_id_of
-    from NoteAgent.BusinessModules.NoteStorage.NoteChanges import CREATE, MutationCommand, Origin
+    from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import checkpoint_id_of
+    from NoteAgent.Modules.Notes.Service.NoteChanges import CREATE, MutationCommand, Origin
     conv = await app.service.create_conversation("Editable browser test")
     prepared = await app.service.prepare_turn(conv.id, "original question", "edit-original")
     app.service.finish_run(prepared, checkpoint_id_of(prepared.config), "completed")

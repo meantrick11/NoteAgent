@@ -14,10 +14,10 @@ import logging
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from NoteAgent.AppBootstrap.AppSettings import Settings
-from NoteAgent.TechnicalSupport.ExecutionLogging.LoggingSetup import setup_logging
+from NoteAgent.Common.Logging.LoggingSetup import setup_logging
 from NoteAgentEvals.Rag.AgentRun import rescore_run, run_agent_eval
 
-DEFAULT_PROMPT = Path("src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/system.txt")
+DEFAULT_PROMPT = Path("src/NoteAgent/Modules/Chat/Agent/SystemPrompts/system.txt")
 
 
 def main() -> int:

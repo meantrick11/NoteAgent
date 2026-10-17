@@ -5,24 +5,24 @@ from sqlalchemy import Engine
 
 from NoteAgent.AppBootstrap.RuntimeAssembler import BootstrapAssembler
 from NoteAgent.AppBootstrap.AppSettings import Settings
-from NoteAgent.BusinessModules.ChatAgent.ChatAgent import ChatAgent
-from NoteAgent.BusinessModules.ConversationState.PendingDrafts import DraftStore
-from NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.LegacyConversationStore import ConversationStore
-from NoteAgent.BusinessModules.ConversationState.ConversationCheckpoints import CheckpointRuntime, postgres_uri
-from NoteAgent.BusinessModules.ConversationState.ConversationStateService import ConversationService
-from NoteAgent.TechnicalSupport.DatabaseAccess import create_engine_from_url, create_session_factory
-from NoteAgent.ApplicationFlows.ModelRuntime.ModelRuntime import ModelRuntimeService
-from NoteAgent.BusinessModules.ModelSettings.ModelSettingsStorage import ModelSettingsStore
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
-from NoteAgent.BusinessModules.NoteStorage.NoteChanges import NoteMutationService
-from NoteAgent.BusinessModules.NoteStorage.NoteVersions import NoteVersionStore
-from NoteAgent.TechnicalSupport.NoteAccessControl.NoteAccessGate import WorkspaceGate, is_postgres_url
-from NoteAgent.ApplicationFlows.ConversationRecovery.RecoveryCoordinator import RecoveryCoordinator
-from NoteAgent.BusinessModules.NoteRetrieval.IndexRepair.IndexRepairService import IndexRepairService
-from NoteAgent.BusinessModules.NoteRetrieval.NoteRetrievalService import RetrievalService
-from NoteAgent.BusinessModules.SourceFiles.SourceFileService import SourceFileService
-from NoteAgent.TechnicalSupport.SourceFileStorage.LocalSourceFileStore import LocalSourceFileStore
-from NoteAgent.BusinessModules.SourceFiles.SourceFileWorker import SourceFileWorker
+from NoteAgent.Modules.Chat.Agent.Graph.ChatAgent import ChatAgent
+from NoteAgent.Modules.Conversations.Service.PendingDrafts import DraftStore
+from NoteAgent.Modules.Conversations.Legacy.LegacyConversationStore import ConversationStore
+from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import CheckpointRuntime, postgres_uri
+from NoteAgent.Modules.Conversations.Service.ConversationStateService import ConversationService
+from NoteAgent.Common.Database import create_engine_from_url, create_session_factory
+from NoteAgent.Modules.Models.Service.ModelRuntime import ModelRuntimeService
+from NoteAgent.Modules.Models.Mapper.ModelSettingsStorage import ModelSettingsStore
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
+from NoteAgent.Modules.Notes.Service.NoteChanges import NoteMutationService
+from NoteAgent.Modules.Notes.Storage.Version.NoteVersions import NoteVersionStore
+from NoteAgent.Common.WorkspaceAccess.NoteAccessGate import WorkspaceGate, is_postgres_url
+from NoteAgent.Modules.Recovery.Service.RecoveryCoordinator import RecoveryCoordinator
+from NoteAgent.Modules.Retrieval.Service.IndexRepairService import IndexRepairService
+from NoteAgent.Modules.Retrieval.Service.NoteRetrievalService import RetrievalService
+from NoteAgent.Modules.Sources.Service.SourceFileService import SourceFileService
+from NoteAgent.Modules.Sources.Storage.LocalSourceFileStore import LocalSourceFileStore
+from NoteAgent.Modules.Sources.Service.SourceFileWorker import SourceFileWorker
 from NoteAgent.AppBootstrap.SourceVision import vision_factory
 
 _logger = logging.getLogger(__name__)
@@ -96,7 +96,7 @@ def build_container(settings: Settings) -> AppContainer:
         versions = NoteVersionStore(settings.notes_history_dir, settings.notes_dir)
     except Exception as exc:  # noqa: BLE001 - 启动不因缺少 Git 而失败
         _logger.error("shadow note repository unavailable: %s", exc)
-        from NoteAgent.BusinessModules.NoteStorage.NoteChanges import HistoryUnavailable
+        from NoteAgent.Modules.Notes.Service.NoteChanges import HistoryUnavailable
         raise HistoryUnavailable("shadow history unavailable; refusing unprotected writes") from exc
     mutations = (
         NoteMutationService(

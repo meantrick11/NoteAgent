@@ -55,12 +55,12 @@ uv run python Scripts/EvalNotes.py --cases evals/prompt/v1_acceptance.jsonl --na
 
 ```bash
 python Scripts/EvalNotes.py --ids b06,n05
-python Scripts/EvalNotes.py --name v8 --ids n01,n03 --prompt src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/system.txt
+python Scripts/EvalNotes.py --name v8 --ids n01,n03 --prompt src/NoteAgent/Modules/Chat/Agent/SystemPrompts/system.txt
 ```
 
 脚本在进程内跑 `ChatAgent`（真实 `CHAT_MODEL` + 四工具），不启动 FastAPI，不写用户 `notes/`，不 `commit_review`。无密钥时退出码 1。结果在 [`results/cases/`](results/README.md) 下，文件夹名含题号。不进默认 CI。
 
-仍可把某条 `user` 贴进 `http://127.0.0.1:8000` 做人工对照；改过 [system.txt](../../src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/system.txt) 后先重启进程。
+仍可把某条 `user` 贴进 `http://127.0.0.1:8000` 做人工对照；改过 [system.txt](../../src/NoteAgent/Modules/Chat/Agent/SystemPrompts/system.txt) 后先重启进程。
 
 ## v0.2 学习型校准集
 

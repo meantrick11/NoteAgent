@@ -12,12 +12,12 @@ import uuid
 import pytest
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
-from NoteAgent.BusinessModules.ChatAgent.ChatExecution import execute_turn
-from NoteAgent.BusinessModules.ChatAgent.ChatGraph import build_chat_graph
-from NoteAgent.BusinessModules.ChatAgent.WebReading import WebPageResult
-from NoteAgent.BusinessModules.ConversationState.ConversationModels import ConversationRun
-from NoteAgent.BusinessModules.ConversationState.ConversationCheckpoints import thread_config
-from NoteAgent.TechnicalSupport.DatabaseAccess import Base
+from NoteAgent.Modules.Chat.Agent.Graph.ChatExecution import execute_turn
+from NoteAgent.Modules.Chat.Agent.Graph.ChatGraph import build_chat_graph
+from NoteAgent.Modules.Chat.Agent.Tools.WebReading import WebPageResult
+from NoteAgent.Modules.Conversations.Domain.Po.ConversationModels import ConversationRun
+from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import thread_config
+from NoteAgent.Common.Database import Base
 from Support.Fakes import FakeWebReader
 
 BODY = "网页正文内容ABC"

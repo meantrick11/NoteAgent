@@ -10,12 +10,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from NoteAgent.BusinessModules.ConversationState.ConversationContracts import TurnAlreadyClaimed
-from NoteAgent.BusinessModules.NoteStorage.NoteChanges import WRITE, MutationCommand, Origin
-from NoteAgent.BusinessModules.ConversationRecovery.RecoveryModels import RecoveryJob
-from NoteAgent.HttpApi.HttpErrors import recovery_error_handler
-from NoteAgent.HttpApi.ConversationRecoveryApi.ConversationRecoveryRoutes import router as recovery_router
-from NoteAgent.ApplicationFlows.ConversationRecovery.RecoveryCoordinator import RecoveryError
+from NoteAgent.Modules.Conversations.Domain.Vo.ConversationContracts import TurnAlreadyClaimed
+from NoteAgent.Modules.Notes.Service.NoteChanges import WRITE, MutationCommand, Origin
+from NoteAgent.Modules.Recovery.Domain.Po.RecoveryModels import RecoveryJob
+from NoteAgent.Common.Http.HttpErrors import recovery_error_handler
+from NoteAgent.Modules.Recovery.Router.ConversationRecoveryRoutes import router as recovery_router
+from NoteAgent.Modules.Recovery.Service.RecoveryCoordinator import RecoveryError
 from Support.Fakes import FailInjector
 
 from TestRecoveryCoordinator import _Env
@@ -179,12 +179,12 @@ async def test_wrong_conversation_recovery_has_no_side_effect(tmp_path):
 async def test_formal_message_can_edit_and_prepared_turn_finishes(tmp_path):
     import json
     from Support.Webapp import build_checkpoint_app
-    from NoteAgent.ApplicationFlows.ConversationRecovery.RecoveryCoordinator import RecoveryCoordinator
-    from NoteAgent.TechnicalSupport.NoteAccessControl.NoteAccessGate import WorkspaceGate
-    from NoteAgent.BusinessModules.NoteStorage.NoteVersions import NoteVersionStore
-    from NoteAgent.BusinessModules.NoteStorage.NoteChanges import NoteMutationService
-    from NoteAgent.BusinessModules.NoteRetrieval.IndexRepair.IndexRepairService import IndexRepairService
-    from NoteAgent.TechnicalSupport.DatabaseAccess import create_session_factory
+    from NoteAgent.Modules.Recovery.Service.RecoveryCoordinator import RecoveryCoordinator
+    from NoteAgent.Common.WorkspaceAccess.NoteAccessGate import WorkspaceGate
+    from NoteAgent.Modules.Notes.Storage.Version.NoteVersions import NoteVersionStore
+    from NoteAgent.Modules.Notes.Service.NoteChanges import NoteMutationService
+    from NoteAgent.Modules.Retrieval.Service.IndexRepairService import IndexRepairService
+    from NoteAgent.Common.Database import create_session_factory
     app = build_checkpoint_app(tmp_path / 'app', reply_batches=[['first', 'recomputed']])
     factory = create_session_factory(app.container.engine)
     gate = WorkspaceGate(factory); gate.ensure_row()

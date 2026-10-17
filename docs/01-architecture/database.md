@@ -18,7 +18,7 @@
 
 应用表由 Alembic 管理，saver 的表由 runtime.setup 生命周期管理。事务边界见 [恢复实现](../03-modules/recovery/recovery.md)；不能把 saver 写入与应用事务当作自动原子。旧 messages、摘要/草稿列只用于 legacy 数据读取或导入。
 
-源码入口见 [源码导航](../../src/NoteAgent/README.md) 和 [数据库基础设施](../../src/NoteAgent/TechnicalSupport/DatabaseAccess/README.md)。
+源码入口见 [源码导航](../../src/NoteAgent/README.md) 和 [数据库基础设施](../../src/NoteAgent/Common/Database/README.md)。
 
 ## 旧数据字典（迁移参考）
 
@@ -35,9 +35,9 @@ PostgreSQL 存会话、消息和待审草稿 JSON。笔记正文在 `notes/`；�
 
 | 路径 | 职责 |
 |------|------|
-| [BusinessModules/ConversationState/ConversationModels.py](../../src/NoteAgent/BusinessModules/ConversationState/ConversationModels.py) | ORM：`Base`、`Conversation`、`Message` |
-| [TechnicalSupport/DatabaseAccess/DatabaseEngine.py](../../src/NoteAgent/TechnicalSupport/DatabaseAccess/DatabaseEngine.py) | `create_engine_from_url`、`create_session_factory` |
-| [BusinessModules/ConversationState/LegacyConversationCompatibility/LegacyConversationStore.py](../../src/NoteAgent/BusinessModules/ConversationState/LegacyConversationCompatibility/LegacyConversationStore.py) | 旧消息表兼容与侧栏元数据 `ConversationStore` |
+| [Modules/Conversations/Domain/Po/ConversationModels.py](../../src/NoteAgent/Modules/Conversations/Domain/Po/ConversationModels.py) | ORM：`Base`、`Conversation`、`Message` |
+| [Common/Database/DatabaseEngine.py](../../src/NoteAgent/Common/Database/DatabaseEngine.py) | `create_engine_from_url`、`create_session_factory` |
+| [Modules/Conversations/Legacy/LegacyConversationStore.py](../../src/NoteAgent/Modules/Conversations/Legacy/LegacyConversationStore.py) | 旧消息表兼容与侧栏元数据 `ConversationStore` |
 | [`alembic/versions/`](../../alembic/versions) | 迁移。现行 head：`e7b1c2f4a903` |
 | [AppBootstrap/HttpApp.py](../../src/NoteAgent/AppBootstrap/HttpApp.py) | 无 `DATABASE_URL` 则 `build_container` 失败；shutdown `engine.dispose` |
 

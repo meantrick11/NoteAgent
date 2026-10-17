@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from NoteAgent.TechnicalSupport.DatabaseAccess import create_engine_from_url, create_session_factory
-from NoteAgent.TechnicalSupport.NoteAccessControl.NoteAccessGate import WorkspaceBusy, WorkspaceGate
+from NoteAgent.Common.Database import create_engine_from_url, create_session_factory
+from NoteAgent.Common.WorkspaceAccess.NoteAccessGate import WorkspaceBusy, WorkspaceGate
 
 WORKER = Path(__file__).resolve().parents[1] / "Support" / "RecoveryWorker.py"
 

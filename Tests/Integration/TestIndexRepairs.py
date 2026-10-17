@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from NoteAgent.TechnicalSupport.DatabaseAccess import Base, create_engine_from_url, create_session_factory, load_all_models
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
-from NoteAgent.BusinessModules.NoteRetrieval.MarkdownChunker import MarkdownChunker
-from NoteAgent.BusinessModules.NoteRetrieval.IndexRepair.IndexRepairService import FAILED, READY, IndexRepairService
-from NoteAgent.BusinessModules.NoteRetrieval.NoteRetrievalService import RetrievalService
-from NoteAgent.BusinessModules.NoteRetrieval.ChromaVectorStore import ChromaVectorStore
+from NoteAgent.Common.Database import Base, create_engine_from_url, create_session_factory, load_all_models
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
+from NoteAgent.Modules.Retrieval.Engine.Chunking.MarkdownChunker import MarkdownChunker
+from NoteAgent.Modules.Retrieval.Service.IndexRepairService import FAILED, READY, IndexRepairService
+from NoteAgent.Modules.Retrieval.Service.NoteRetrievalService import RetrievalService
+from NoteAgent.Modules.Retrieval.Engine.VectorStore.ChromaVectorStore import ChromaVectorStore
 
 
 class FakeEmbedder:
@@ -145,8 +145,8 @@ def test_reconcile_retries_failed_repairs_after_restart(env, monkeypatch):
     assert restarted.is_synced("A.md", retrieval)
 
 def test_formal_tool_filters_failed_repairs(env):
-    from NoteAgent.BusinessModules.ConversationState.PendingDrafts import DraftStore
-    from NoteAgent.BusinessModules.ChatAgent.ChatTools import build_chat_tools
+    from NoteAgent.Modules.Conversations.Service.PendingDrafts import DraftStore
+    from NoteAgent.Modules.Chat.Agent.Tools.ChatTools import build_chat_tools
     notes, retrieval, repairs, factory = env
     notes.create('A.md', 'A'); notes.write('A.md', 'old content', append=True)
     repairs.repair('A.md', retrieval, operation_id='initial')

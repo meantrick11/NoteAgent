@@ -64,7 +64,7 @@ Library 页：左树、右编辑器 + Markdown 预览。保存、新建、移动
 | `read_webpage` | 读取用户给定的单个 URL，返回正文与获取状态（只读；生产装配启用） |
 | `propose_note` | 持久化会话待审草稿，**不修改正式笔记** |
 
-参数、返回值和审批动作：[聊天工具](docs/02-api/chat-tools.md)。系统提示词在 [`src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/system.txt`](src/NoteAgent/BusinessModules/ChatAgent/SystemPrompts/system.txt)。
+参数、返回值和审批动作：[聊天工具](docs/02-api/chat-tools.md)。系统提示词在 [`src/NoteAgent/Modules/Chat/Agent/SystemPrompts/system.txt`](src/NoteAgent/Modules/Chat/Agent/SystemPrompts/system.txt)。
 
 网页笔记的 `## 来源` 栏随草稿一起预览，审批通过后才写入正式笔记。首版只读取用户提供的 URL，不按主题搜索网页；V2.4 已合入 `main`，仍需 PostgreSQL 集成补验和真实模型网页笔记成稿验收。
 
@@ -128,7 +128,7 @@ npm --prefix frontend run build
 uv run python main.py
 ```
 
-界面默认走 Vue，产物在 `src/NoteAgent/HttpApi/WebFrontend/dist/`；**没构建过时页面返回 503 并给出构建提示**。
+界面默认走 Vue，产物在 `src/NoteAgent/WebFrontend/dist/`；**没构建过时页面返回 503 并给出构建提示**。
 想先用旧页面：设 `FRONTEND_MODE=legacy`。前端开发（Vite 热更新、类型检查、单测与 e2e）：
 [frontend/README.md](frontend/README.md)。
 
@@ -201,22 +201,24 @@ npm --prefix frontend run test:e2e
 
 ```text
 NoteAgent/
-├─ main.py                    后端启动
+├─ main.py                    后端入口
 ├─ src/NoteAgent/
-│  ├─ HttpApi/                HTTP 接口
-│  ├─ BusinessModules/        聊天、会话、笔记、检索、模型设置与恢复记录
-│  ├─ ApplicationFlows/       草稿审批、模型运行、会话恢复流程
-│  ├─ TechnicalSupport/       数据库、日志、共享笔记访问控制
-│  └─ AppBootstrap/           配置、装配、启动与关闭
-├─ frontend/                  Vue 前端源码
-├─ alembic/                   数据库迁移
-├─ Tests/                     后端测试
-├─ Scripts/                   命令行入口
-├─ Tools/NoteAgentEvals/      评测实现
-├─ evals/                     评测数据、报告和历史提示词
-├─ docs/                      架构、模块、运维和历史记录
-├─ notes/                     正式 Markdown 笔记
-└─ var/                       日志、缓存、配置和笔记版本
+│  ├─ AppBootstrap/           配置、装配、生命周期
+│  ├─ Modules/                按业务能力组织的后端模块
+│  ├─ Common/                 数据库、日志、共享访问与 HTTP 公共能力
+│  └─ WebFrontend/            已构建页面托管
+├─ frontend/                  Vue 源码、测试和构建配置
+├─ Tests/                     Python 单元与集成测试
+├─ alembic/                   全应用数据库迁移链
+├─ Scripts/                   可直接运行的维护脚本
+├─ Tools/                     可复用内部工具
+├─ evals/                     评测数据、准则与报告
+├─ docs/                      当前实现文档与执行记录
+├─ docker/                    容器入口脚本
+├─ notes/                     本地正式笔记，不提交正文
+├─ uploads/                   本地来源文件，不提交
+├─ chromadb_persist/          本地向量索引，不提交
+└─ var/                       运行日志、缓存、配置和笔记版本
 ```
 
-职责、目录及旧名映射见 [源码导航](src/NoteAgent/README.md)。自有 Python 包和文件统一使用大驼峰；框架特殊文件保留固定名称。类和函数名沿用现有接口。Vue 构建输出在 src/NoteAgent/HttpApi/WebFrontend/dist。
+职责、目录及旧名映射见 [源码导航](src/NoteAgent/README.md)。自有 Python 包和文件统一使用大驼峰；框架特殊文件保留固定名称。类和函数名沿用现有接口。Vue 构建输出在 src/NoteAgent/WebFrontend/dist。

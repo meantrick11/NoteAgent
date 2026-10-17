@@ -10,13 +10,13 @@ from pydantic import SecretStr
 from NoteAgent.AppBootstrap.ContainerAssembly import AppContainer
 from NoteAgent.AppBootstrap.HttpApp import create_app
 from NoteAgent.AppBootstrap.AppSettings import Settings
-from NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.LegacyConversationStore import ConversationStore, start_turn
-from NoteAgent.TechnicalSupport.DatabaseAccess import Base, create_engine_from_url, create_session_factory
-from NoteAgent.BusinessModules.ModelSettings.ModelCatalog import repo_dir_name
-from NoteAgent.BusinessModules.ModelSettings.ModelProbes import ChatProbeResult
-from NoteAgent.ApplicationFlows.ModelRuntime.ModelRuntime import ModelRuntimeService, embedding_collection_name
-from NoteAgent.BusinessModules.ModelSettings.ModelSettingsStorage import ModelSettingsStore
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
+from NoteAgent.Modules.Conversations.Legacy.LegacyConversationStore import ConversationStore, start_turn
+from NoteAgent.Common.Database import Base, create_engine_from_url, create_session_factory
+from NoteAgent.Modules.Models.Domain.Vo.ModelCatalog import repo_dir_name
+from NoteAgent.Modules.Models.Provider.ModelProbes import ChatProbeResult
+from NoteAgent.Modules.Models.Service.ModelRuntime import ModelRuntimeService, embedding_collection_name
+from NoteAgent.Modules.Models.Mapper.ModelSettingsStorage import ModelSettingsStore
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
 
 MINILM = "sentence-transformers/all-MiniLM-L6-v2"
 E5 = "intfloat/multilingual-e5-small"
@@ -492,7 +492,7 @@ def test_connection_test_reports_capabilities_without_switching(tmp_path):
 
 def test_connection_test_maps_a_provider_failure_to_502(tmp_path):
     """A refused endpoint is a 502 with a readable reason, not a raw exception."""
-    from NoteAgent.BusinessModules.ModelSettings.ModelErrors import ModelProbeFailedError
+    from NoteAgent.Modules.Models.Domain.Vo.ModelErrors import ModelProbeFailedError
 
     client, _, _, probe, _ = build_client(tmp_path)
     probe.error = ModelProbeFailedError("模型服务认证失败，请检查 API Key")
@@ -524,7 +524,7 @@ def test_activation_switches_only_after_a_successful_probe(tmp_path):
 def test_activation_failure_leaves_the_active_profile_alone(tmp_path):
     """A probe that refuses the candidate must not move the pointer."""
     client, _, _, probe, _ = build_client(tmp_path)
-    from NoteAgent.BusinessModules.ModelSettings.ModelErrors import ProtocolUnsupportedError
+    from NoteAgent.Modules.Models.Domain.Vo.ModelErrors import ProtocolUnsupportedError
 
     probe.error = ProtocolUnsupportedError("模型未通过验证：不支持 工具调用")
 

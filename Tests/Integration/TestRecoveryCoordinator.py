@@ -8,16 +8,16 @@ import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy import select
 
-from NoteAgent.BusinessModules.ConversationState.ConversationCheckpoints import CheckpointRuntime, checkpoint_id_of
-from NoteAgent.BusinessModules.ConversationState.ConversationStateService import ConversationService
-from NoteAgent.TechnicalSupport.DatabaseAccess import Base, create_engine_from_url, create_session_factory, load_all_models
-from NoteAgent.BusinessModules.NoteStorage.NoteChanges import CREATE, WRITE, MutationCommand, NoteMutationService, Origin
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
-from NoteAgent.BusinessModules.NoteStorage.NoteVersions import NoteVersionStore
-from NoteAgent.TechnicalSupport.NoteAccessControl.NoteAccessGate import WorkspaceBusy, WorkspaceGate
-from NoteAgent.BusinessModules.ConversationRecovery.RecoveryModels import RecoveryJob
-from NoteAgent.ApplicationFlows.ConversationRecovery.RecoveryCoordinator import ConfirmationRequired, PlanConflict, RecoveryCoordinator
-from NoteAgent.BusinessModules.NoteRetrieval.IndexRepair.IndexRepairService import IndexRepairService
+from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import CheckpointRuntime, checkpoint_id_of
+from NoteAgent.Modules.Conversations.Service.ConversationStateService import ConversationService
+from NoteAgent.Common.Database import Base, create_engine_from_url, create_session_factory, load_all_models
+from NoteAgent.Modules.Notes.Service.NoteChanges import CREATE, WRITE, MutationCommand, NoteMutationService, Origin
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
+from NoteAgent.Modules.Notes.Storage.Version.NoteVersions import NoteVersionStore
+from NoteAgent.Common.WorkspaceAccess.NoteAccessGate import WorkspaceBusy, WorkspaceGate
+from NoteAgent.Modules.Recovery.Domain.Po.RecoveryModels import RecoveryJob
+from NoteAgent.Modules.Recovery.Service.RecoveryCoordinator import ConfirmationRequired, PlanConflict, RecoveryCoordinator
+from NoteAgent.Modules.Retrieval.Service.IndexRepairService import IndexRepairService
 from Support.Fakes import FailInjector
 
 
@@ -273,7 +273,7 @@ async def test_recovery_preserves_boundary_draft_and_compacted_records(tmp_path)
 
 async def test_accepted_prepared_recovery_survives_expired_lease(tmp_path):
     from datetime import datetime, timedelta, timezone
-    from NoteAgent.BusinessModules.ConversationState.ConversationModels import ConversationRun
+    from NoteAgent.Modules.Conversations.Domain.Po.ConversationModels import ConversationRun
     env = _Env(tmp_path)
     c, turn = await env.turn()
     pid, _ = await env.coordinator.preview(c.id, turn.user_message_id, 'edited')
@@ -300,7 +300,7 @@ async def test_new_untracked_attachment_after_preview_is_preserved(tmp_path):
 
 
 async def test_folder_rename_restores_notes_and_attachments(tmp_path):
-    from NoteAgent.BusinessModules.NoteStorage.NoteChanges import FOLDER_RENAME
+    from NoteAgent.Modules.Notes.Service.NoteChanges import FOLDER_RENAME
     env = _Env(tmp_path)
     env.notes.create('Old/A.md', 'A')
     attachment = env.notes.root / 'Old/attachment.txt'

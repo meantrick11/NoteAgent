@@ -12,17 +12,17 @@ from dataclasses import replace
 from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy import Engine
 
-from NoteAgent.BusinessModules.ChatAgent.ConversationContext.ContextBudget import ContextBudget
-from NoteAgent.BusinessModules.ConversationState.PendingDrafts import DraftStore
-from NoteAgent.BusinessModules.ChatAgent.ChatGraph import build_chat_graph, stream_graph
-from NoteAgent.BusinessModules.ChatAgent.ChatExecution import execute_turn
-from NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.LegacyConversationStore import ConversationStore
-from NoteAgent.BusinessModules.ChatAgent.ChatNodes import GraphRuntime
-from NoteAgent.BusinessModules.ChatAgent.ChatTools import build_chat_tools
-from NoteAgent.BusinessModules.ConversationState.ConversationCheckpoints import CheckpointRuntime, checkpoint_id_of, thread_config
-from NoteAgent.BusinessModules.ConversationState.ConversationRecords import ConversationRecord, initial_state, ui_message_from_record, MessageRecord
-from NoteAgent.BusinessModules.ConversationState.ConversationStateService import ConversationService
-from NoteAgent.TechnicalSupport.DatabaseAccess import Base, create_engine_from_url, create_session_factory, load_all_models
+from NoteAgent.Modules.Chat.Agent.Context.ContextBudget import ContextBudget
+from NoteAgent.Modules.Conversations.Service.PendingDrafts import DraftStore
+from NoteAgent.Modules.Chat.Agent.Graph.ChatGraph import build_chat_graph, stream_graph
+from NoteAgent.Modules.Chat.Agent.Graph.ChatExecution import execute_turn
+from NoteAgent.Modules.Conversations.Legacy.LegacyConversationStore import ConversationStore
+from NoteAgent.Modules.Chat.Agent.Graph.ChatNodes import GraphRuntime
+from NoteAgent.Modules.Chat.Agent.Tools.ChatTools import build_chat_tools
+from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import CheckpointRuntime, checkpoint_id_of, thread_config
+from NoteAgent.Modules.Conversations.Domain.Vo.ConversationRecords import ConversationRecord, initial_state, ui_message_from_record, MessageRecord
+from NoteAgent.Modules.Conversations.Service.ConversationStateService import ConversationService
+from NoteAgent.Common.Database import Base, create_engine_from_url, create_session_factory, load_all_models
 from Support.Fakes import FakeChatModel, FakeRetrieval
 
 

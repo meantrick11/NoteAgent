@@ -6,7 +6,7 @@ import json
 
 from langchain_core.messages import AIMessage
 
-from NoteAgent.BusinessModules.ChatAgent.WebReading import WebPageResult
+from NoteAgent.Modules.Chat.Agent.Tools.WebReading import WebPageResult
 from Support.Fakes import FakeWebReader
 from Support.Webapp import build_checkpoint_app
 
@@ -160,19 +160,19 @@ def test_busy_approval_has_no_file_or_draft_side_effect(tmp_path):
     assert app.service.get_active_run(conv_id)["run_id"] == prepared.run_id
 
 async def test_optional_revision_does_not_reuse_different_approvals(tmp_path):
-    from NoteAgent.TechnicalSupport.DatabaseAccess import create_session_factory
-    from NoteAgent.TechnicalSupport.NoteAccessControl.NoteAccessGate import WorkspaceGate
-    from NoteAgent.BusinessModules.NoteStorage.NoteVersions import NoteVersionStore
-    from NoteAgent.BusinessModules.NoteStorage.NoteChanges import NoteMutationService
+    from NoteAgent.Common.Database import create_session_factory
+    from NoteAgent.Common.WorkspaceAccess.NoteAccessGate import WorkspaceGate
+    from NoteAgent.Modules.Notes.Storage.Version.NoteVersions import NoteVersionStore
+    from NoteAgent.Modules.Notes.Service.NoteChanges import NoteMutationService
     app = _app_with_draft(tmp_path / 'app')
     cid = _proposal_draft(app)
-    from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
+    from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
     app.notes = FileNoteRepository(tmp_path / 'notes')
     app.container.notes = app.notes
     factory = create_session_factory(app.container.engine)
     gate = WorkspaceGate(factory); gate.ensure_row()
     mutations = NoteMutationService(app.notes, NoteVersionStore(tmp_path / 'history', app.notes.root), gate, factory)
-    from NoteAgent.ApplicationFlows.DraftApproval.DraftApprovalWorkflow import DraftApprovalWorkflow
+    from NoteAgent.Modules.Chat.Service.DraftApprovalWorkflow import DraftApprovalWorkflow
     app.container.chat_agent._approvals = DraftApprovalWorkflow(
         service=app.service, notes=app.notes, legacy_drafts=app.drafts,
         mutations=mutations,

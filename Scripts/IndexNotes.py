@@ -19,14 +19,14 @@ import logging
 import sys
 
 from NoteAgent.AppBootstrap.AppSettings import Settings
-from NoteAgent.BusinessModules.ModelSettings import ModelCatalog as catalog
-from NoteAgent.ApplicationFlows.ModelRuntime.ModelRuntime import embedding_collection_name
-from NoteAgent.BusinessModules.ModelSettings.ModelSettingsStorage import ModelSettingsCorruptError, ModelSettingsStore
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
-from NoteAgent.BusinessModules.NoteRetrieval.MarkdownChunker import MarkdownChunker
-from NoteAgent.BusinessModules.NoteRetrieval.TextEmbedder import build_embedder
-from NoteAgent.BusinessModules.NoteRetrieval.NoteRetrievalService import RetrievalService, index_config_fingerprint, index_fingerprint_for_model, index_targets
-from NoteAgent.BusinessModules.NoteRetrieval.ChromaVectorStore import ChromaVectorStore
+from NoteAgent.Modules.Models.Domain.Vo import ModelCatalog as catalog
+from NoteAgent.Modules.Models.Service.ModelRuntime import embedding_collection_name
+from NoteAgent.Modules.Models.Mapper.ModelSettingsStorage import ModelSettingsCorruptError, ModelSettingsStore
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
+from NoteAgent.Modules.Retrieval.Engine.Chunking.MarkdownChunker import MarkdownChunker
+from NoteAgent.Modules.Retrieval.Engine.Embedding.TextEmbedder import build_embedder
+from NoteAgent.Modules.Retrieval.Service.NoteRetrievalService import RetrievalService, index_config_fingerprint, index_fingerprint_for_model, index_targets
+from NoteAgent.Modules.Retrieval.Engine.VectorStore.ChromaVectorStore import ChromaVectorStore
 
 _logger = logging.getLogger(__name__)
 
@@ -145,7 +145,7 @@ def _dry_run(
     Opens the collection without creating one: a dry run must not leave an empty
     collection behind that would then look like a valid (but empty) index.
     """
-    from NoteAgent.BusinessModules.NoteRetrieval.ChromaVectorStore import CollectionMissingError, LEGACY_FINGERPRINT
+    from NoteAgent.Modules.Retrieval.Engine.VectorStore.ChromaVectorStore import CollectionMissingError, LEGACY_FINGERPRINT
 
     chunker = MarkdownChunker(strategy=settings.chunk_strategy)
     try:

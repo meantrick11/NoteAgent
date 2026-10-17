@@ -21,14 +21,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from NoteAgent.AppBootstrap.AppSettings import Settings, project_root
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
 from NoteAgentEvals.Rag.Dataset import Corpus, QueryCase, load_corpus, load_queries
-from NoteAgent.BusinessModules.NoteRetrieval.MarkdownSections import heading_path_at
+from NoteAgent.Modules.Retrieval.Engine.Chunking.MarkdownSections import heading_path_at
 from NoteAgentEvals.Rag.Metrics import Interval, covered_units, evidence_recall, hit_at, reciprocal_rank
-from NoteAgent.BusinessModules.NoteRetrieval.MarkdownChunker import MarkdownChunker
-from NoteAgent.BusinessModules.NoteRetrieval.TextEmbedder import SentenceTransformerEmbedder, build_embedder
-from NoteAgent.BusinessModules.NoteRetrieval.NoteRetrievalService import RetrievalService
-from NoteAgent.BusinessModules.NoteRetrieval.ChromaVectorStore import ChromaVectorStore
+from NoteAgent.Modules.Retrieval.Engine.Chunking.MarkdownChunker import MarkdownChunker
+from NoteAgent.Modules.Retrieval.Engine.Embedding.TextEmbedder import SentenceTransformerEmbedder, build_embedder
+from NoteAgent.Modules.Retrieval.Service.NoteRetrievalService import RetrievalService
+from NoteAgent.Modules.Retrieval.Engine.VectorStore.ChromaVectorStore import ChromaVectorStore
 
 _logger = logging.getLogger(__name__)
 

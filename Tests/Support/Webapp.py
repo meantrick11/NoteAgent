@@ -17,18 +17,18 @@ from fastapi.testclient import TestClient
 from NoteAgent.AppBootstrap.ContainerAssembly import AppContainer
 from NoteAgent.AppBootstrap.HttpApp import create_app
 from NoteAgent.AppBootstrap.AppSettings import Settings
-from NoteAgent.BusinessModules.ConversationState.PendingDrafts import DraftStore
-from NoteAgent.BusinessModules.ConversationState.LegacyConversationCompatibility.LegacyConversationStore import ConversationStore
+from NoteAgent.Modules.Conversations.Service.PendingDrafts import DraftStore
+from NoteAgent.Modules.Conversations.Legacy.LegacyConversationStore import ConversationStore
 from NoteAgent.AppBootstrap.ChatAgentFactory import build_graph_agent, local_checkpoints
-from NoteAgent.BusinessModules.ChatAgent.ChatTools import build_chat_tools
-from NoteAgent.BusinessModules.ConversationState.ConversationCheckpoints import CheckpointRuntime
-from NoteAgent.BusinessModules.ConversationState.ConversationStateService import ConversationService
-from NoteAgent.TechnicalSupport.DatabaseAccess import Base, create_engine_from_url, create_session_factory
-from NoteAgent.BusinessModules.ModelSettings.ModelContracts import ChatProfile
-from NoteAgent.BusinessModules.ModelSettings.ModelProbes import ChatProbeResult
-from NoteAgent.ApplicationFlows.ModelRuntime.ModelRuntime import ModelRuntimeService
-from NoteAgent.BusinessModules.ModelSettings.ModelSettingsStorage import ModelSettingsStore
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
+from NoteAgent.Modules.Chat.Agent.Tools.ChatTools import build_chat_tools
+from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import CheckpointRuntime
+from NoteAgent.Modules.Conversations.Service.ConversationStateService import ConversationService
+from NoteAgent.Common.Database import Base, create_engine_from_url, create_session_factory
+from NoteAgent.Modules.Models.Domain.Vo.ModelContracts import ChatProfile
+from NoteAgent.Modules.Models.Provider.ModelProbes import ChatProbeResult
+from NoteAgent.Modules.Models.Service.ModelRuntime import ModelRuntimeService
+from NoteAgent.Modules.Models.Mapper.ModelSettingsStorage import ModelSettingsStore
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
 from Support.Fakes import FakeChatModel, FakeRetrieval
 from Support.Harness import TEST_BUDGET
 

@@ -1,3 +1,3 @@
-# 后端源码
+# 源码
 
-Python 应用包位于 [noteagent](NoteAgent/README.md)。包和文件采用大驼峰，五个入口是 HttpApi、BusinessModules、ApplicationFlows、TechnicalSupport、AppBootstrap。完整目录、旧名映射和阅读顺序见源码导航。
+Python 应用包位于 [NoteAgent/](NoteAgent/README.md)。后端入口分为 `AppBootstrap/`、`Modules/`、`Common/` 和 `WebFrontend/`；各业务模块在自己的目录内组织路由、DTO、业务流程和持久化实现。

@@ -6,11 +6,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from NoteAgent.BusinessModules.SourceFiles.SourceFileService import SourceFileService
-from NoteAgent.BusinessModules.SourceFiles.SourceFileWorker import SourceFileWorker
-from NoteAgent.HttpApi.SourceFileApi.SourceFileRoutes import router
-from NoteAgent.TechnicalSupport.DatabaseAccess.OrmBase import Base
-from NoteAgent.TechnicalSupport.SourceFileStorage.LocalSourceFileStore import LocalSourceFileStore
+from NoteAgent.Modules.Sources.Service.SourceFileService import SourceFileService
+from NoteAgent.Modules.Sources.Service.SourceFileWorker import SourceFileWorker
+from NoteAgent.Modules.Sources.Router.SourceFileRoutes import router
+from NoteAgent.Common.Database.OrmBase import Base
+from NoteAgent.Modules.Sources.Storage.LocalSourceFileStore import LocalSourceFileStore
 
 
 def test_upload_parse_preview_and_delete(tmp_path):

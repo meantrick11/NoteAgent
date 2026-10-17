@@ -3,18 +3,18 @@ from dataclasses import replace
 from pathlib import Path
 
 from NoteAgent.AppBootstrap.ChatAgentFactory import build_graph_agent
-from NoteAgent.BusinessModules.ChatAgent.ChatTools import build_chat_tools
-from NoteAgent.BusinessModules.ConversationState.ConversationCheckpoints import CheckpointRuntime
-from NoteAgent.TechnicalSupport.DatabaseAccess import create_session_factory
-from NoteAgent.BusinessModules.NoteStorage.MarkdownRepository import FileNoteRepository
-from NoteAgent.BusinessModules.NoteStorage.NoteChanges import NoteMutationService
-from NoteAgent.BusinessModules.NoteStorage.NoteVersions import NoteVersionStore
-from NoteAgent.TechnicalSupport.NoteAccessControl.NoteAccessGate import WorkspaceGate
-from NoteAgent.ApplicationFlows.ConversationRecovery.RecoveryCoordinator import RecoveryCoordinator
-from NoteAgent.BusinessModules.NoteRetrieval.IndexRepair.IndexRepairService import IndexRepairService
-from NoteAgent.BusinessModules.NoteRetrieval.NoteRetrievalService import RetrievalService
-from NoteAgent.BusinessModules.NoteRetrieval.MarkdownChunker import MarkdownChunker
-from NoteAgent.BusinessModules.NoteRetrieval.ChromaVectorStore import ChromaVectorStore
+from NoteAgent.Modules.Chat.Agent.Tools.ChatTools import build_chat_tools
+from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import CheckpointRuntime
+from NoteAgent.Common.Database import create_session_factory
+from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
+from NoteAgent.Modules.Notes.Service.NoteChanges import NoteMutationService
+from NoteAgent.Modules.Notes.Storage.Version.NoteVersions import NoteVersionStore
+from NoteAgent.Common.WorkspaceAccess.NoteAccessGate import WorkspaceGate
+from NoteAgent.Modules.Recovery.Service.RecoveryCoordinator import RecoveryCoordinator
+from NoteAgent.Modules.Retrieval.Service.IndexRepairService import IndexRepairService
+from NoteAgent.Modules.Retrieval.Service.NoteRetrievalService import RetrievalService
+from NoteAgent.Modules.Retrieval.Engine.Chunking.MarkdownChunker import MarkdownChunker
+from NoteAgent.Modules.Retrieval.Engine.VectorStore.ChromaVectorStore import ChromaVectorStore
 from Support.Fakes import FakeChatModel, FakeEmbedder
 from Support.Harness import TEST_BUDGET
 from Support.Webapp import build_checkpoint_app

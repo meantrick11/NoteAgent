@@ -12,8 +12,8 @@ import time
 import psycopg
 import pytest
 
-from NoteAgent.TechnicalSupport.DatabaseAccess import Base, create_engine_from_url, create_session_factory, load_all_models
-from NoteAgent.TechnicalSupport.NoteAccessControl.NoteAccessGate import LOCK_KEY, WorkspaceBusy, WorkspaceGate
+from NoteAgent.Common.Database import Base, create_engine_from_url, create_session_factory, load_all_models
+from NoteAgent.Common.WorkspaceAccess.NoteAccessGate import LOCK_KEY, WorkspaceBusy, WorkspaceGate
 
 
 def _gate(pg_target):

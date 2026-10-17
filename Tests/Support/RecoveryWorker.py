@@ -12,9 +12,9 @@ if sys.platform == "win32":
 
 from sqlalchemy import select
 from Support.DurableApp import build_durable_app
-from NoteAgent.BusinessModules.ConversationState.ConversationCheckpoints import checkpoint_id_of
-from NoteAgent.BusinessModules.NoteStorage.NoteChanges import CREATE, MutationCommand, Origin
-from NoteAgent.BusinessModules.ConversationRecovery.RecoveryModels import RecoveryJob
+from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import checkpoint_id_of
+from NoteAgent.Modules.Notes.Service.NoteChanges import CREATE, MutationCommand, Origin
+from NoteAgent.Modules.Recovery.Domain.Po.RecoveryModels import RecoveryJob
 
 
 async def run(config, mode):

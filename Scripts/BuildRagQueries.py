@@ -21,7 +21,7 @@ import logging
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from NoteAgentEvals.Rag.Dataset import DatasetError, load_corpus
-from NoteAgent.BusinessModules.NoteRetrieval.MarkdownSections import heading_path_at
+from NoteAgent.Modules.Retrieval.Engine.Chunking.MarkdownSections import heading_path_at
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 _logger = logging.getLogger("build_rag_queries")

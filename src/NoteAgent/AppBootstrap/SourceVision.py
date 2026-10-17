@@ -4,10 +4,10 @@ import base64
 from langchain_core.messages import HumanMessage
 
 from NoteAgent.AppBootstrap.RuntimeAssembler import api_key_for_profile
-from NoteAgent.BusinessModules.ModelSettings.ModelClients import create_chat_model_from_config
-from NoteAgent.BusinessModules.ModelSettings.ModelSettingsStorage import ModelSettingsStore
-from NoteAgent.BusinessModules.SourceFiles.SourceFileModels import SourceFile
-from NoteAgent.BusinessModules.SourceFiles.SourceFileParsers import ParseError, Vision
+from NoteAgent.Modules.Models.Provider.ModelClients import create_chat_model_from_config
+from NoteAgent.Modules.Models.Mapper.ModelSettingsStorage import ModelSettingsStore
+from NoteAgent.Modules.Sources.Domain.Po.SourceFileModels import SourceFile
+from NoteAgent.Modules.Sources.Parser.SourceFileParsers import ParseError, Vision
 
 
 def vision_factory(source: SourceFile, settings_store: ModelSettingsStore, app_settings) -> Vision | None:
