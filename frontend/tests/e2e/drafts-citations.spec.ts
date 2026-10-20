@@ -17,9 +17,16 @@ const PENDING_DRAFT = {
 }
 
 const MODEL_SETTINGS = {
-  revision: 7,
-  chat_profiles: [],
-  active_chat: null,
+  embedding_revision: 7,
+  models: [],
+  active_model: {
+    id: 'env-default', label: '环境默认', provider: 'deepseek', model: 'm',
+    base_url: '', auth_mode: 'api_key', has_api_key: true, timeout_s: 60,
+    max_retries: 1, context_window: 32768, temperature: null, max_tokens: null,
+    is_active: true, revision: 1,
+    capabilities: [{ capability: 'text', status: 'enabled', verification: 'verified',
+      source: 'probe', checked_at: null, probe_version: 1, evidence: null }],
+  },
   active_embedding: null,
   retrieval_available: true,
   retrieval_problem: null,

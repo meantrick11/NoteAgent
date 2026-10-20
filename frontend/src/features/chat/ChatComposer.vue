@@ -122,7 +122,7 @@ const text = ref('')
 const box = ref<HTMLTextAreaElement | null>(null)
 
 /** 发送按钮的禁用状态 = 空输入 或 维护窗口，两者都不能被对方覆盖。 */
-const sendDisabled = () => !models.canSend || !!chat.activeRun ||
+const sendDisabled = () => !models.canChat || !!chat.activeRun ||
   (text.value.trim().length === 0 && attachments.value.length === 0) ||
   attachments.value.some(item => item.status !== 'ready')
 
@@ -142,10 +142,15 @@ async function restoreIfEmpty(question: string): Promise<void> {
 }
 
 async function send(): Promise<void> {
-  if (sendDisabled()) return
   const question = text.value.trim()
   if (!question && attachments.value.length === 0) return
   if (chat.streaming) return
+  if (!models.canChat) {
+    // 维护窗口或 text 暂停：保留输入，并在聊天区说明原因。
+    chat.notifyUnavailable()
+    return
+  }
+  if (sendDisabled()) return
   text.value = ''
   await nextTick()
   resize()
@@ -169,7 +174,7 @@ function onKeydown(event: KeyboardEvent): void {
     <div v-if="chat.activeRun && !chat.streaming" class="resume-bar" role="status">
       <span>{{ ['interrupted', 'prepared'].includes(chat.activeRun.status) ? '上一条回复已中断，可继续生成。' : '上一条回复仍在处理中。' }}</span>
       <button v-if="['interrupted', 'prepared'].includes(chat.activeRun.status)" type="button"
-        :disabled="!models.canSend" @click="chat.resumeRun()">继续生成</button>
+        :disabled="!models.canChat" @click="chat.resumeRun()">继续生成</button>
       <button v-else type="button" @click="chat.currentId && chat.loadMessages(chat.currentId)">刷新状态</button>
     </div>
     <div class="input-inner">

@@ -26,6 +26,7 @@ class Settings(BaseSettings):
         populate_by_name=True,
     )      #get relative enviroment settings from projectroot/.env
 
+    # 以下模型相关变量仅为遗留导入/旧脚本兼容保留；模型配置权威在 PostgreSQL。
     deepseek_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="DEEPSEEK_API_KEY")
     deepseek_api_base: str | None = Field(default=None, validation_alias="DEEPSEEK_API_BASE")
     chat_model: str = Field(default="deepseek-v4-flash", validation_alias="CHAT_MODEL")
@@ -83,6 +84,7 @@ class Settings(BaseSettings):
     )
 
     # 上下文压缩与 stub 截断相关（token 估算用字符/4）。禁止在 compact/agent 里写死这些数字。
+    # 兜底值；运行时用模型配置行的 context_window 覆盖。
     chat_context_window: int = Field(default=32768, validation_alias="CHAT_CONTEXT_WINDOW")
     context_trigger_ratio: float = Field(default=0.8, validation_alias="CONTEXT_TRIGGER_RATIO")
     context_target_ratio: float = Field(default=0.6, validation_alias="CONTEXT_TARGET_RATIO")

@@ -118,7 +118,7 @@
 python scripts/eval_notes.py --judge --cases evals/prompt/learning_notes.jsonl --ids l01
 ```
 
-启用前必须配置 `DEEPSEEK_API_KEY`。`--judge` 优先用非空 `JUDGE_MODEL`；为空则警告并使用 `CHAT_MODEL`，同时归档 `judge_independent=false`。`JUDGE_MODEL` 可与 `CHAT_MODEL` 相同，但这只表示第二次评分调用，不构成独立模型校准。不传 `--judge` 时不会调用评分模型，报告中的 `qualified`、硬门和语义维度保持未完成。Judge 返回非严格 JSON、缺字段、空证据、0–4 越界分数，或复习问题数量、顺序、草稿证据不符合契约时，本次语义评测失败并在配置中留痕。普通评测的 `config.json` 记录实际 cases JSONL 的 SHA256；启用 Judge 时结果目录同时归档固定文件名 `judge_prompt.txt`。
+启用前必须在 Settings 中启用一个模型。`--judge` 默认使用 active 模型；可用 `--judge-model` 指定同一连接上的另一个上游模型名，并归档 `judge_independent`。与生成模型相同只表示第二次评分调用，不构成独立模型校准。不传 `--judge` 时不会调用评分模型，报告中的 `qualified`、硬门和语义维度保持未完成。Judge 返回非严格 JSON、缺字段、空证据、0–4 越界分数，或复习问题数量、顺序、草稿证据不符合契约时，本次语义评测失败并在配置中留痕。普通评测的 `config.json` 记录实际 cases JSONL 的 SHA256；启用 Judge 时结果目录同时归档固定文件名 `judge_prompt.txt`。
 
 ## 6. 校准集契约
 

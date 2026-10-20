@@ -8,7 +8,7 @@ let backend: string
 test.beforeAll(async () => {
   test.setTimeout(60_000)
   const root = resolve(process.cwd(), '..')
-  server = spawn(resolve(root, '.venv/Scripts/python.exe'), ['tests/support/resume_server.py'], {
+  server = spawn(resolve(root, '.venv/Scripts/python.exe'), ['Tests/Support/ResumeServer.py'], {
     cwd: root, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
   })
   backend = await new Promise<string>((accept, reject) => {

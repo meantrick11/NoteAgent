@@ -21,9 +21,9 @@ const BODIES: Record<string, string> = {
 }
 
 const MODEL_SETTINGS = {
-  revision: 7,
-  chat_profiles: [],
-  active_chat: null,
+  embedding_revision: 7,
+  models: [],
+  active_model: null,
   active_embedding: null,
   retrieval_available: true,
   retrieval_problem: null,

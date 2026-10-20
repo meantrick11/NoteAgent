@@ -5,9 +5,24 @@ import { expect, test, type Page } from '@playwright/test'
  * revision 冲突、向量候选与重建任务，以及"设置页与快捷弹层是同一份状态"。
  */
 
+function capability(
+  name: 'text' | 'vision',
+  verification: 'unverified' | 'verified' = 'unverified',
+  status: 'enabled' | 'disabled' = 'enabled',
+) {
+  return {
+    capability: name,
+    status,
+    verification,
+    source: verification === 'verified' ? 'probe' : 'manual',
+    checked_at: verification === 'verified' ? '2026-10-20T10:00:00Z' : null,
+    probe_version: verification === 'verified' ? 1 : null,
+    evidence: verification === 'verified' ? { streaming: true, tool_calling: true } : null,
+  }
+}
+
 const BASE_STATUS = {
-  revision: 7,
-  chat_profiles: [
+  models: [
     {
       id: 'env-default',
       label: '环境默认',
@@ -15,9 +30,15 @@ const BASE_STATUS = {
       model: 'deepseek-v4-flash',
       base_url: 'https://api.deepseek.com',
       auth_mode: 'api_key',
-      context_window: 32768,
       has_api_key: true,
-      credential_source: 'env',
+      timeout_s: 60,
+      max_retries: 1,
+      context_window: 32768,
+      temperature: null,
+      max_tokens: null,
+      is_active: false,
+      revision: 3,
+      capabilities: [capability('text', 'verified')],
     },
     {
       id: 'local',
@@ -26,12 +47,19 @@ const BASE_STATUS = {
       model: 'qwen2.5',
       base_url: 'http://localhost:1234/v1',
       auth_mode: 'none',
-      context_window: 16384,
       has_api_key: false,
-      credential_source: 'ui',
+      timeout_s: 60,
+      max_retries: 1,
+      context_window: 16384,
+      temperature: 0.2,
+      max_tokens: 2048,
+      is_active: false,
+      revision: 1,
+      capabilities: [capability('text')],
     },
   ],
-  active_chat: null,
+  active_model: null,
+  embedding_revision: 7,
   active_embedding: {
     model_id: 'intfloat/multilingual-e5-small',
     resolved_revision: 'rev-1',
@@ -46,6 +74,12 @@ const BASE_STATUS = {
   busy: false,
   embedding_job: null,
 } as Record<string, unknown>
+
+const PROVIDERS = [
+  { id: 'deepseek', label: 'DeepSeek', default_base_url: '', base_url_required: false, auth_modes: ['api_key'] },
+  { id: 'openai', label: 'OpenAI', default_base_url: '', base_url_required: false, auth_modes: ['api_key'] },
+  { id: 'openai-compatible', label: 'OpenAI 兼容服务', default_base_url: '', base_url_required: true, auth_modes: ['api_key', 'none'] },
+]
 
 const RUNNING_JOB = {
   id: 'job-1',
@@ -83,6 +117,78 @@ const CANDIDATES = [
     active: false,
   },
 ]
+
+test('模型卡片点击 vision 后验证并点亮，编辑区不再有视觉复选框', async ({ page }) => {
+  const profile = { ...(BASE_STATUS.models as Record<string, unknown>[])[0],
+    capabilities: [capability('text')] }
+  const status = { ...BASE_STATUS, models: [profile], active_model: profile }
+  await stubApi(page, { status })
+  await page.route('**/model-settings/models/env-default/capabilities/vision/verify', async route => {
+    await new Promise(resolve => setTimeout(resolve, 250))
+    profile.capabilities = [capability('text'), capability('vision', 'verified')]
+    await route.fulfill({ json: profile })
+  })
+  await page.goto('/settings')
+  const row = page.locator('.ms-row', { hasText: '环境默认' }).first()
+  await expect(row.getByRole('button', { name: 'vision' })).not.toHaveClass(/verified/)
+  await row.getByRole('button', { name: 'vision' }).click()
+  await expect(row.getByRole('button', { name: 'vision' })).toHaveText('验证中')
+  await expect(row.getByRole('button', { name: 'vision' })).toHaveClass(/verified/)
+  await expect(row.getByRole('button', { name: 'text' })).not.toHaveClass(/verified/)
+  await page.route('**/model-settings/models/env-default/capabilities/vision?*', async route => {
+    profile.capabilities = [capability('text')]
+    await route.fulfill({ json: profile })
+  })
+  await row.getByRole('button', { name: 'vision' }).click()
+  await expect(row.getByRole('button', { name: 'vision' })).not.toHaveClass(/verified/)
+  await expect(row.getByRole('button', { name: 'text' })).not.toHaveClass(/verified/)
+  await row.getByRole('button', { name: '编辑' }).click()
+  await expect(section(page, 'models').getByText('支持视觉输入')).toHaveCount(0)
+})
+
+test('视觉验证失败显示弹窗且不点亮', async ({ page }) => {
+  await stubApi(page)
+  await page.route('**/model-settings/models/env-default/capabilities/vision/verify', route =>
+    route.fulfill({ status: 502, json: { code: 'protocol_unsupported', message: '模型未识别测试图片' } }))
+  await page.goto('/settings')
+  const vision = page.locator('.ms-row', { hasText: '环境默认' }).first().getByRole('button', { name: 'vision' })
+  await vision.click()
+  await expect(page.getByText('能力验证失败')).toBeVisible()
+  await expect(vision).toHaveText('vision')
+  await expect(vision).not.toHaveClass(/verified/)
+})
+
+test('text 和 vision 分别着色，点击已验证的 text 只关闭 text', async ({ page }) => {
+  const profile = { ...(BASE_STATUS.models as Record<string, unknown>[])[0],
+    capabilities: [capability('text', 'verified'), capability('vision', 'verified')] }
+  const status = { ...BASE_STATUS, models: [profile], active_model: profile }
+  await stubApi(page, { status })
+  await page.route('**/model-settings/models/env-default/capabilities/text?*', async route => {
+    profile.capabilities = [capability('text', 'verified', 'disabled'), capability('vision', 'verified')]
+    await route.fulfill({ json: profile })
+  })
+  await page.goto('/settings')
+  const row = page.locator('.ms-row', { hasText: '环境默认' }).first()
+  const text = row.getByRole('button', { name: 'text' })
+  const vision = row.getByRole('button', { name: 'vision' })
+  await expect(row.getByRole('button', { name: '启用', exact: true })).toHaveCount(0)
+  await expect(text).toHaveClass(/verified/)
+  await expect(vision).toHaveClass(/verified/)
+  const textColor = await text.evaluate(node => getComputedStyle(node).backgroundColor)
+  const visionColor = await vision.evaluate(node => getComputedStyle(node).backgroundColor)
+  expect(textColor).not.toBe(visionColor)
+  await text.click()
+  await expect(text).not.toHaveClass(/verified/)
+  await expect(vision).toHaveClass(/verified/)
+  await expect(row.getByText('聊天暂停')).toBeVisible()
+  await page.route('**/model-settings/models/env-default/capabilities/text/verify', async route => {
+    profile.capabilities = [capability('text', 'verified'), capability('vision', 'verified')]
+    await route.fulfill({ json: profile })
+  })
+  await text.click()
+  await expect(text).toHaveClass(/verified/)
+  await expect(row.getByText('聊天暂停')).toHaveCount(0)
+})
 
 interface StubOptions {
   status?: Record<string, unknown>
@@ -140,29 +246,11 @@ async function stubApi(page: Page, options: StubOptions = {}) {
     },
   )
   await page.route(
-    (url) => url.pathname === '/model-settings/chat/test',
-    (route) => {
-      record(route)
-      return route.fulfill({
-        json: { verified: true, streaming: true, tool_calling: true, message: null },
-      })
-    },
+    (url) => url.pathname === '/model-settings/providers',
+    (route) => route.fulfill({ json: PROVIDERS }),
   )
   await page.route(
-    (url) => url.pathname === '/model-settings/chat/activate',
-    (route) => {
-      record(route)
-      if (options.activateStatus && options.activateStatus !== 200) {
-        return route.fulfill({
-          status: options.activateStatus,
-          json: { message: '模型不可用' },
-        })
-      }
-      return route.fulfill({ json: (status.chat_profiles as Array<{ id: string }>)[0] })
-    },
-  )
-  await page.route(
-    (url) => url.pathname.startsWith('/model-settings/chat/profiles'),
+    (url) => url.pathname === '/model-settings/models',
     (route) => {
       record(route)
       if (options.saveStatus && options.saveStatus !== 200) {
@@ -171,7 +259,46 @@ async function stubApi(page: Page, options: StubOptions = {}) {
           json: { message: options.saveMessage ?? 'revision 已过期，请刷新后重试' },
         })
       }
-      return route.fulfill({ json: (status.chat_profiles as Array<{ id: string }>)[0] })
+      return route.fulfill({ json: (status.models as Array<{ id: string }>)[0] })
+    },
+  )
+  await page.route(
+    (url) => url.pathname.startsWith('/model-settings/models/') && url.pathname.endsWith('/test'),
+    (route) => {
+      record(route)
+      return route.fulfill({
+        json: { verified: true, streaming: true, tool_calling: true, message: null },
+      })
+    },
+  )
+  await page.route(
+    (url) => url.pathname.startsWith('/model-settings/models/') && url.pathname.endsWith('/activate'),
+    (route) => {
+      record(route)
+      if (options.activateStatus && options.activateStatus !== 200) {
+        return route.fulfill({
+          status: options.activateStatus,
+          json: { message: '模型不可用' },
+        })
+      }
+      return route.fulfill({ json: (status.models as Array<{ id: string }>)[0] })
+    },
+  )
+  await page.route(
+    (url) =>
+      url.pathname.startsWith('/model-settings/models/') &&
+      !url.pathname.endsWith('/test') &&
+      !url.pathname.endsWith('/activate') &&
+      !url.pathname.includes('/capabilities/'),
+    (route) => {
+      record(route)
+      if (options.saveStatus && options.saveStatus !== 200) {
+        return route.fulfill({
+          status: options.saveStatus,
+          json: { message: options.saveMessage ?? 'revision 已过期，请刷新后重试' },
+        })
+      }
+      return route.fulfill({ json: (status.models as Array<{ id: string }>)[0] })
     },
   )
   await page.route(
@@ -238,16 +365,16 @@ test('普通保存不启用：请求体带 expected_revision 且不带 id（新�
   const stub = await stubApi(page)
   await page.goto('/settings')
 
-  await page.getByRole('button', { name: '＋ 新增配置' }).click()
+  await page.getByRole('button', { name: '＋ 新增模型' }).click()
   const form = section(page, 'models')
   await form.locator('#ms-label').fill('新配置')
   await form.locator('#ms-model').fill('deepseek-chat')
   await form.getByRole('button', { name: '保存', exact: true }).click()
 
-  await expect.poll(() => stub.calls.some((call) => call.url.endsWith('/chat/profiles'))).toBe(true)
-  const create = stub.calls.find((call) => call.url.endsWith('/chat/profiles'))!
+  await expect.poll(() => stub.calls.some((call) => call.url.endsWith('/models'))).toBe(true)
+  const create = stub.calls.find((call) => call.url.endsWith('/model-settings/models'))!
   expect(create.method).toBe('POST')
-  expect(create.body.expected_revision).toBe(7)
+  expect(create.body.expected_revision).toBeUndefined()
   // 已保存但没有启用。
   await expect(page.getByText('（未启用）')).toBeVisible()
 })
@@ -256,23 +383,24 @@ test('保存并启用走 activate，而不是普通保存', async ({ page }) => 
   const stub = await stubApi(page)
   await page.goto('/settings')
 
-  await page.getByRole('button', { name: '＋ 新增配置' }).click()
+  await page.getByRole('button', { name: '＋ 新增模型' }).click()
   const form = section(page, 'models')
   await form.locator('#ms-label').fill('新配置')
   await form.locator('#ms-model').fill('deepseek-chat')
   await form.getByRole('button', { name: '保存并启用' }).click()
 
   await expect
-    .poll(() => stub.calls.some((call) => call.url.endsWith('/chat/activate')))
+    .poll(() => stub.calls.some((call) => call.url.endsWith('/activate')))
     .toBe(true)
-  expect(stub.calls.some((call) => call.url.endsWith('/chat/profiles'))).toBe(false)
+  // 新增并启用 = 先创建，再对返回的 id 激活。
+  expect(stub.calls.some((call) => call.url.endsWith('/model-settings/models'))).toBe(true)
 })
 
 test('revision 冲突时保留表单并提示刷新', async ({ page }) => {
   await stubApi(page, { saveStatus: 409 })
   await page.goto('/settings')
 
-  await page.getByRole('button', { name: '＋ 新增配置' }).click()
+  await page.getByRole('button', { name: '＋ 新增模型' }).click()
   const form = section(page, 'models')
   await form.locator('#ms-label').fill('新配置')
   await form.locator('#ms-model').fill('deepseek-chat')
@@ -285,7 +413,7 @@ test('revision 冲突时保留表单并提示刷新', async ({ page }) => {
 
 test('当前启用的配置不能普通保存，只能保存并启用', async ({ page }) => {
   await stubApi(page, {
-    status: { ...BASE_STATUS, active_chat: (BASE_STATUS.chat_profiles as object[])[0] },
+    status: { ...BASE_STATUS, active_model: (BASE_STATUS.models as object[])[0] },
   })
   await page.goto('/settings')
 
@@ -295,7 +423,7 @@ test('当前启用的配置不能普通保存，只能保存并启用', async ({
   const form = section(page, 'models')
   await expect(form.getByRole('button', { name: '保存', exact: true })).toHaveCount(0)
   await expect(form.getByRole('button', { name: '保存并启用' })).toBeVisible()
-  await expect(form.getByText('这是当前启用的配置')).toBeVisible()
+  await expect(form.getByText('这是当前启用的模型')).toBeVisible()
   // 当前配置也不能删。
   await expect(row.getByRole('button', { name: '删除' })).toHaveCount(0)
 })
@@ -316,13 +444,13 @@ test('连接测试把流式与工具调用的结论显示出来', async ({ page 
   const stub = await stubApi(page)
   await page.goto('/settings')
 
-  await page.getByRole('button', { name: '＋ 新增配置' }).click()
+  const row = page.locator('.ms-row', { hasText: '环境默认' }).first()
+  await row.getByRole('button', { name: '编辑' }).click()
   const form = section(page, 'models')
-  await form.locator('#ms-model').fill('deepseek-chat')
   await form.getByRole('button', { name: '测试连接' }).click()
 
   await expect(page.getByText('连接测试通过：流式输出正常；工具调用正常')).toBeVisible()
-  expect(stub.calls.some((call) => call.url.endsWith('/chat/test'))).toBe(true)
+  expect(stub.calls.some((call) => call.url.endsWith('/test'))).toBe(true)
 })
 
 test('重建并切换会进入维护窗口并轮询任务', async ({ page }) => {
@@ -422,7 +550,7 @@ test('无效或未开放分类 replace 成默认，且不新增历史项', async
 test('切换分类不丢模型表单，不自动保存', async ({ page }) => {
   const stub = await stubApi(page)
   await page.goto('/settings')
-  await page.getByRole('button', { name: /新增配置/ }).click()
+  await page.getByRole('button', { name: /新增模型/ }).click()
   await page.locator('#ms-label').fill('尚未保存的配置')
   const categories = page.getByRole('navigation', { name: '设置分类' })
   await categories.getByRole('link', { name: '检索与索引', exact: true }).click()

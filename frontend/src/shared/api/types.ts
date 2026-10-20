@@ -173,50 +173,75 @@ export interface FolderDeleteResult {
 
 // ---------- 模型设置 ----------
 
-export type ChatProviderName = 'deepseek' | 'openai-compatible'
 export type AuthMode = 'api_key' | 'none'
-export type CredentialSource = 'env' | 'ui'
+export type CapabilityName = 'text' | 'vision' | 'tool_calling' | 'streaming' | 'json_mode' | 'reasoning'
+export type CapabilityStatus = 'enabled' | 'disabled'
+export type VerificationStatus = 'unverified' | 'verified' | 'failed'
 export type JobStatus = 'running' | 'succeeded' | 'failed' | 'interrupted'
 export type EmbeddingAvailability = 'available' | 'incomplete' | 'unsupported'
 export type RetrievalState = 'ok' | 'empty' | 'missing' | 'config_mismatch' | 'unavailable'
 
+export interface CapabilityRecord {
+  capability: CapabilityName
+  status: CapabilityStatus
+  verification: VerificationStatus
+  source: 'manual' | 'probe'
+  checked_at: string | null
+  probe_version: number | null
+  evidence: Record<string, unknown> | null
+}
+
 /** 对外配置永不含 api_key，只用 has_api_key 表达"有没有凭据"。 */
-export interface ChatProfile {
+export interface ModelConfig {
   id: string
   label: string
-  provider: ChatProviderName
+  provider: string
   model: string
   base_url: string
   auth_mode: AuthMode
-  context_window: number
   has_api_key: boolean
-  credential_source: CredentialSource
-  capabilities: Array<'text' | 'vision'>
+  timeout_s: number
+  max_retries: number
+  context_window: number
+  temperature: number | null
+  max_tokens: number | null
+  is_active: boolean
+  revision: number
+  capabilities: CapabilityRecord[]
+}
+
+export interface ProviderSpec {
+  id: string
+  label: string
+  default_base_url: string
+  base_url_required: boolean
+  auth_modes: AuthMode[]
 }
 
 /** 提交用的配置体；省略 api_key 表示保留已保存的那一个。 */
-export interface ChatProfileInput {
-  id?: string
+export interface ModelConfigInput {
   label: string
-  provider: ChatProviderName
+  provider: string
   model: string
   base_url?: string
   api_key?: string
   clear_api_key?: boolean
   auth_mode?: AuthMode
+  timeout_s?: number
+  max_retries?: number
   context_window?: number
-  capabilities?: Array<'text' | 'vision'>
+  temperature?: number | null
+  max_tokens?: number | null
 }
 
-export interface ChatProfileWriteIn extends ChatProfileInput {
+export interface ModelConfigWriteIn extends ModelConfigInput {
   expected_revision: number
 }
 
-/** POST /model-settings/chat/activate：profile_id 与 profile 必须二选一。 */
-export interface ChatActivateIn {
+/** POST /models/{id}/activate：可选携带完整 config 实现“保存并启用”。 */
+export interface ModelActivateIn {
   expected_revision: number
-  profile_id?: string
-  profile?: ChatProfileInput
+  config?: ModelConfigInput
 }
 
 export interface ActiveEmbedding {
@@ -240,9 +265,9 @@ export interface EmbeddingJob {
 }
 
 export interface ModelSettingsStatus {
-  revision: number
-  chat_profiles: ChatProfile[]
-  active_chat: ChatProfile | null
+  models: ModelConfig[]
+  active_model: ModelConfig | null
+  embedding_revision: number
   active_embedding: ActiveEmbedding | null
   retrieval_available: boolean
   retrieval_problem: string | null
@@ -266,7 +291,7 @@ export interface EmbeddingSwitchResult {
   job: EmbeddingJob | null
 }
 
-export interface ChatTestResult {
+export interface ModelTestResult {
   verified: boolean
   streaming: boolean
   tool_calling: boolean

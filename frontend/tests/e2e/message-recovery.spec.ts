@@ -29,9 +29,9 @@ const MESSAGES = [
 ]
 
 const MODEL_SETTINGS = {
-  revision: 7,
-  chat_profiles: [],
-  active_chat: {
+  embedding_revision: 7,
+  models: [],
+  active_model: {
     id: 'env-default', label: '环境默认', provider: 'deepseek', model: 'm',
     base_url: '', auth_mode: 'api_key', context_window: 32768,
     has_api_key: true, credential_source: 'env',

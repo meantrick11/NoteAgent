@@ -16,8 +16,8 @@ import shutil
 from datetime import datetime
 
 from NoteAgent.AppBootstrap.AppSettings import Settings, project_root
-from NoteAgent.Modules.Models.Provider.ModelClients import create_chat_model, create_judge_model
 from NoteAgent.Common.Logging.LoggingSetup import setup_logging
+from NoteAgentEvals.ModelResolver import build_active_chat, build_judge
 from NoteAgentEvals.Prompt.Cases import load_cases
 from NoteAgentEvals.Prompt.Report import result_dest
 from NoteAgentEvals.Prompt.Run import run_eval
@@ -41,7 +41,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--judge",
         action="store_true",
-        help="Run semantic Judge; falls back to CHAT_MODEL when JUDGE_MODEL is empty",
+        help="Run semantic Judge; defaults to the active model",
+    )
+    parser.add_argument(
+        "--judge-model",
+        default="",
+        help="Optional upstream model name for an independent Judge (same connection as active)",
     )
     parser.add_argument("--force", action="store_true", help="Overwrite an existing result folder")
     args = parser.parse_args(argv)
@@ -69,14 +74,18 @@ def main(argv: list[str] | None = None) -> int:
         shutil.rmtree(dest)
 
     settings = Settings()
-    if not settings.deepseek_api_key.get_secret_value().strip():
-        print("DEEPSEEK_API_KEY is not set", file=sys.stderr)
+    try:
+        chat = build_active_chat(settings)
+        judge = build_judge(settings, args.judge_model or None) if args.judge else None
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
         return 1
-    judge_model_name = _effective_judge_model(settings) if args.judge else None
-    if args.judge and not settings.judge_model.strip():
+    chat_model_name = chat.config.model
+    judge_model_name = judge.config.model if judge is not None else None
+    if judge is not None and judge_model_name == chat_model_name:
         print(
-            f"WARNING: JUDGE_MODEL is empty; using CHAT_MODEL={judge_model_name} "
-            "(judge_independent=false)",
+            f"WARNING: Judge uses the same model as chat ({judge_model_name}); "
+            "judge_independent=false",
             file=sys.stderr,
         )
 
@@ -91,25 +100,20 @@ def main(argv: list[str] | None = None) -> int:
         cases_path,
         ids or "all",
         prompt_path,
-        settings.chat_model,
+        chat_model_name,
         judge_model_name or "disabled",
     )
     prompt_display = _display_path(root, prompt_path)
     cases_display = _display_path(root, cases_path)
-    model = create_chat_model(settings)
-    judge_model = (
-        create_judge_model(settings, model_name=judge_model_name)
-        if judge_model_name is not None
-        else None
-    )
     asyncio.run(
         run_eval(
             cases,
             dest=dest,
             prompt_path=prompt_path,
             settings=settings,
-            model=model,
-            judge_model=judge_model,
+            model=chat.client,
+            chat_model_name=chat_model_name,
+            judge_model=judge.client if judge is not None else None,
             judge_model_name=judge_model_name,
             cases_sha256=_sha256(cases_path),
             prompt_display=prompt_display,
@@ -121,11 +125,6 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("eval done dest=%s", dest)
     print(dest)
     return 0
-
-
-def _effective_judge_model(settings: Settings) -> str:
-    """Select JUDGE_MODEL when configured, otherwise CHAT_MODEL."""
-    return settings.judge_model.strip() or settings.chat_model.strip()
 
 
 def _sha256(path: Path) -> str:

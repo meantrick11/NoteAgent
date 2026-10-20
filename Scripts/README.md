@@ -7,7 +7,7 @@
 | 文件 | 作用 |
 |------|------|
 | `IndexNotes.py` | 按篇重建 Chroma（与审批后的 `index_note` 相同；collection 损坏时用）。目标枚举与界面共用 `modules.retrieval.service.index_targets`，排除规则一致 |
-| `SdkSmoke.py` | 用 `DEEPSEEK_API_KEY` ping 一次聊天 API |
+| `SdkSmoke.py` | 用数据库里当前启用的模型 ping 一次聊天 API |
 | `EvalNotes.py` | 离线提示词评测：进程内 `ChatAgent`，结果写入 `evals/prompt/results/<jsonl 主文件名>/` |
 | `CalibrateLearningNotes.py` | 用四个固定候选校准 v0.2 Judge（不生成草稿） |
 | `BuildRagQueries.py` | 从人工标注草稿生成带偏移的检索查询集，并跑正式校验 |

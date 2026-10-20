@@ -155,21 +155,21 @@ def test_switch_model_keeps_same_checkpoint_service(tmp_path):
     conv_id = _event(_parse_sse(first.text), "conversation")[0]["id"]
 
     service_before = app.container.conversations
-    revision = app.client.get("/model-settings").json()["revision"]
-    switched = app.client.post(
-        "/model-settings/chat/activate",
+    created = app.client.post(
+        "/model-settings/models",
         json={
-            "expected_revision": revision,
-            "profile": {
-                "label": "second",
-                "provider": "openai-compatible",
-                "model": "m2",
-                "base_url": "http://localhost:9/v1",
-                "auth_mode": "none",
-            },
+            "label": "second",
+            "provider": "openai-compatible",
+            "model": "m2",
+            "base_url": "http://localhost:9/v1",
+            "auth_mode": "none",
         },
+    ).json()
+    switched = app.client.post(
+        f"/model-settings/models/{created['id']}/activate",
+        json={"expected_revision": created["revision"]},
     )
-    assert switched.status_code == 200
+    assert switched.status_code == 200, switched.text
     # The runtime was rebuilt, but the checkpoint store is the very same object.
     assert app.container.conversations is service_before
 

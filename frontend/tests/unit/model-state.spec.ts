@@ -8,13 +8,14 @@ import {
   STATUS_MAX_AGE_MS,
   useModelsStore,
 } from '@/features/models/store'
-import type { ChatProfile } from '@/shared/api/types'
+import type { ModelConfig } from '@/shared/api/types'
 import {
   embeddingCandidates,
   embeddingJob,
   jsonResponse,
   modelSettings,
   stubFetch,
+  textCapability,
 } from '../fixtures/api'
 
 type Handler = (init: RequestInit) => Response | Promise<Response>
@@ -29,7 +30,7 @@ function routeFetch(routes: Array<[string, Handler]>) {
   })
 }
 
-function newProfile(): ChatProfile {
+function newModel(): ModelConfig {
   return {
     id: 'new',
     label: '新配置',
@@ -37,10 +38,15 @@ function newProfile(): ChatProfile {
     model: 'deepseek-chat',
     base_url: '',
     auth_mode: 'api_key',
-    context_window: 32768,
     has_api_key: true,
-    credential_source: 'ui',
-    capabilities: ['text'],
+    timeout_s: 60,
+    max_retries: 1,
+    context_window: 32768,
+    temperature: null,
+    max_tokens: null,
+    is_active: false,
+    revision: 1,
+    capabilities: [{ ...textCapability, verification: 'unverified' }],
   }
 }
 
@@ -59,9 +65,9 @@ describe('状态读取', () => {
     const store = useModelsStore()
     await store.fetchStatus(true)
 
-    expect(store.revision).toBe(7)
-    expect(store.chatProfiles).toHaveLength(2)
-    expect(store.activeChat?.id).toBe('env-default')
+    expect(store.embeddingRevision).toBe(7)
+    expect(store.models).toHaveLength(2)
+    expect(store.activeModel?.id).toBe('env-default')
     expect(store.activeEmbedding?.model_id).toBe('intfloat/multilingual-e5-small')
     expect(store.indexedFiles).toBe(120)
     expect(store.corpusFiles).toBe(20)
@@ -75,15 +81,15 @@ describe('状态读取', () => {
     vi.stubGlobal('fetch', stub.fetch)
     const store = useModelsStore()
     await store.fetchStatus(true)
-    expect(store.revision).toBe(7)
+    expect(store.embeddingRevision).toBe(7)
 
     vi.stubGlobal(
       'fetch',
       routeFetch([['/model-settings', () => jsonResponse({ detail: 'boom' }, 500)]]).fetch,
     )
     await store.fetchStatus(true)
-    expect(store.revision).toBe(7)
-    expect(store.chatProfiles).toHaveLength(2)
+    expect(store.embeddingRevision).toBe(7)
+    expect(store.models).toHaveLength(2)
   })
 
   it('同一标签页 1 秒内的重复读取被合并', async () => {
@@ -97,6 +103,23 @@ describe('状态读取', () => {
 })
 
 describe('维护窗口与流式状态', () => {
+  it('关闭 text 时禁止聊天，但不锁定笔记写入', async () => {
+    const paused = {
+      ...modelSettings,
+      active_model: {
+        ...modelSettings.active_model!,
+        capabilities: modelSettings.active_model!.capabilities.map((item) =>
+          item.capability === 'text' ? { ...item, status: 'disabled' as const } : item,
+        ),
+      },
+    }
+    vi.stubGlobal('fetch', routeFetch([['/model-settings', () => jsonResponse(paused)]]).fetch)
+    const store = useModelsStore()
+    await store.fetchStatus(true)
+    expect(store.canChat).toBe(false)
+    expect(store.canSend).toBe(true)
+  })
+
   it('busy 时 canSend 为 false，笔记与聊天写入都要看它', async () => {
     vi.stubGlobal(
       'fetch',
@@ -133,45 +156,52 @@ describe('维护窗口与流式状态', () => {
   })
 })
 
-describe('聊天配置的写操作', () => {
-  it('保存时带上读到的 expected_revision', async () => {
-    const saved = newProfile()
+describe('模型配置的写操作', () => {
+  it('新增模型不带全局 revision', async () => {
+    const created = newModel()
     const stub = routeFetch([
-      ['/model-settings/chat/profiles', () => jsonResponse(saved, 201)],
+      ['/model-settings/models', () => jsonResponse(created, 201)],
       ['/model-settings', () => jsonResponse(modelSettings)],
     ])
     vi.stubGlobal('fetch', stub.fetch)
     const store = useModelsStore()
     await store.fetchStatus(true)
-    await store.submitProfile(
+    await store.submitModel(
       { label: '新配置', provider: 'deepseek', model: 'deepseek-chat' },
       null,
       false,
     )
 
-    const create = stub.calls.find((call) => call.url === '/model-settings/chat/profiles')
-    expect(JSON.parse(String(create?.init.body)).expected_revision).toBe(7)
+    const create = stub.calls.find((call) => call.url === '/model-settings/models')
+    expect(JSON.parse(String(create?.init.body))).toEqual({
+      label: '新配置',
+      provider: 'deepseek',
+      model: 'deepseek-chat',
+    })
     expect(store.chatNotice).toEqual({ kind: 'ok', text: '已保存「新配置」（未启用）。' })
   })
 
-  it('保存并启用走 activate 而不是普通保存', async () => {
+  it('新增并启用先创建再激活', async () => {
+    const created = newModel()
     const stub = routeFetch([
-      ['/model-settings/chat/activate', () => jsonResponse(newProfile())],
+      ['/model-settings/models/new/activate', () => jsonResponse({ ...created, is_active: true, revision: 2 })],
+      ['/model-settings/models', () => jsonResponse(created, 201)],
       ['/model-settings', () => jsonResponse(modelSettings)],
     ])
     vi.stubGlobal('fetch', stub.fetch)
     const store = useModelsStore()
     await store.fetchStatus(true)
-    await store.submitProfile({ label: '新配置', provider: 'deepseek', model: 'm' }, null, true)
+    await store.submitModel({ label: '新配置', provider: 'deepseek', model: 'm' }, null, true)
 
-    expect(stub.calls.some((call) => call.url === '/model-settings/chat/activate')).toBe(true)
-    expect(stub.calls.some((call) => call.url === '/model-settings/chat/profiles')).toBe(false)
+    expect(stub.calls.some((call) => call.url === '/model-settings/models/new/activate')).toBe(true)
+    const activate = stub.calls.find((call) => call.url === '/model-settings/models/new/activate')
+    expect(JSON.parse(String(activate?.init.body))).toEqual({ expected_revision: 1 })
   })
 
-  it('revision 冲突时给出错误提示并刷新状态', async () => {
+  it('编辑非 active 模型使用行级 revision，冲突时提示并刷新', async () => {
     const stub = routeFetch([
       [
-        '/model-settings/chat/profiles',
+        '/model-settings/models/local',
         () => jsonResponse({ message: 'revision 已过期，请刷新后重试' }, 409),
       ],
       ['/model-settings', () => jsonResponse(modelSettings)],
@@ -180,10 +210,11 @@ describe('聊天配置的写操作', () => {
     const store = useModelsStore()
     await store.fetchStatus(true)
     const before = stub.calls.filter((call) => call.url === '/model-settings').length
+    const local = store.models.find((item) => item.id === 'local')!
 
-    const ok = await store.submitProfile(
-      { label: '新配置', provider: 'deepseek', model: 'm' },
-      null,
+    const ok = await store.submitModel(
+      { label: '本地服务', provider: 'openai-compatible', model: 'qwen2.5' },
+      local,
       false,
     )
 
@@ -192,23 +223,26 @@ describe('聊天配置的写操作', () => {
       kind: 'error',
       text: 'revision 已过期，请刷新后重试',
     })
+    const update = stub.calls.find((call) => call.url === '/model-settings/models/local')
+    expect(JSON.parse(String(update?.init.body)).expected_revision).toBe(1)
     expect(stub.calls.filter((call) => call.url === '/model-settings').length).toBe(before + 1)
   })
 
-  it('启用失败保留原 active 配置', async () => {
+  it('启用失败保留原 active 模型', async () => {
     vi.stubGlobal(
       'fetch',
       routeFetch([
-        ['/model-settings/chat/activate', () => jsonResponse({ detail: '模型不可用' }, 400)],
+        ['/model-settings/models/local/activate', () => jsonResponse({ message: '模型不可用' }, 502)],
         ['/model-settings', () => jsonResponse(modelSettings)],
       ]).fetch,
     )
     const store = useModelsStore()
     await store.fetchStatus(true)
-    const ok = await store.activateProfile('local')
+    const local = store.models.find((item) => item.id === 'local')!
+    const ok = await store.activateExisting(local)
 
     expect(ok).toBe(false)
-    expect(store.activeChat?.id).toBe('env-default')
+    expect(store.activeModel?.id).toBe('env-default')
     expect(store.chatNotice).toEqual({ kind: 'error', text: '模型不可用' })
   })
 })

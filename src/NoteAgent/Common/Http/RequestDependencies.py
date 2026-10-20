@@ -13,6 +13,21 @@ def get_model_runtime(request: Request) -> ModelRuntimeService:
     return request.app.state.container.model_runtime
 
 
+def get_model_configs(request: Request):
+    """Model configuration use cases owned by the app container."""
+    return request.app.state.container.model_configs
+
+
+def get_model_activation(request: Request):
+    """Activation orchestration owned by the app container."""
+    return request.app.state.container.model_activation
+
+
+def get_providers(request: Request):
+    """Registered provider specs."""
+    return request.app.state.container.providers
+
+
 async def chat_lease(request: Request) -> Iterator[RuntimeSnapshot]:
     """Hold a chat lease for the whole SSE response.
 

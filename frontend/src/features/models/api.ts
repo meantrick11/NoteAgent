@@ -1,56 +1,94 @@
 import { jsonRequest, requestJson } from '@/shared/api/http'
 import type {
-  ChatActivateIn,
-  ChatProfile,
-  ChatProfileWriteIn,
-  ChatTestResult,
   EmbeddingCandidate,
   EmbeddingJob,
   EmbeddingSwitchResult,
+  ModelActivateIn,
+  ModelConfig,
+  ModelConfigInput,
+  ModelConfigWriteIn,
   ModelSettingsStatus,
+  ModelTestResult,
+  ProviderSpec,
 } from '@/shared/api/types'
 
 /** 除 GET 状态外的端点都相对这个前缀。 */
 const BASE = '/model-settings'
 
-/** GET /model-settings —— 两个选择器与任务进度所需的全部状态。 */
+/** GET /model-settings —— 模型列表、active 与独立的检索状态。 */
 export function fetchModelSettings(): Promise<ModelSettingsStatus> {
   return requestJson<ModelSettingsStatus>(BASE)
 }
 
-/** POST /model-settings/chat/test —— 只探测，不保存也不切换。 */
-export function testChatProfile(profile: ChatProfileWriteIn | Record<string, unknown>) {
-  return jsonRequest<ChatTestResult>(`${BASE}/chat/test`, 'POST', profile)
+/** GET /model-settings/providers —— 表单的 Provider 规格。 */
+export function listProviders(): Promise<ProviderSpec[]> {
+  return requestJson<ProviderSpec[]>(`${BASE}/providers`)
 }
 
-/** POST /model-settings/chat/profiles —— 新增配置，保存不启用。 */
-export function createChatProfile(body: ChatProfileWriteIn): Promise<ChatProfile> {
-  return jsonRequest<ChatProfile>(`${BASE}/chat/profiles`, 'POST', body)
+/** POST /model-settings/models —— 新增配置，保存不启用。 */
+export function createModel(body: ModelConfigInput): Promise<ModelConfig> {
+  return jsonRequest<ModelConfig>(`${BASE}/models`, 'POST', body)
 }
 
-/** PUT /model-settings/chat/profiles/{id} —— 编辑；当前启用的那条必须走 activate。 */
-export function updateChatProfile(
-  id: string,
-  body: ChatProfileWriteIn,
-): Promise<ChatProfile> {
-  return jsonRequest<ChatProfile>(
-    `${BASE}/chat/profiles/${encodeURIComponent(id)}`,
+/** PUT /model-settings/models/{id} —— 编辑非 active 配置。 */
+export function updateModel(id: string, body: ModelConfigWriteIn): Promise<ModelConfig> {
+  return jsonRequest<ModelConfig>(
+    `${BASE}/models/${encodeURIComponent(id)}`,
     'PUT',
     body,
   )
 }
 
-/** DELETE /model-settings/chat/profiles/{id} —— 204；revision 走查询参数。 */
-export function deleteChatProfile(id: string, expectedRevision: number): Promise<null> {
+/** DELETE /model-settings/models/{id} —— 204；revision 走查询参数。 */
+export function deleteModel(id: string, expectedRevision: number): Promise<null> {
   const query = `?expected_revision=${encodeURIComponent(String(expectedRevision))}`
-  return requestJson<null>(`${BASE}/chat/profiles/${encodeURIComponent(id)}${query}`, {
+  return requestJson<null>(`${BASE}/models/${encodeURIComponent(id)}${query}`, {
     method: 'DELETE',
   })
 }
 
-/** POST /model-settings/chat/activate —— 校验、保存、启用一步完成。 */
-export function activateChatProfile(body: ChatActivateIn): Promise<ChatProfile> {
-  return jsonRequest<ChatProfile>(`${BASE}/chat/activate`, 'POST', body)
+/** POST /model-settings/models/{id}/test —— 只探测，不保存也不切换。 */
+export function testModel(
+  id: string,
+  body?: ModelConfigInput,
+): Promise<ModelTestResult> {
+  return jsonRequest<ModelTestResult>(
+    `${BASE}/models/${encodeURIComponent(id)}/test`,
+    'POST',
+    body ?? null,
+  )
+}
+
+/** POST /model-settings/models/{id}/activate —— 校验、可选保存、启用并发布快照。 */
+export function activateModel(id: string, body: ModelActivateIn): Promise<ModelConfig> {
+  return jsonRequest<ModelConfig>(
+    `${BASE}/models/${encodeURIComponent(id)}/activate`,
+    'POST',
+    body,
+  )
+}
+
+export function verifyCapability(
+  id: string,
+  capability: 'text' | 'vision',
+  expectedRevision: number,
+): Promise<ModelConfig> {
+  return jsonRequest<ModelConfig>(
+    `${BASE}/models/${encodeURIComponent(id)}/capabilities/${capability}/verify`,
+    'POST',
+    { expected_revision: expectedRevision },
+  )
+}
+
+export function disableCapability(
+  id: string,
+  capability: 'text' | 'vision',
+  expectedRevision: number,
+): Promise<ModelConfig> {
+  return requestJson<ModelConfig>(
+    `${BASE}/models/${encodeURIComponent(id)}/capabilities/${capability}?expected_revision=${encodeURIComponent(String(expectedRevision))}`,
+    { method: 'DELETE' },
+  )
 }
 
 /** GET /model-settings/embeddings —— 本地缓存的候选模型与真实可用性。 */

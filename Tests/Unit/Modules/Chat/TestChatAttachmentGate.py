@@ -32,7 +32,7 @@ async def test_invalid_attachment_is_rejected_before_new_conversation():
     request = Request({"type": "http", "app": app})
     with pytest.raises(HTTPException) as error:
         await claim_turn(request, RequestModel(question="summarize", attachment_ids=["fake"]),
-                         SimpleNamespace(chat_agent=object()))
+                         SimpleNamespace(require_agent=lambda: object()))
     assert error.value.status_code == 400
     assert not conversations.created
 
@@ -45,7 +45,7 @@ async def test_resume_cannot_attach_new_file():
     request = Request({"type": "http", "app": app})
     with pytest.raises(HTTPException) as error:
         await claim_turn(request, RequestModel(run_id="run", attachment_ids=["fake"]),
-                         SimpleNamespace(chat_agent=object()))
+                         SimpleNamespace(require_agent=lambda: object()))
     assert error.value.status_code == 400
     assert not conversations.created
 

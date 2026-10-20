@@ -5,10 +5,12 @@
 """
 
 from datetime import datetime
+import hashlib
 from typing import Literal
-from urllib.parse import urlsplit
 
 from pydantic import BaseModel, SecretStr, field_validator, model_validator
+
+from NoteAgent.Modules.Models.Domain.Vo.ModelConfig import normalize_base_url
 
 # 支持的 provider：项目已装 SDK 对应的协议，不做任意协议透传。
 ChatProviderName = Literal["deepseek", "openai-compatible"]
@@ -22,30 +24,15 @@ EmbeddingAvailability = Literal["available", "incomplete", "unsupported"]
 RetrievalState = Literal["ok", "empty", "missing", "config_mismatch", "unavailable"]
 
 DEFAULT_CONTEXT_WINDOW = 32768
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 ChatCapability = Literal["text", "vision"]
+
+
+def credential_hash(secret: SecretStr) -> str:
+    """Internal invalidation marker; never expose it through HTTP."""
+    return hashlib.sha256(secret.get_secret_value().encode("utf-8")).hexdigest()
 # 从环境生成的默认 profile 使用固定 id，保证重启后 active 指针依然有效。
 ENV_PROFILE_ID = "env-default"
-
-
-def normalize_base_url(value: str) -> str:
-    """Validate a Base URL and strip a trailing slash.
-
-    Only http/https are accepted, and embedded userinfo is rejected: a URL like
-    ``https://user:pass@host`` puts a credential into the URL, which would then reach
-    logs and error messages.
-    """
-    candidate = value.strip()
-    if not candidate:
-        return ""
-    parts = urlsplit(candidate)
-    if parts.scheme not in ("http", "https"):
-        raise ValueError("Base URL 必须以 http:// 或 https:// 开头")
-    if not parts.netloc:
-        raise ValueError("Base URL 缺少主机名")
-    if parts.username is not None or parts.password is not None:
-        raise ValueError("Base URL 不能内嵌用户名或密码，凭据请填 API Key")
-    return candidate.rstrip("/")
 
 
 class ChatProfile(BaseModel):
@@ -65,6 +52,10 @@ class ChatProfile(BaseModel):
     context_window: int = DEFAULT_CONTEXT_WINDOW
     credential_source: CredentialSource = "ui"
     capabilities: list[ChatCapability] = ["text"]
+    text_enabled: bool = True
+    verified_capabilities: list[ChatCapability] = []
+    capability_checked_at: dict[ChatCapability, datetime] = {}
+    credential_hash: str | None = None
 
     @field_validator("capabilities")
     @classmethod
@@ -72,6 +63,12 @@ class ChatProfile(BaseModel):
         if "text" not in value or len(set(value)) != len(value):
             raise ValueError("聊天模型必须包含 text 且能力标签不能重复")
         return value
+
+    @model_validator(mode="after")
+    def _verified_must_be_enabled(self) -> "ChatProfile":
+        if len(set(self.verified_capabilities)) != len(self.verified_capabilities) or not set(self.verified_capabilities) <= set(self.capabilities):
+            raise ValueError("已验证能力必须已启用且不能重复")
+        return self
 
     @field_validator("model")
     @classmethod
@@ -113,6 +110,9 @@ class ChatProfile(BaseModel):
             has_api_key=self.has_api_key(),
             credential_source=self.credential_source,
             capabilities=self.capabilities,
+            text_enabled=self.text_enabled,
+            verified_capabilities=self.verified_capabilities,
+            capability_checked_at=self.capability_checked_at,
         )
 
 
@@ -129,6 +129,13 @@ class ChatProfileOut(BaseModel):
     has_api_key: bool
     credential_source: CredentialSource
     capabilities: list[ChatCapability]
+    text_enabled: bool = True
+    verified_capabilities: list[ChatCapability] = []
+    capability_checked_at: dict[ChatCapability, datetime] = {}
+
+
+class CapabilityChangeIn(BaseModel):
+    expected_revision: int
 
 
 class ChatProfileIn(BaseModel):

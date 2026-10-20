@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
-from NoteAgent.Modules.Models.Domain.Vo.ModelContracts import ENV_PROFILE_ID, SCHEMA_VERSION, ActiveEmbedding, ChatProfile, StoredModelSettings
+from NoteAgent.Modules.Models.Domain.Vo.ModelContracts import ENV_PROFILE_ID, SCHEMA_VERSION, ActiveEmbedding, ChatProfile, StoredModelSettings, credential_hash
 
 if TYPE_CHECKING:
     from NoteAgent.AppBootstrap.AppSettings import Settings
@@ -99,6 +99,10 @@ def _profile_to_file(profile: ChatProfile) -> dict[str, object]:
         "context_window": profile.context_window,
         "credential_source": profile.credential_source,
         "capabilities": profile.capabilities,
+        "text_enabled": profile.text_enabled,
+        "verified_capabilities": profile.verified_capabilities,
+        "capability_checked_at": {key: value.isoformat() for key, value in profile.capability_checked_at.items()},
+        "credential_hash": profile.credential_hash,
     }
 
 
@@ -232,9 +236,11 @@ class ModelSettingsStore:
         for profile in settings.chat_profiles:
             if profile.credential_source == "env":
                 if profile.provider == "deepseek":
-                    profiles.append(
-                        profile.model_copy(update={"api_key": app_settings.deepseek_api_key})
-                    )
+                    current_hash = credential_hash(app_settings.deepseek_api_key)
+                    updates = {"api_key": app_settings.deepseek_api_key}
+                    if profile.verified_capabilities and profile.credential_hash != current_hash:
+                        updates.update(verified_capabilities=[], capability_checked_at={})
+                    profiles.append(profile.model_copy(update=updates))
                     continue
                 _logger.warning(
                     "配置引用了环境凭据但不适用 provider=%s profile=%s；该配置需要自己的 Key",

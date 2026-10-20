@@ -3,43 +3,34 @@
 import json
 import shutil
 from pathlib import Path
-
-from pydantic import SecretStr
+from types import SimpleNamespace
 
 from NoteAgent.AppBootstrap.AppSettings import Settings
 from Scripts import CalibrateLearningNotes as calibrate_learning_notes, EvalNotes as eval_notes
 
-
 _ROOT = Path(__file__).resolve().parents[2]
 
 
-def _settings(*, judge_model: str) -> Settings:
-    """Return isolated settings with a usable fake API credential."""
-    return Settings(
-        _env_file=None,
-        deepseek_api_key=SecretStr("secret"),
-        chat_model="chat-only",
-        judge_model=judge_model,
-    )
+def _settings() -> Settings:
+    return Settings(_env_file=None)
 
 
-def test_eval_notes_judge_falls_back_to_chat_model(monkeypatch, tmp_path: Path, capsys):
-    """--judge warns and proceeds with CHAT_MODEL when JUDGE_MODEL is empty."""
+def _resolved(name: str):
+    return SimpleNamespace(config=SimpleNamespace(model=name), client=object())
+
+
+def test_eval_notes_judge_defaults_to_active_model(monkeypatch, tmp_path: Path, capsys):
+    """--judge warns and proceeds with the active model when no override is given."""
     captured = {}
     cases_path = tmp_path / "evals" / "prompt" / "cases.jsonl"
     cases_path.parent.mkdir(parents=True)
     cases_path.write_text('{"id":"x"}\n', encoding="utf-8")
     monkeypatch.setattr(eval_notes, "project_root", lambda: tmp_path)
-    monkeypatch.setattr(eval_notes, "Settings", lambda: _settings(judge_model=""))
+    monkeypatch.setattr(eval_notes, "Settings", _settings)
     monkeypatch.setattr(eval_notes, "load_cases", lambda path, ids: [])
-    monkeypatch.setattr(eval_notes, "create_chat_model", lambda settings: object())
+    monkeypatch.setattr(eval_notes, "build_active_chat", lambda settings: _resolved("chat-only"))
+    monkeypatch.setattr(eval_notes, "build_judge", lambda settings, name=None: _resolved("chat-only"))
     monkeypatch.setattr(eval_notes, "setup_logging", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        eval_notes,
-        "create_judge_model",
-        lambda settings, model_name=None: captured.setdefault("judge_name", model_name)
-        or object(),
-    )
 
     async def fake_run_eval(*args, **kwargs):
         captured.update(kwargs)
@@ -50,31 +41,33 @@ def test_eval_notes_judge_falls_back_to_chat_model(monkeypatch, tmp_path: Path, 
     exit_code = eval_notes.main(["--judge"])
 
     assert exit_code == 0
-    assert captured["judge_name"] == "chat-only"
+    assert captured["chat_model_name"] == "chat-only"
     assert captured["judge_model_name"] == "chat-only"
     assert len(captured["cases_sha256"]) == 64
     assert "judge_independent=false" in capsys.readouterr().err
 
 
-def test_calibration_cli_archives_effective_model_and_hashes(
+def test_calibration_cli_archives_active_model_and_hashes(
     monkeypatch, tmp_path: Path, capsys
 ):
-    """Calibration writes reproducibility metadata for a fallback Judge."""
+    """Calibration writes reproducibility metadata for the active Judge."""
     captured = {}
     monkeypatch.setattr(calibrate_learning_notes, "project_root", lambda: _ROOT)
     monkeypatch.setattr(
         calibrate_learning_notes, "RESULTS_ROOT", tmp_path / "learning_notes"
     )
-    monkeypatch.setattr(
-        calibrate_learning_notes, "Settings", lambda: _settings(judge_model="")
-    )
-    monkeypatch.setattr(calibrate_learning_notes, "setup_logging", lambda *args, **kwargs: None)
+    monkeypatch.setattr(calibrate_learning_notes, "Settings", _settings)
     monkeypatch.setattr(
         calibrate_learning_notes,
-        "create_judge_model",
-        lambda settings, model_name=None: captured.setdefault("judge_name", model_name)
-        or object(),
+        "resolve_active_model",
+        lambda settings: SimpleNamespace(model="chat-only"),
     )
+    monkeypatch.setattr(
+        calibrate_learning_notes,
+        "build_judge",
+        lambda settings, name=None: _resolved(name or "chat-only"),
+    )
+    monkeypatch.setattr(calibrate_learning_notes, "setup_logging", lambda *args, **kwargs: None)
 
     async def fake_calibrate(**kwargs):
         captured.update(kwargs)
@@ -101,7 +94,7 @@ def test_calibration_cli_archives_effective_model_and_hashes(
     dest = destinations[0]
     config = json.loads((dest / "config.json").read_text(encoding="utf-8"))
     calibration = json.loads((dest / "calibration.json").read_text(encoding="utf-8"))
-    assert captured["judge_name"] == "chat-only"
+    assert captured["judge_model_name"] == "chat-only"
     assert config["rubric_version"] == "v0.2"
     assert config["case_id"] == "l01"
     assert len(config["case_file_sha256"]) == 64
@@ -126,22 +119,23 @@ def test_calibration_cli_archives_effective_model_and_hashes(
 def test_calibration_cli_marks_separate_judge_independent(
     monkeypatch, tmp_path: Path, capsys
 ):
-    """A configured Judge model is archived as independent from CHAT_MODEL."""
+    """An explicit Judge override is archived as independent."""
     monkeypatch.setattr(calibrate_learning_notes, "project_root", lambda: _ROOT)
     monkeypatch.setattr(
         calibrate_learning_notes, "RESULTS_ROOT", tmp_path / "learning_notes"
     )
+    monkeypatch.setattr(calibrate_learning_notes, "Settings", _settings)
     monkeypatch.setattr(
         calibrate_learning_notes,
-        "Settings",
-        lambda: _settings(judge_model="separate-judge"),
+        "resolve_active_model",
+        lambda settings: SimpleNamespace(model="chat-only"),
+    )
+    monkeypatch.setattr(
+        calibrate_learning_notes,
+        "build_judge",
+        lambda settings, name=None: _resolved(name or "chat-only"),
     )
     monkeypatch.setattr(calibrate_learning_notes, "setup_logging", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        calibrate_learning_notes,
-        "create_judge_model",
-        lambda settings, model_name=None: object(),
-    )
 
     async def fake_calibrate(**kwargs):
         return {
@@ -159,7 +153,7 @@ def test_calibration_cli_marks_separate_judge_independent(
         calibrate_learning_notes, "calibrate_learning_note", fake_calibrate
     )
 
-    assert calibrate_learning_notes.main([]) == 0
+    assert calibrate_learning_notes.main(["--judge-model", "separate-judge"]) == 0
 
     dest = next((tmp_path / "learning_notes").iterdir())
     config = json.loads((dest / "config.json").read_text(encoding="utf-8"))
@@ -180,17 +174,18 @@ def test_calibration_cli_archives_missing_fixture_failure_and_exits_one(
     results = tmp_path / "results"
     monkeypatch.setattr(calibrate_learning_notes, "project_root", lambda: _ROOT)
     monkeypatch.setattr(calibrate_learning_notes, "RESULTS_ROOT", results)
+    monkeypatch.setattr(calibrate_learning_notes, "Settings", _settings)
     monkeypatch.setattr(
         calibrate_learning_notes,
-        "Settings",
-        lambda: _settings(judge_model="separate-judge"),
+        "resolve_active_model",
+        lambda settings: SimpleNamespace(model="chat-only"),
+    )
+    monkeypatch.setattr(
+        calibrate_learning_notes,
+        "build_judge",
+        lambda settings, name=None: _resolved(name or "chat-only"),
     )
     monkeypatch.setattr(calibrate_learning_notes, "setup_logging", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        calibrate_learning_notes,
-        "create_judge_model",
-        lambda settings, model_name=None: object(),
-    )
 
     async def fake_calibrate(**kwargs):
         return {
@@ -205,7 +200,9 @@ def test_calibration_cli_archives_missing_fixture_failure_and_exits_one(
         calibrate_learning_notes, "calibrate_learning_note", fake_calibrate
     )
 
-    exit_code = calibrate_learning_notes.main(["--fixtures", str(fixtures)])
+    exit_code = calibrate_learning_notes.main(
+        ["--fixtures", str(fixtures), "--judge-model", "separate-judge"]
+    )
 
     assert exit_code == 1
     dest = next(results.iterdir())

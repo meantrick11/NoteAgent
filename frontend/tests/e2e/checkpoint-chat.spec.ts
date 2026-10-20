@@ -32,9 +32,9 @@ const MESSAGES = [
 ]
 
 const MODEL_SETTINGS = {
-  revision: 7,
-  chat_profiles: [],
-  active_chat: {
+  embedding_revision: 7,
+  models: [],
+  active_model: {
     id: 'env-default',
     label: '环境默认',
     provider: 'deepseek',

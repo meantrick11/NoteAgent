@@ -56,7 +56,7 @@ async def claim_turn(
     conversations = container.conversations
     if conversations is None:
         raise HTTPException(status_code=503, detail="conversation service unavailable")
-    agent = snapshot.chat_agent
+    agent = snapshot.require_agent()
 
     if (require.prepared_turn_id or require.run_id) and require.attachment_ids:
         raise HTTPException(status_code=400, detail="恢复请求不能携带新附件")
@@ -208,7 +208,7 @@ async def chat_with(
         resume,
         require.question,
     )
-    agent = snapshot.chat_agent
+    agent = snapshot.require_agent()
     async for item in agent.run(prepared, resume=resume):
         event = str(item.get("event") or "token")
         data = item.get("data")
@@ -238,7 +238,7 @@ async def update_chat_draft(
         raise HTTPException(status_code=404, detail="conversation not found")
     if request.app.state.container.history_required and record.state_backend != "checkpoint":
         raise HTTPException(status_code=409, detail="legacy conversation must be migrated before editing")
-    agent = snapshot.chat_agent
+    agent = snapshot.require_agent()
     _logger.info(
         "[thread=%s] draft update chars=%d", require.thread_id, len(require.content)
     )
@@ -284,7 +284,7 @@ async def chat_review(
         raise HTTPException(status_code=404, detail="conversation not found")
     if request.app.state.container.history_required and record.state_backend != "checkpoint":
         raise HTTPException(status_code=409, detail="legacy conversation must be migrated before reviewing")
-    agent = snapshot.chat_agent
+    agent = snapshot.require_agent()
     _logger.info(
         "[thread=%s] review action=%s write_action=%s file=%s",
         require.thread_id,

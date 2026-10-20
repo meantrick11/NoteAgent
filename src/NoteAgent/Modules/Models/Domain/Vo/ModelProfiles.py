@@ -46,6 +46,14 @@ def merge_candidate(
             )
         raise InvalidProfileError("该配置要求 API Key，但当前没有可用凭据")
 
+    same_connection = (existing is not None
+                       and existing.provider == candidate.provider
+                       and existing.model == candidate.model
+                       and existing.base_url == candidate.base_url
+                       and existing.auth_mode == candidate.auth_mode
+                       and provided is None and not candidate.clear_api_key)
+    verified = [cap for cap in existing.verified_capabilities if cap in candidate.capabilities] if same_connection else []
+    checked = {cap: value for cap, value in existing.capability_checked_at.items() if cap in verified} if same_connection else {}
     try:
         return ChatProfile(
             id=profile_id,
@@ -58,6 +66,10 @@ def merge_candidate(
             context_window=candidate.context_window,
             credential_source=source,
             capabilities=candidate.capabilities,
+            text_enabled=existing.text_enabled if existing is not None else True,
+            verified_capabilities=verified,
+            capability_checked_at=checked,
+            credential_hash=existing.credential_hash if same_connection else None,
         )
     except ValidationError as exc:
         raise InvalidProfileError(f"配置内容不合法：{exc.error_count()} 处问题") from exc
