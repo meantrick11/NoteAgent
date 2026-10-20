@@ -43,8 +43,9 @@
 - [ ] 笔记变更自动触发 RAG 索引
 
 ### 配置管理
-- [ ] pydantic-settings 替代裸读 `.env`
-- [ ] Agent 行为参数配置化（temperature、工具列表、prompt 选择）
+- [x] pydantic-settings 替代裸读 `.env`
+- [x] temperature / max_tokens / timeout / retries 随模型配置入库
+- [ ] 工具列表与 prompt 选择配置化
 
 ---
 
