@@ -7,9 +7,10 @@
 from datetime import datetime
 import hashlib
 from typing import Literal
-from urllib.parse import urlsplit
 
 from pydantic import BaseModel, SecretStr, field_validator, model_validator
+
+from NoteAgent.Modules.Models.Domain.Vo.ModelConfig import normalize_base_url
 
 # 支持的 provider：项目已装 SDK 对应的协议，不做任意协议透传。
 ChatProviderName = Literal["deepseek", "openai-compatible"]
@@ -32,26 +33,6 @@ def credential_hash(secret: SecretStr) -> str:
     return hashlib.sha256(secret.get_secret_value().encode("utf-8")).hexdigest()
 # 从环境生成的默认 profile 使用固定 id，保证重启后 active 指针依然有效。
 ENV_PROFILE_ID = "env-default"
-
-
-def normalize_base_url(value: str) -> str:
-    """Validate a Base URL and strip a trailing slash.
-
-    Only http/https are accepted, and embedded userinfo is rejected: a URL like
-    ``https://user:pass@host`` puts a credential into the URL, which would then reach
-    logs and error messages.
-    """
-    candidate = value.strip()
-    if not candidate:
-        return ""
-    parts = urlsplit(candidate)
-    if parts.scheme not in ("http", "https"):
-        raise ValueError("Base URL 必须以 http:// 或 https:// 开头")
-    if not parts.netloc:
-        raise ValueError("Base URL 缺少主机名")
-    if parts.username is not None or parts.password is not None:
-        raise ValueError("Base URL 不能内嵌用户名或密码，凭据请填 API Key")
-    return candidate.rstrip("/")
 
 
 class ChatProfile(BaseModel):

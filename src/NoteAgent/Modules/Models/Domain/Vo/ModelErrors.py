@@ -44,6 +44,34 @@ class ProfileNotFoundError(ModelManagementError):
     code = "profile_not_found"
 
 
+class ModelConfigNotFoundError(ModelManagementError):
+    """Unknown model configuration id."""
+
+    status = 404
+    code = "model_not_found"
+
+
+class ProviderNotFoundError(ModelManagementError):
+    """The requested provider id is not registered."""
+
+    status = 422
+    code = "provider_not_found"
+
+
+class ActiveModelProtectedError(ModelManagementError):
+    """The active model cannot be edited or deleted through the ordinary path."""
+
+    status = 409
+    code = "model_active"
+
+
+class ModelNotConfiguredError(ModelManagementError):
+    """No active model exists, so chat cannot start."""
+
+    status = 503
+    code = "model_not_configured"
+
+
 class JobNotFoundError(ModelManagementError):
     """Unknown rebuild job id."""
 
