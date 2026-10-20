@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 
-import type { AuthMode, ChatProfile, ChatProfileInput, ChatProviderName } from '@/shared/api/types'
+import type { AuthMode, ModelConfig, ModelConfigInput } from '@/shared/api/types'
 import { useModelsStore } from './store'
 
 /**
- * 新增／编辑一个聊天配置。Key 永不回显：留空表示保留已保存的那一个，
- * 要清除必须显式勾选。当前启用的配置不能走普通保存，只能「保存并启用」。
+ * 新增／编辑一个模型配置。Key 永不回显：留空表示保留已保存的那一个，
+ * 要清除必须显式勾选。当前启用的配置只能“保存并启用”。
  */
 const props = defineProps<{
-  profile: ChatProfile | null
+  model: ModelConfig | null
   active: boolean
 }>()
 
@@ -18,49 +18,57 @@ const emit = defineEmits<{ (event: 'done'): void; (event: 'cancel'): void }>()
 const models = useModelsStore()
 
 const label = ref('')
-const provider = ref<ChatProviderName>('deepseek')
-const model = ref('')
+const provider = ref('deepseek')
+const modelName = ref('')
 const baseUrl = ref('')
 const apiKey = ref('')
 const authNone = ref(false)
 const clearKey = ref(false)
 const contextWindow = ref('32768')
+const temperature = ref('')
+const maxTokens = ref('')
+const timeoutSeconds = ref('60')
+const maxRetries = ref('1')
 const labelEl = ref<HTMLInputElement | null>(null)
 
-const hasSavedKey = computed(() => Boolean(props.profile?.has_api_key))
-
-/** 只有 OpenAI 兼容服务才谈得上"无需认证"。 */
-const supportsNoAuth = computed(() => provider.value !== 'deepseek')
+const spec = computed(() => models.providerSpec(provider.value))
+const hasSavedKey = computed(() => Boolean(props.model?.has_api_key))
+const supportsNoAuth = computed(() => spec.value?.auth_modes.includes('none') ?? false)
 const keyDisabled = computed(() => authNone.value || clearKey.value)
+const baseUrlRequired = computed(() => spec.value?.base_url_required ?? false)
 
 function reset(): void {
-  const profile = props.profile
-  label.value = profile ? profile.label : ''
-  provider.value = profile ? profile.provider : 'deepseek'
-  model.value = profile ? profile.model : ''
-  baseUrl.value = profile ? profile.base_url : ''
+  const model = props.model
+  label.value = model?.label ?? ''
+  provider.value = model?.provider ?? 'deepseek'
+  modelName.value = model?.model ?? ''
+  baseUrl.value = model?.base_url ?? ''
   apiKey.value = ''
-  authNone.value = profile ? profile.auth_mode === 'none' : false
+  authNone.value = model?.auth_mode === 'none'
   clearKey.value = false
-  contextWindow.value = profile ? String(profile.context_window) : '32768'
+  contextWindow.value = String(model?.context_window ?? 32768)
+  temperature.value = model?.temperature == null ? '' : String(model.temperature)
+  maxTokens.value = model?.max_tokens == null ? '' : String(model.max_tokens)
+  timeoutSeconds.value = String(model?.timeout_s ?? 60)
+  maxRetries.value = String(model?.max_retries ?? 1)
 }
 
 function onProviderChange(): void {
-  if (provider.value === 'deepseek') authNone.value = false
+  if (!spec.value?.auth_modes.includes('none')) authNone.value = false
+  if (!baseUrl.value) baseUrl.value = spec.value?.default_base_url ?? ''
 }
 
 function onKeyInput(): void {
-  // 输入新 Key 与"清除"是互斥意图，服务端也会拒绝同时提交。
   if (apiKey.value.trim() && clearKey.value) clearKey.value = false
 }
 
-watch(() => props.profile, reset, { immediate: true, deep: true })
+watch(() => props.model, reset, { immediate: true, deep: true })
 watch(clearKey, (value) => {
   if (value) apiKey.value = ''
 })
 
 watch(
-  () => props.profile,
+  () => props.model,
   async () => {
     await nextTick()
     labelEl.value?.focus()
@@ -68,17 +76,21 @@ watch(
   { immediate: true },
 )
 
-function payload(): ChatProfileInput {
-  const body: ChatProfileInput = {
+function payload(): ModelConfigInput {
+  const body: ModelConfigInput = {
     label: label.value.trim(),
     provider: provider.value,
-    model: model.value.trim(),
+    model: modelName.value.trim(),
     base_url: baseUrl.value.trim(),
     context_window: Number(contextWindow.value) || 0,
+    timeout_s: Number(timeoutSeconds.value) || 0,
+    max_retries: Number(maxRetries.value) || 0,
     auth_mode: (authNone.value ? 'none' : 'api_key') as AuthMode,
-    capabilities: props.profile?.capabilities ?? ['text'],
   }
-  if (props.profile) body.id = props.profile.id
+  const temp = temperature.value.trim()
+  const tokens = maxTokens.value.trim()
+  if (temp !== '') body.temperature = Number(temp)
+  if (tokens !== '') body.max_tokens = Number(tokens)
   const key = apiKey.value.trim()
   if (key) body.api_key = key
   if (clearKey.value) body.clear_api_key = true
@@ -86,11 +98,15 @@ function payload(): ChatProfileInput {
 }
 
 async function test(): Promise<void> {
-  await models.testConnection(payload())
+  if (!props.model) {
+    models.showChatError('先保存配置，再测试连接。')
+    return
+  }
+  await models.testConnection(props.model.id, payload())
 }
 
 async function submit(activate: boolean): Promise<void> {
-  const ok = await models.submitProfile(payload(), props.profile?.id ?? null, activate)
+  const ok = await models.submitModel(payload(), props.model, activate)
   if (ok) emit('done')
 }
 </script>
@@ -98,7 +114,7 @@ async function submit(activate: boolean): Promise<void> {
 <template>
   <div class="ms-form">
     <div class="ms-section-title">
-      {{ profile ? `编辑「${profile.label}」` : '新增聊天配置' }}
+      {{ model ? `编辑「${model.label}」` : '新增模型配置' }}
     </div>
 
     <div class="ms-field">
@@ -107,20 +123,23 @@ async function submit(activate: boolean): Promise<void> {
     </div>
 
     <div class="ms-field">
-      <label for="ms-provider">provider</label>
+      <label for="ms-provider">Provider</label>
       <select id="ms-provider" v-model="provider" class="input" @change="onProviderChange">
-        <option value="deepseek">DeepSeek</option>
-        <option value="openai-compatible">OpenAI 兼容</option>
+        <option v-for="item in models.providerSpecs" :key="item.id" :value="item.id">
+          {{ item.label }}
+        </option>
       </select>
     </div>
 
     <div class="ms-field">
       <label for="ms-model">模型名</label>
-      <input id="ms-model" v-model="model" class="input" type="text" />
+      <input id="ms-model" v-model="modelName" class="input" type="text" />
     </div>
 
     <div class="ms-field">
-      <label for="ms-base-url">Base URL</label>
+      <label for="ms-base-url">
+        Base URL<template v-if="baseUrlRequired">（必填）</template>
+      </label>
       <input id="ms-base-url" v-model="baseUrl" class="input" type="text" />
       <div class="ms-hint">
         填服务根地址，例如 http://localhost:1234/v1；不要填 /chat/completions
@@ -143,28 +162,40 @@ async function submit(activate: boolean): Promise<void> {
 
     <label v-if="supportsNoAuth" class="ms-check">
       <input v-model="authNone" type="checkbox" />
-      <span>该服务无需 API Key（仅限本地兼容服务）</span>
+      <span>该服务无需 API Key</span>
     </label>
 
     <label v-if="hasSavedKey" class="ms-check">
       <input v-model="clearKey" type="checkbox" />
-      <span>清除已保存的 Key（该配置将不再带凭据）</span>
+      <span>清除已保存的 Key</span>
     </label>
-
-    <div class="ms-hint">
-      留空即保留已保存的 Key；只有勾选「清除」或删除该配置才会移除它。
-    </div>
 
     <div class="ms-field">
       <label for="ms-context">上下文窗口（token）</label>
       <input id="ms-context" v-model="contextWindow" class="input" type="text" />
-      <div class="ms-hint">
-        用于上下文压缩预算；按服务实际能力填写，不会根据模型名猜测
+    </div>
+
+    <div class="ms-grid">
+      <div class="ms-field">
+        <label for="ms-temp">temperature（留空用 Provider 默认）</label>
+        <input id="ms-temp" v-model="temperature" class="input" type="text" />
+      </div>
+      <div class="ms-field">
+        <label for="ms-tokens">max_tokens（留空用 Provider 默认）</label>
+        <input id="ms-tokens" v-model="maxTokens" class="input" type="text" />
+      </div>
+      <div class="ms-field">
+        <label for="ms-timeout">超时（秒）</label>
+        <input id="ms-timeout" v-model="timeoutSeconds" class="input" type="text" />
+      </div>
+      <div class="ms-field">
+        <label for="ms-retries">最大重试</label>
+        <input id="ms-retries" v-model="maxRetries" class="input" type="text" />
       </div>
     </div>
 
     <div v-if="active" class="ms-hint">
-      这是当前启用的配置：请用「保存并启用」提交，普通保存会改变文件却不更换正在运行的客户端。
+      这是当前启用的模型：普通保存不会切换运行中的客户端，请使用「保存并启用」。
     </div>
 
     <div class="ms-actions">
@@ -216,6 +247,12 @@ async function submit(activate: boolean): Promise<void> {
 
 .ms-field .input {
   width: 100%;
+}
+
+.ms-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
 }
 
 .ms-hint {

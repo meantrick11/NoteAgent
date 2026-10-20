@@ -255,6 +255,13 @@ export const useChatStore = defineStore('chat', () => {
     patchPanel(citePaneKey(currentId.value), patch)
   }
 
+  /** Explain why a send is refused without writing a user message. */
+  function notifyUnavailable(): void {
+    pushNotice(models.activeTextDisabled
+      ? '当前模型已关闭 text 能力，请先重新验证后再聊天。'
+      : '向量索引重建中，暂时不能发送消息；已有内容仍可查看。')
+  }
+
   function pushNotice(text: string): void {
     messages.value = [...messages.value, newMessage('assistant', text)]
   }
@@ -723,7 +730,7 @@ export const useChatStore = defineStore('chat', () => {
     if (!models.canChat) {
       streaming.value = false
       models.setStreaming(false)
-      pushNotice(models.activeChat?.text_enabled === false
+      pushNotice(models.activeTextDisabled
         ? '当前模型已关闭 text 能力，请先重新验证后再聊天。'
         : '向量索引重建中，暂时不能发送消息；已有内容仍可查看。')
       return 'refused'
@@ -1092,6 +1099,7 @@ export const useChatStore = defineStore('chat', () => {
     adoptPanelKey,
     // 发送
     send,
+    notifyUnavailable,
     resumeRun,
     pushNotice,
     // 编辑历史消息与整体回退

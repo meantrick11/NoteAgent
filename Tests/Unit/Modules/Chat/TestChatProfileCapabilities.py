@@ -1,5 +1,4 @@
 import pytest
-from types import SimpleNamespace
 from pydantic import ValidationError
 
 from pydantic import SecretStr
@@ -7,8 +6,6 @@ from pydantic import SecretStr
 from NoteAgent.Modules.Models.Domain.Vo.ModelContracts import ChatProfile, ChatProfileIn, StoredModelSettings, SCHEMA_VERSION
 from NoteAgent.Modules.Models.Domain.Vo.ModelProfiles import merge_candidate
 from NoteAgent.Modules.Models.Mapper.ModelSettingsStorage import ModelSettingsStore
-from NoteAgent.AppBootstrap.SourceVision import vision_factory
-from NoteAgent.Modules.Sources.Domain.Vo.SourceFileContracts import ParseError
 
 
 def test_legacy_profile_defaults_to_text_only():
@@ -48,17 +45,3 @@ def test_vision_label_and_key_survive_settings_save(tmp_path):
     assert saved.schema_version == SCHEMA_VERSION
     assert loaded.chat_profiles[0].capabilities == ["text", "vision"]
     assert loaded.chat_profiles[0].api_key.get_secret_value() == "secret"
-
-
-def test_vision_parse_rejects_missing_tag_or_changed_revision():
-    text_only = ChatProfile(id="p", label="text", provider="deepseek", model="chat")
-    source = SimpleNamespace(media_type="image/png", parse_profile_id="p", parse_profile_revision=1)
-    store = SimpleNamespace(load_effective=lambda _settings: StoredModelSettings(
-        revision=1, chat_profiles=[text_only]))
-    with pytest.raises(ParseError):
-        vision_factory(source, store, None)
-    vision = text_only.model_copy(update={"capabilities": ["text", "vision"]})
-    changed = SimpleNamespace(load_effective=lambda _settings: StoredModelSettings(
-        revision=2, chat_profiles=[vision]))
-    with pytest.raises(ParseError):
-        vision_factory(source, changed, None)

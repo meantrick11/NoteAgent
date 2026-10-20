@@ -1,17 +1,42 @@
-"""模型设置 HTTP 层：参数校验、调用 service、映射状态码。
+"""Model settings HTTP layer: configuration, providers, activation and status.
 
-不装配模型、不扫描文件；凭据只在请求体内出现过一次，响应与日志都不得回显。本模块同时
-导出请求级租约依赖（chat_lease / write_lease），供 chat 与 notes 路由统一接入门禁。
+No credential is ever echoed; every write uses the model row's own revision.
 """
-
-from NoteAgent.Common.Http.RequestDependencies import get_model_runtime, require_same_origin
 
 import logging
 
 from fastapi import APIRouter, Depends, Request, Response
-from NoteAgent.Modules.Models.Domain.Vo.ModelContracts import CapabilityChangeIn
 
-from NoteAgent.Modules.Models.Domain.Dto.ModelSettingsSchemas import ChatActivateIn, ChatProfileIn, ChatProfileOut, ChatProfileWriteIn, ChatTestOut, EmbeddingCandidateOut, EmbeddingSwitchIn, EmbeddingSwitchOut, EmbeddingJobRecord, ModelSettingsStatusOut
+from NoteAgent.Common.Http.RequestDependencies import (
+    get_model_activation,
+    get_model_configs,
+    get_model_runtime,
+    get_providers,
+    require_same_origin,
+)
+from NoteAgent.Modules.Models.Domain.Dto.ModelSettingsSchemas import (
+    CapabilityChangeIn,
+    ModelActivateIn,
+    ModelConfigIn,
+    ModelConfigOut,
+    ModelConfigWriteIn,
+    ModelSettingsStatusOut,
+    ModelTestOut,
+    ProviderSpecOut,
+    merge_model_input,
+    to_model_out,
+    to_provider_out,
+)
+from NoteAgent.Modules.Models.Domain.Vo.ModelContracts import (
+    EmbeddingCandidateOut,
+    EmbeddingJobRecord,
+    EmbeddingSwitchIn,
+    EmbeddingSwitchOut,
+)
+from NoteAgent.Modules.Models.Domain.Vo.ModelErrors import (
+    ActiveModelProtectedError,
+    ProtocolUnsupportedError,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -20,79 +45,133 @@ router = APIRouter(prefix="/model-settings", tags=["model-settings"])
 
 @router.get("", response_model=ModelSettingsStatusOut)
 async def get_model_settings(request: Request) -> ModelSettingsStatusOut:
-    """Current revision, profiles, active choices, and any running job."""
+    """Model list, active model and the independent retrieval state."""
     return get_model_runtime(request).status()
 
 
-@router.post(
-    "/chat/test",
-    response_model=ChatTestOut,
-    dependencies=[Depends(require_same_origin)],
-)
-async def test_chat_profile(body: ChatProfileIn, request: Request) -> ChatTestOut:
-    """Probe a candidate's streaming and tool-calling support. Saves nothing."""
-    return await get_model_runtime(request).test_chat_profile(body)
-
-
-@router.post("/chat/profiles/{profile_id}/capabilities/{capability}/verify", response_model=ChatProfileOut,
-             dependencies=[Depends(require_same_origin)])
-async def verify_chat_capability(profile_id: str, capability: str, body: CapabilityChangeIn,
-                                 request: Request) -> ChatProfileOut:
-    return await get_model_runtime(request).verify_capability(profile_id, capability, body.expected_revision)
-
-
-@router.delete("/chat/profiles/{profile_id}/capabilities/{capability}", response_model=ChatProfileOut,
-               dependencies=[Depends(require_same_origin)])
-async def disable_chat_capability(profile_id: str, capability: str, expected_revision: int, request: Request) -> ChatProfileOut:
-    return get_model_runtime(request).disable_capability(profile_id, capability, expected_revision)
+@router.get("/providers", response_model=list[ProviderSpecOut])
+async def list_providers(request: Request) -> list[ProviderSpecOut]:
+    """Provider specs used to render the settings form."""
+    return [to_provider_out(spec) for spec in get_providers(request).list_specs()]
 
 
 @router.post(
-    "/chat/profiles",
-    response_model=ChatProfileOut,
+    "/models",
+    response_model=ModelConfigOut,
     status_code=201,
     dependencies=[Depends(require_same_origin)],
 )
-async def create_chat_profile(body: ChatProfileWriteIn, request: Request) -> ChatProfileOut:
-    """Store a new profile. Saving never activates it."""
-    return get_model_runtime(request).save_chat_profile(body, profile_id=None)
+async def create_model(body: ModelConfigIn, request: Request) -> ModelConfigOut:
+    """Save a new model configuration; saving never activates it."""
+    config = merge_model_input(body, None, model_id="")
+    created = get_model_configs(request).create(config)
+    return to_model_out(created)
 
 
 @router.put(
-    "/chat/profiles/{profile_id}",
-    response_model=ChatProfileOut,
+    "/models/{model_id}",
+    response_model=ModelConfigOut,
     dependencies=[Depends(require_same_origin)],
 )
-async def update_chat_profile(
-    profile_id: str, body: ChatProfileWriteIn, request: Request
-) -> ChatProfileOut:
-    """Update a stored profile. The active profile must go through activate instead."""
-    return get_model_runtime(request).save_chat_profile(body, profile_id=profile_id)
+async def update_model(
+    model_id: str, body: ModelConfigWriteIn, request: Request
+) -> ModelConfigOut:
+    """Update a non-active model; the active one must use the activation flow."""
+    configs = get_model_configs(request)
+    existing = configs.get_model(model_id)
+    if existing.is_active:
+        raise ActiveModelProtectedError("当前启用的模型不能直接编辑，请使用「保存并启用」")
+    config = merge_model_input(body, existing, model_id=model_id)
+    updated = configs.update(model_id, body.expected_revision, config)
+    return to_model_out(updated)
 
 
 @router.delete(
-    "/chat/profiles/{profile_id}",
+    "/models/{model_id}",
     status_code=204,
     dependencies=[Depends(require_same_origin)],
 )
-async def delete_chat_profile(
-    profile_id: str, expected_revision: int, request: Request
+async def delete_model(
+    model_id: str, expected_revision: int, request: Request
 ) -> Response:
-    """Delete a stored profile (and its credential). The active one is protected."""
-    get_model_runtime(request).delete_chat_profile(
-        profile_id=profile_id, expected_revision=expected_revision
-    )
+    """Delete a non-active model and its capability rows."""
+    get_model_configs(request).delete(model_id, expected_revision)
     return Response(status_code=204)
 
 
 @router.post(
-    "/chat/activate",
-    response_model=ChatProfileOut,
+    "/models/{model_id}/test",
+    response_model=ModelTestOut,
     dependencies=[Depends(require_same_origin)],
 )
-async def activate_chat_profile(body: ChatActivateIn, request: Request) -> ChatProfileOut:
-    """Verify, save, and enable one profile as a single transaction."""
-    return await get_model_runtime(request).activate_chat(body)
+async def test_model(
+    model_id: str, request: Request, body: ModelConfigIn | None = None
+) -> ModelTestOut:
+    """Probe a stored model, or an edited form payload, without saving."""
+    configs = get_model_configs(request)
+    existing = configs.get_model(model_id)
+    config = merge_model_input(body, existing, model_id=model_id) if body else existing
+    result = await configs.test(config)
+    return ModelTestOut(
+        verified=result.verified,
+        streaming=result.streaming,
+        tool_calling=result.tool_calling,
+        message=result.message,
+    )
+
+
+@router.post(
+    "/models/{model_id}/activate",
+    response_model=ModelConfigOut,
+    dependencies=[Depends(require_same_origin)],
+)
+async def activate_model(
+    model_id: str, body: ModelActivateIn, request: Request
+) -> ModelConfigOut:
+    """Verify, optionally save, atomically switch active, then publish the snapshot."""
+    configs = get_model_configs(request)
+    existing = configs.get_model(model_id)
+    config = merge_model_input(body.config, existing, model_id=model_id) if body.config else None
+    saved = await get_model_activation(request).activate(
+        model_id, body.expected_revision, config
+    )
+    return to_model_out(saved)
+
+
+@router.post(
+    "/models/{model_id}/capabilities/{capability}/verify",
+    response_model=ModelConfigOut,
+    dependencies=[Depends(require_same_origin)],
+)
+async def verify_capability(
+    model_id: str, capability: str, body: CapabilityChangeIn, request: Request
+) -> ModelConfigOut:
+    """Probe and persist capability evidence."""
+    configs = get_model_configs(request)
+    runtime = get_model_runtime(request)
+    try:
+        saved = await configs.verify_capability(model_id, capability, body.expected_revision)
+    except ProtocolUnsupportedError:
+        runtime.sync_model(configs.get_model(model_id))
+        raise
+    runtime.sync_model(saved)
+    return to_model_out(saved)
+
+
+@router.delete(
+    "/models/{model_id}/capabilities/{capability}",
+    response_model=ModelConfigOut,
+    dependencies=[Depends(require_same_origin)],
+)
+async def disable_capability(
+    model_id: str, capability: str, expected_revision: int, request: Request
+) -> ModelConfigOut:
+    """Pause text or vision; vision evidence is cleared and must be reprobed."""
+    saved = get_model_configs(request).disable_capability(
+        model_id, capability, expected_revision
+    )
+    get_model_runtime(request).sync_model(saved)
+    return to_model_out(saved)
 
 
 @router.get("/embeddings", response_model=list[EmbeddingCandidateOut])

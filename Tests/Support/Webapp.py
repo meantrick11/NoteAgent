@@ -24,10 +24,15 @@ from NoteAgent.Modules.Chat.Agent.Tools.ChatTools import build_chat_tools
 from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import CheckpointRuntime
 from NoteAgent.Modules.Conversations.Service.ConversationStateService import ConversationService
 from NoteAgent.Common.Database import Base, create_engine_from_url, create_session_factory
-from NoteAgent.Modules.Models.Domain.Vo.ModelContracts import ChatProfile
+from NoteAgent.Modules.Models.Domain.Vo.ModelCapabilities import initial_capabilities, text_verified
+from NoteAgent.Modules.Models.Domain.Vo.ModelConfig import ModelConfig
 from NoteAgent.Modules.Models.Provider.ModelProbes import ChatProbeResult
-from NoteAgent.Modules.Models.Service.ModelRuntime import ModelRuntimeService
 from NoteAgent.Modules.Models.Mapper.ModelSettingsStorage import ModelSettingsStore
+from NoteAgent.Modules.Models.Mapper.SqlModelConfigRepository import SqlModelConfigRepository
+from NoteAgent.Modules.Models.Provider.ProviderRegistry import ProviderRegistry
+from NoteAgent.Modules.Models.Service.ModelActivationService import ModelActivationService
+from NoteAgent.Modules.Models.Service.ModelConfigService import ModelConfigService
+from NoteAgent.Modules.Models.Service.ModelRuntime import ModelRuntimeService
 from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
 from Support.Fakes import FakeChatModel, FakeRetrieval
 from Support.Harness import TEST_BUDGET
@@ -61,9 +66,6 @@ class _GraphAssembler:
     def __init__(self, app: "CheckpointApp") -> None:
         self._app = app
 
-    def build_chat_model(self, profile: ChatProfile):
-        return self._app.next_model()
-
     def index_fingerprint(self, *, model_id: str, resolved_revision: str | None) -> str:
         return f"stub:{model_id}:{resolved_revision or ''}"
 
@@ -72,11 +74,11 @@ class _GraphAssembler:
     ):
         return self._app.status_retrieval
 
-    def build_agent(self, *, profile: ChatProfile, retrieval):
-        model = self._app.next_model()
-        self._app.model = model
+    def build_agent(self, *, model, retrieval):
+        client = self._app.next_model()
+        self._app.model = client
         return build_graph_agent(
-            model=model,
+            model=client,
             tools=build_chat_tools(self._app.notes, self._app.agent_retrieval, self._app.drafts, web_reader=self._app.web_reader),
             notes=self._app.notes,
             drafts=self._app.drafts,
@@ -133,6 +135,8 @@ def build_checkpoint_app(
     app lifespan, so a rebuild over the same schema is a genuine restart.
     """
     settings = Settings(
+        _env_file=None,
+        deepseek_api_key=__import__("pydantic").SecretStr("env-secret"),
         notes_dir=tmp_path,
         chroma_dir=tmp_path / "chroma",
         model_settings_dir=tmp_path / "model_settings",
@@ -141,6 +145,25 @@ def build_checkpoint_app(
     engine = create_engine_from_url(sqlalchemy_url)
     Base.metadata.create_all(engine)
     factory = create_session_factory(engine)
+    repository = SqlModelConfigRepository(factory)
+    repository.import_models(
+        [
+            ModelConfig(
+                id="env-default",
+                label="env",
+                provider="deepseek",
+                model="env-chat-model",
+                api_key="env-secret",
+                is_active=True,
+                capabilities=text_verified(
+                    initial_capabilities(),
+                    evidence={"streaming": True, "tool_calling": True},
+                    checked_at=__import__("datetime").datetime.now(__import__("datetime").UTC),
+                ),
+            )
+        ],
+        "env-default",
+    )
     history = ConversationStore(factory)
     notes = FileNoteRepository(tmp_path)
     drafts = DraftStore(history)
@@ -165,20 +188,47 @@ def build_checkpoint_app(
         _reply_batches=list(reply_batches),
         web_reader=web_reader,
     )
+    async def probe_client(_client):
+        return ChatProbeResult(streaming=True, tool_calling=True)
+
+    def client_factory(_config, _spec):
+        return object()
+
+    catalog = ProviderRegistry()
+    assembler = _GraphAssembler(app)
+    configs = ModelConfigService(
+        repository=repository,
+        catalog=catalog,
+        probe_text=probe_client,
+        client_factory=client_factory,
+    )
     runtime = ModelRuntimeService(
         settings=settings,
+        repository=repository,
         store=ModelSettingsStore(settings.model_settings_dir),
         notes=notes,
-        assembler=_GraphAssembler(app),
-        probe=_probe,
+        assembler=assembler,
     )
     runtime.initialize()
+    activation = ModelActivationService(
+        repository=repository,
+        config_service=configs,
+        catalog=catalog,
+        assembler=assembler,
+        retrieval_provider=lambda: runtime.snapshot().retrieval,
+        publisher=runtime,
+        probe_text=probe_client,
+        client_factory=client_factory,
+    )
     container = AppContainer(
         settings=settings,
         notes=notes,
         engine=engine,
         history=history,
         model_runtime=runtime,
+        model_configs=configs,
+        model_activation=activation,
+        providers=catalog,
         conversations=service,
         checkpoints=checkpoints,
     )

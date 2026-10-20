@@ -162,18 +162,18 @@ describe('聊天接口的请求体', () => {
 })
 
 describe('模型接口的相对路径与 revision', () => {
-  it('除状态外都挂在 /model-settings 前缀下', async () => {
+  it('测试已保存模型挂在 /models/{id}/test 下', async () => {
     const stub = stubFetch(() => jsonResponse({ verified: true, streaming: true, tool_calling: true }))
     vi.stubGlobal('fetch', stub.fetch)
-    await modelsApi.testChatProfile({ label: 'a', provider: 'deepseek', model: 'm' })
-    expect(stub.calls[0].url).toBe('/model-settings/chat/test')
+    await modelsApi.testModel('id/1', { label: 'a', provider: 'deepseek', model: 'm' })
+    expect(stub.calls[0].url).toBe('/model-settings/models/id%2F1/test')
   })
 
-  it('删除配置把 expected_revision 放进查询参数', async () => {
+  it('删除模型把行级 expected_revision 放进查询参数', async () => {
     const stub = stubFetch(() => emptyResponse(204))
     vi.stubGlobal('fetch', stub.fetch)
-    await modelsApi.deleteChatProfile('id/1', 7)
-    expect(stub.calls[0].url).toBe('/model-settings/chat/profiles/id%2F1?expected_revision=7')
+    await modelsApi.deleteModel('id/1', 7)
+    expect(stub.calls[0].url).toBe('/model-settings/models/id%2F1?expected_revision=7')
     expect(stub.calls[0].init.method).toBe('DELETE')
   })
 

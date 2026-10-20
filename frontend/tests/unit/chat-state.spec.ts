@@ -205,7 +205,15 @@ describe('发送门闩', () => {
   })
 
   it('关闭 text 后发送在本地消息写入前被拒绝', async () => {
-    const paused = { ...modelSettings, active_chat: { ...modelSettings.active_chat, text_enabled: false } }
+    const paused = {
+      ...modelSettings,
+      active_model: {
+        ...modelSettings.active_model!,
+        capabilities: modelSettings.active_model!.capabilities.map((item) =>
+          item.capability === 'text' ? { ...item, status: 'disabled' as const } : item,
+        ),
+      },
+    }
     const stub = routeFetch([['/model-settings', () => jsonResponse(paused)]])
     vi.stubGlobal('fetch', stub.fetch)
     const models = useModelsStore()

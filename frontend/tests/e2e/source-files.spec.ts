@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 test('Library shows independent source files and parsed text preview', async ({ page }) => {
   await page.route(url => url.pathname.startsWith('/model-settings'), route => route.fulfill({ json: {
-    revision: 0, chat_profiles: [], active_chat: null, active_embedding: null,
+    embedding_revision: 0, models: [], active_model: null, active_embedding: null,
     retrieval_available: false, retrieval_state: 'unavailable', indexed_files: 0,
     corpus_files: 0, busy: false, embedding_job: null,
   } }))
@@ -27,7 +27,7 @@ test('Library shows independent source files and parsed text preview', async ({ 
 test('chat composer uploads and waits for parsing readiness', async ({ page }) => {
   const id = '00000000-0000-4000-8000-000000000002'
   await page.route('**/model-settings', route => route.fulfill({ json: {
-    revision: 0, chat_profiles: [], active_chat: null, active_embedding: null,
+    embedding_revision: 0, models: [], active_model: null, active_embedding: null,
     retrieval_available: false, retrieval_state: 'unavailable', indexed_files: 0,
     corpus_files: 0, busy: false, embedding_job: null,
   } }))
@@ -60,7 +60,7 @@ test('Library accepts an arbitrary file as a stored record', async ({ page }) =>
     created_at: '', updated_at: '' }
   let files: typeof record[] = []
   await page.route(url => url.pathname.startsWith('/model-settings'), route => route.fulfill({ json: {
-    revision: 0, chat_profiles: [], active_chat: null, active_embedding: null,
+    embedding_revision: 0, models: [], active_model: null, active_embedding: null,
     retrieval_available: false, retrieval_state: 'unavailable', indexed_files: 0,
     corpus_files: 0, busy: false, embedding_job: null,
   } }))
@@ -91,7 +91,7 @@ test('Library continues a batch after one upload is rejected', async ({ page }) 
   let uploaded = false
   let attempts = 0
   await page.route(url => url.pathname.startsWith('/model-settings'), route => route.fulfill({ json: {
-    revision: 0, chat_profiles: [], active_chat: null, active_embedding: null,
+    embedding_revision: 0, models: [], active_model: null, active_embedding: null,
     retrieval_available: false, retrieval_state: 'unavailable', indexed_files: 0,
     corpus_files: 0, busy: false, embedding_job: null,
   } }))
@@ -124,7 +124,7 @@ test('Enter cannot send a stored file as a chat attachment', async ({ page }) =>
     created_at: '', updated_at: '' }
   let chatRequests = 0
   await page.route(url => url.pathname.startsWith('/model-settings'), route => route.fulfill({ json: {
-    revision: 0, chat_profiles: [], active_chat: null, active_embedding: null,
+    embedding_revision: 0, models: [], active_model: null, active_embedding: null,
     retrieval_available: false, retrieval_state: 'unavailable', indexed_files: 0,
     corpus_files: 0, busy: false, embedding_job: null,
   } }))
@@ -152,7 +152,7 @@ test('chat attachment resumes status polling after a transient query failure', a
   let queries = 0
   let parseRetries = 0
   await page.route(url => url.pathname.startsWith('/model-settings'), route => route.fulfill({ json: {
-    revision: 0, chat_profiles: [], active_chat: null, active_embedding: null,
+    embedding_revision: 0, models: [], active_model: null, active_embedding: null,
     retrieval_available: false, retrieval_state: 'unavailable', indexed_files: 0,
     corpus_files: 0, busy: false, embedding_job: null,
   } }))

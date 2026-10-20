@@ -1,28 +1,40 @@
-"""Vision extraction through an explicitly tagged chat model profile."""
+"""Vision extraction through a model configuration pinned at upload time."""
 import base64
 
 from langchain_core.messages import HumanMessage
 
-from NoteAgent.AppBootstrap.RuntimeAssembler import api_key_for_profile
-from NoteAgent.Modules.Models.Provider.ModelClients import create_chat_model_from_config
-from NoteAgent.Modules.Models.Mapper.ModelSettingsStorage import ModelSettingsStore
+from NoteAgent.Modules.Models.Domain.Vo.ModelErrors import (
+    ProtocolUnsupportedError,
+    RevisionConflictError,
+)
+from NoteAgent.Modules.Models.Service.ModelConfigService import ModelConfigService
 from NoteAgent.Modules.Sources.Domain.Po.SourceFileModels import SourceFile
 from NoteAgent.Modules.Sources.Parser.SourceFileParsers import ParseError, Vision
 
 
-def vision_factory(source: SourceFile, settings_store: ModelSettingsStore, app_settings) -> Vision | None:
-    document = settings_store.load_effective(app_settings)
-    profile = document.profile_by_id(source.parse_profile_id)
-    if source.media_type == "application/pdf" and (profile is None or "vision" not in profile.verified_capabilities):
-        return None
-    if source.parse_profile_revision != document.revision:
-        raise ParseError("模型配置已变化，请重试解析")
-    if profile is None or "vision" not in profile.capabilities or "vision" not in profile.verified_capabilities:
+def vision_factory(source: SourceFile, config_service: ModelConfigService) -> Vision | None:
+    """Resolve the pinned model id/revision and return an image describer.
+
+    The model does not have to be active anymore: the source keeps the identity it was
+    uploaded with so parsing remains reproducible. A PDF without verified vision falls
+    back to text extraction; an image without it fails.
+    """
+    if not source.parse_profile_id or source.parse_profile_revision is None:
+        if source.media_type == "application/pdf":
+            return None
         raise ParseError("需要已验证 vision 的模型配置")
-    model = create_chat_model_from_config(
-        provider=profile.provider, model=profile.model, base_url=profile.base_url,
-        api_key=api_key_for_profile(profile),
-    )
+    try:
+        model = config_service.build_client_for_parse(
+            source.parse_profile_id,
+            source.parse_profile_revision,
+            vision=True,
+        )
+    except ProtocolUnsupportedError as exc:
+        if source.media_type == "application/pdf":
+            return None
+        raise ParseError(str(exc)) from exc
+    except RevisionConflictError as exc:
+        raise ParseError("模型配置已变化，请重试解析") from exc
 
     def describe(data: bytes, media_type: str) -> str:
         encoded = base64.b64encode(data).decode("ascii")

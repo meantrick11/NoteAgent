@@ -11,8 +11,13 @@ from NoteAgent.Modules.Conversations.Legacy.LegacyConversationStore import Conve
 from NoteAgent.Modules.Conversations.Checkpoint.ConversationCheckpoints import CheckpointRuntime, postgres_uri
 from NoteAgent.Modules.Conversations.Service.ConversationStateService import ConversationService
 from NoteAgent.Common.Database import create_engine_from_url, create_session_factory
-from NoteAgent.Modules.Models.Service.ModelRuntime import ModelRuntimeService
 from NoteAgent.Modules.Models.Mapper.ModelSettingsStorage import ModelSettingsStore
+from NoteAgent.Modules.Models.Mapper.SqlModelConfigRepository import SqlModelConfigRepository
+from NoteAgent.Modules.Models.Provider.ProviderRegistry import ProviderRegistry
+from NoteAgent.Modules.Models.Service.LegacyModelSettingsImporter import LegacyModelSettingsImporter
+from NoteAgent.Modules.Models.Service.ModelActivationService import ModelActivationService
+from NoteAgent.Modules.Models.Service.ModelConfigService import ModelConfigService
+from NoteAgent.Modules.Models.Service.ModelRuntime import ModelRuntimeService
 from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
 from NoteAgent.Modules.Notes.Service.NoteChanges import NoteMutationService
 from NoteAgent.Modules.Notes.Storage.Version.NoteVersions import NoteVersionStore
@@ -38,6 +43,9 @@ class AppContainer:
     history: ConversationStore  #历史消息存储/PostgreSQL连接
     # 唯一持有运行对象（模型/Agent/检索）的管理器；生产请求必须通过它取快照。
     model_runtime: ModelRuntimeService
+    model_configs: ModelConfigService
+    model_activation: ModelActivationService
+    providers: ProviderRegistry
     # 会话元数据与 checkpoint：lifespan 负责 open/close，构造时还未连接。
     conversations: ConversationService | None = None
     checkpoints: CheckpointRuntime | None = None
@@ -61,7 +69,7 @@ class AppContainer:
     @property
     def chat_agent(self) -> ChatAgent:
         """Read-only compatibility view; requests must use model_runtime instead."""
-        return self.model_runtime.snapshot().chat_agent
+        return self.model_runtime.snapshot().require_agent()
 
 
 def build_container(settings: Settings) -> AppContainer:
@@ -109,22 +117,41 @@ def build_container(settings: Settings) -> AppContainer:
 
     # 装配器是 bootstrap 与 model_management 之间唯一的接口，避免两边互相导入。
     # 它拿到共享的会话服务与 checkpointer：切换模型只重建图运行对象，不换状态存储。
+    catalog = ProviderRegistry()
     assembler = BootstrapAssembler(
-        settings, notes, drafts, history, conversations, checkpoints, mutations, source_files
+        settings, notes, drafts, history, conversations, checkpoints, mutations, source_files,
+        catalog=catalog,
     )
+    model_settings_store = ModelSettingsStore(settings.model_settings_dir)
+    model_repository = SqlModelConfigRepository(session_factory)
+    LegacyModelSettingsImporter(
+        repository=model_repository,
+        catalog=catalog,
+        store=model_settings_store,
+        settings=settings,
+    ).run()
+    model_configs = ModelConfigService(repository=model_repository, catalog=catalog)
     model_runtime = ModelRuntimeService(
         settings=settings,
-        store=ModelSettingsStore(settings.model_settings_dir),
+        repository=model_repository,
+        store=model_settings_store,
         notes=notes,
         assembler=assembler,
         workspace=workspace,
     )
     # 持久化的 active 选择决定本次启动用哪个聊天模型与向量 collection。
     model_runtime.initialize()
-    model_settings_store = ModelSettingsStore(settings.model_settings_dir)
+    model_activation = ModelActivationService(
+        repository=model_repository,
+        config_service=model_configs,
+        catalog=catalog,
+        assembler=assembler,
+        retrieval_provider=lambda: model_runtime.snapshot().retrieval,
+        publisher=model_runtime,
+    )
     source_worker = SourceFileWorker(
         source_files,
-        vision_factory=lambda source: vision_factory(source, model_settings_store, settings)
+        vision_factory=lambda source: vision_factory(source, model_configs)
         if source.media_type in ("image/png", "image/jpeg", "application/pdf") else None,
     )
 
@@ -146,6 +173,9 @@ def build_container(settings: Settings) -> AppContainer:
         engine=engine,
         history=history,
         model_runtime=model_runtime,
+        model_configs=model_configs,
+        model_activation=model_activation,
+        providers=catalog,
         conversations=conversations,
         checkpoints=checkpoints,
         workspace=workspace,

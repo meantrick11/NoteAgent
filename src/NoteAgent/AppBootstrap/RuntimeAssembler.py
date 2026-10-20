@@ -16,7 +16,9 @@ from NoteAgent.Modules.Chat.Agent.Context.ContextBudget import ContextBudget, bu
 from NoteAgent.AppBootstrap.ChatAgentFactory import build_graph_agent
 from NoteAgent.Modules.Chat.Agent.Tools.ChatTools import build_chat_tools
 from NoteAgent.Modules.Chat.Agent.Tools.WebReading import HttpTrafilaturaReader
-from NoteAgent.Modules.Models.Provider.ModelClients import create_chat_model_from_config
+from NoteAgent.Modules.Models.Domain.Vo.ModelConfig import ModelConfig
+from NoteAgent.Modules.Models.Provider.ModelClients import build_chat_model
+from NoteAgent.Modules.Models.Provider.ProviderRegistry import ProviderRegistry
 from NoteAgent.Modules.Retrieval.Engine.Chunking.MarkdownChunker import MarkdownChunker
 from NoteAgent.Modules.Retrieval.Engine.Embedding.TextEmbedder import build_embedder
 from NoteAgent.Modules.Retrieval.Service.NoteRetrievalService import RetrievalService, index_fingerprint_for_model
@@ -78,6 +80,7 @@ class BootstrapAssembler:
         checkpoints: CheckpointRuntime | None = None,
         mutations=None,
         source_files=None,
+        catalog=None,
     ):
         self._settings = settings
         self._notes = notes
@@ -87,15 +90,11 @@ class BootstrapAssembler:
         self._checkpoints = checkpoints
         self._mutations = mutations
         self._source_files = source_files
+        self._catalog = catalog or ProviderRegistry()
 
-    def build_chat_model(self, profile: ChatProfile) -> BaseChatModel:
-        """Build the chat client for one profile without logging its credential."""
-        return create_chat_model_from_config(
-            provider=profile.provider,
-            model=profile.model,
-            base_url=profile.base_url,
-            api_key=api_key_for_profile(profile),
-        )
+    def build_chat_model(self, model: ModelConfig) -> BaseChatModel:
+        """Build the chat client for one model configuration."""
+        return build_chat_model(model, self._catalog.resolve(model.provider))
 
     def index_fingerprint(self, *, model_id: str, resolved_revision: str | None) -> str:
         """Identity of the index this model and chunk configuration would build.
@@ -137,7 +136,7 @@ class BootstrapAssembler:
         )
 
     def build_agent(
-        self, *, profile: ChatProfile, retrieval: RetrievalService | None
+        self, *, model: ModelConfig, retrieval: RetrievalService | None
     ) -> ChatAgent:
         """Build a graph-backed agent bound to the shared checkpoint service.
 
@@ -148,9 +147,9 @@ class BootstrapAssembler:
         """
         if self._conversations is None or self._checkpoints is None:
             raise RuntimeError("assembler needs the conversation service and checkpointer")
-        model = self.build_chat_model(profile)
+        client = self.build_chat_model(model)
         return build_graph_agent(
-            model=model,
+            model=client,
             tools=build_chat_tools(
                 self._notes,
                 retrieval,
@@ -161,7 +160,7 @@ class BootstrapAssembler:
             ),
             notes=self._notes,
             drafts=self._drafts,
-            budget=budget_for_window(self._settings, profile.context_window),
+            budget=budget_for_window(self._settings, model.context_window),
             system_prompt=SYSTEM_PROMPT_PATH.read_text(encoding="utf-8"),
             service=self._conversations,
             checkpoints=self._checkpoints,

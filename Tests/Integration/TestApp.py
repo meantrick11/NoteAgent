@@ -11,8 +11,14 @@ from NoteAgent.Modules.Conversations.Service.PendingDrafts import DraftStore, No
 from NoteAgent.Modules.Conversations.Legacy.LegacyDraftReview import commit_review
 from NoteAgent.Modules.Conversations.Legacy.LegacyConversationStore import ConversationStore, start_turn
 from NoteAgent.Common.Database import Base, create_engine_from_url, create_session_factory
-from NoteAgent.Modules.Models.Service.ModelRuntime import ModelRuntimeService
+from NoteAgent.Modules.Models.Domain.Vo.ModelCapabilities import initial_capabilities, text_verified
+from NoteAgent.Modules.Models.Domain.Vo.ModelConfig import ModelConfig
 from NoteAgent.Modules.Models.Mapper.ModelSettingsStorage import ModelSettingsStore
+from NoteAgent.Modules.Models.Mapper.SqlModelConfigRepository import SqlModelConfigRepository
+from NoteAgent.Modules.Models.Provider.ProviderRegistry import ProviderRegistry
+from NoteAgent.Modules.Models.Service.ModelActivationService import ModelActivationService
+from NoteAgent.Modules.Models.Service.ModelConfigService import ModelConfigService
+from NoteAgent.Modules.Models.Service.ModelRuntime import ModelRuntimeService
 from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
 from NoteAgent.WebFrontend import read_home_html
 from Support.Webapp import build_checkpoint_app
@@ -48,9 +54,6 @@ class StubAssembler:
         self._agent = agent
         self._retrieval = retrieval if retrieval is not None else StubRetrieval()
 
-    def build_chat_model(self, profile):
-        raise AssertionError("integration tests must not build a real chat model")
-
     def index_fingerprint(self, *, model_id, resolved_revision):
         return f"stub:{model_id}:{resolved_revision or ''}"
 
@@ -59,7 +62,7 @@ class StubAssembler:
     ):
         return self._retrieval
 
-    def build_agent(self, *, profile, retrieval):
+    def build_agent(self, *, model, retrieval):
         return self._agent
 
 
@@ -78,19 +81,55 @@ def _container(
     retrieval=None,
 ) -> AppContainer:
     """Build a container whose runtime hands out the injected fakes."""
+    from datetime import UTC, datetime
+
+    repository = SqlModelConfigRepository(create_session_factory(engine))
+    repository.import_models(
+        [
+            ModelConfig(
+                id="test-model",
+                label="test",
+                provider="deepseek",
+                model="deepseek-chat",
+                api_key="secret",
+                is_active=True,
+                capabilities=text_verified(
+                    initial_capabilities(),
+                    evidence={"streaming": True, "tool_calling": True},
+                    checked_at=datetime.now(UTC),
+                ),
+            )
+        ],
+        "test-model",
+    )
+    catalog = ProviderRegistry()
+    assembler = StubAssembler(agent, retrieval)
+    configs = ModelConfigService(repository=repository, catalog=catalog)
     runtime = ModelRuntimeService(
         settings=settings,
+        repository=repository,
         store=ModelSettingsStore(settings.model_settings_dir),
         notes=notes,
-        assembler=StubAssembler(agent, retrieval),
+        assembler=assembler,
     )
     runtime.initialize()
+    activation = ModelActivationService(
+        repository=repository,
+        config_service=configs,
+        catalog=catalog,
+        assembler=assembler,
+        retrieval_provider=lambda: runtime.snapshot().retrieval,
+        publisher=runtime,
+    )
     return AppContainer(
         settings=settings,
         notes=notes,
         engine=engine,
         history=history,
         model_runtime=runtime,
+        model_configs=configs,
+        model_activation=activation,
+        providers=catalog,
     )
 
 

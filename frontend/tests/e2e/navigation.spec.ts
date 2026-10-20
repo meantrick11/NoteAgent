@@ -98,9 +98,9 @@ const NOTES = {
 }
 
 const MODEL_SETTINGS = {
-  revision: 1,
-  chat_profiles: [],
-  active_chat: null,
+  embedding_revision: 1,
+  models: [],
+  active_model: null,
   active_embedding: null,
   retrieval_available: true,
   retrieval_problem: null,

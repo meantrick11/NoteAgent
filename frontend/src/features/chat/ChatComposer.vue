@@ -142,10 +142,15 @@ async function restoreIfEmpty(question: string): Promise<void> {
 }
 
 async function send(): Promise<void> {
-  if (sendDisabled()) return
   const question = text.value.trim()
   if (!question && attachments.value.length === 0) return
   if (chat.streaming) return
+  if (!models.canChat) {
+    // 维护窗口或 text 暂停：保留输入，并在聊天区说明原因。
+    chat.notifyUnavailable()
+    return
+  }
+  if (sendDisabled()) return
   text.value = ''
   await nextTick()
   resize()

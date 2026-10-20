@@ -7,8 +7,12 @@ from NoteAgent.AppBootstrap.HttpApp import create_app
 from NoteAgent.AppBootstrap.AppSettings import Settings
 from NoteAgent.Modules.Conversations.Legacy.LegacyConversationStore import ConversationStore
 from NoteAgent.Common.Database import Base, create_engine_from_url, create_session_factory
-from NoteAgent.Modules.Models.Service.ModelRuntime import ModelRuntimeService
 from NoteAgent.Modules.Models.Mapper.ModelSettingsStorage import ModelSettingsStore
+from NoteAgent.Modules.Models.Mapper.SqlModelConfigRepository import SqlModelConfigRepository
+from NoteAgent.Modules.Models.Provider.ProviderRegistry import ProviderRegistry
+from NoteAgent.Modules.Models.Service.ModelActivationService import ModelActivationService
+from NoteAgent.Modules.Models.Service.ModelConfigService import ModelConfigService
+from NoteAgent.Modules.Models.Service.ModelRuntime import ModelRuntimeService
 from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
 from NoteAgent.Modules.Retrieval.Engine.Chunking.MarkdownChunker import MarkdownChunker
 from NoteAgent.Modules.Retrieval.Service.NoteRetrievalService import RetrievalService
@@ -37,9 +41,6 @@ class FixedAssembler:
     def __init__(self, retrieval: RetrievalService):
         self._retrieval = retrieval
 
-    def build_chat_model(self, profile):
-        raise AssertionError("notes API tests must not build a real chat model")
-
     def index_fingerprint(self, *, model_id, resolved_revision):
         return self._retrieval.config_fingerprint()
 
@@ -48,7 +49,7 @@ class FixedAssembler:
     ):
         return self._retrieval
 
-    def build_agent(self, *, profile, retrieval):
+    def build_agent(self, *, model, retrieval):
         return FakeAgent()
 
 
@@ -67,19 +68,36 @@ def _client(tmp_path: Path) -> tuple[TestClient, FileNoteRepository, RetrievalSe
         chroma_dir=tmp_path / "chroma",
         model_settings_dir=tmp_path / "model_settings",
     )
+    factory = create_session_factory(engine)
+    repository = SqlModelConfigRepository(factory)
+    catalog = ProviderRegistry()
+    assembler = FixedAssembler(retrieval)
+    configs = ModelConfigService(repository=repository, catalog=catalog)
     runtime = ModelRuntimeService(
         settings=settings,
+        repository=repository,
         store=ModelSettingsStore(settings.model_settings_dir),
         notes=notes,
-        assembler=FixedAssembler(retrieval),
+        assembler=assembler,
     )
     runtime.initialize()
+    activation = ModelActivationService(
+        repository=repository,
+        config_service=configs,
+        catalog=catalog,
+        assembler=assembler,
+        retrieval_provider=lambda: runtime.snapshot().retrieval,
+        publisher=runtime,
+    )
     container = AppContainer(
         settings=settings,
         notes=notes,
         engine=engine,
-        history=ConversationStore(create_session_factory(engine)),
+        history=ConversationStore(factory),
         model_runtime=runtime,
+        model_configs=configs,
+        model_activation=activation,
+        providers=catalog,
     )
     return TestClient(create_app(container)), notes, retrieval
 

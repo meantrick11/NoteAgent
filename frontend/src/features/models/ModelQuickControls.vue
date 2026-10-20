@@ -83,7 +83,7 @@ onBeforeUnmount(() => {
         @click="toggle('chat')"
       >
         <span class="model-btn-kind">聊天</span>
-        <span class="model-btn-name">{{ models.activeChat?.label ?? '未配置' }}</span>
+        <span class="model-btn-name">{{ models.activeModel?.label ?? '未配置' }}</span>
         <span class="model-btn-caret" aria-hidden="true">▾</span>
       </button>
 

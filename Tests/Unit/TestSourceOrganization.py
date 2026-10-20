@@ -38,6 +38,7 @@ def test_database_registry_keeps_existing_table_identities():
         "user_message_boundaries", "workspace_state", "mutation_records",
         "recovery_previews", "recovery_jobs", "index_repairs",
         "source_files", "source_fragments", "source_folders",
+        "model_configs", "model_capabilities",
     }
 
 

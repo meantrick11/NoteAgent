@@ -6,11 +6,13 @@
  */
 
 import type {
+  CapabilityRecord,
   Conversation,
   ConversationDetail,
   EmbeddingCandidate,
   EmbeddingJob,
   Message,
+  ModelConfig,
   ModelSettingsStatus,
   NotesList,
   PendingDraft,
@@ -118,46 +120,65 @@ export const embeddingJob: EmbeddingJob = {
   finished_at: null,
 }
 
+export const textCapability: CapabilityRecord = {
+  capability: 'text',
+  status: 'enabled',
+  verification: 'verified',
+  source: 'probe',
+  checked_at: '2026-10-20T10:00:00Z',
+  probe_version: 1,
+  evidence: { streaming: true, tool_calling: true },
+}
+
+const unverifiedText: CapabilityRecord = {
+  ...textCapability,
+  verification: 'unverified',
+  source: 'manual',
+  checked_at: null,
+  probe_version: null,
+  evidence: null,
+}
+
+export const envModel: ModelConfig = {
+  id: 'env-default',
+  label: '环境默认',
+  provider: 'deepseek',
+  model: 'deepseek-v4-flash',
+  base_url: 'https://api.deepseek.com',
+  auth_mode: 'api_key',
+  has_api_key: true,
+  timeout_s: 60,
+  max_retries: 1,
+  context_window: 32768,
+  temperature: null,
+  max_tokens: null,
+  is_active: true,
+  revision: 3,
+  capabilities: [textCapability],
+}
+
+export const localModel: ModelConfig = {
+  id: 'local',
+  label: '本地服务',
+  provider: 'openai-compatible',
+  model: 'qwen2.5',
+  base_url: 'http://localhost:1234/v1',
+  auth_mode: 'none',
+  has_api_key: false,
+  timeout_s: 60,
+  max_retries: 1,
+  context_window: 16384,
+  temperature: 0.2,
+  max_tokens: 2048,
+  is_active: false,
+  revision: 1,
+  capabilities: [unverifiedText],
+}
+
 export const modelSettings: ModelSettingsStatus = {
-  revision: 7,
-  chat_profiles: [
-    {
-      id: 'env-default',
-      label: '环境默认',
-      provider: 'deepseek',
-      model: 'deepseek-v4-flash',
-      base_url: 'https://api.deepseek.com',
-      auth_mode: 'api_key',
-      context_window: 32768,
-      has_api_key: true,
-      credential_source: 'env',
-      capabilities: ['text'],
-    },
-    {
-      id: 'local',
-      label: '本地服务',
-      provider: 'openai-compatible',
-      model: 'qwen2.5',
-      base_url: 'http://localhost:1234/v1',
-      auth_mode: 'none',
-      context_window: 16384,
-      has_api_key: false,
-      credential_source: 'ui',
-      capabilities: ['text'],
-    },
-  ],
-  active_chat: {
-    id: 'env-default',
-    label: '环境默认',
-    provider: 'deepseek',
-    model: 'deepseek-v4-flash',
-    base_url: 'https://api.deepseek.com',
-    auth_mode: 'api_key',
-    context_window: 32768,
-    has_api_key: true,
-    credential_source: 'env',
-    capabilities: ['text'],
-  },
+  models: [envModel, localModel],
+  active_model: envModel,
+  embedding_revision: 7,
   active_embedding: {
     model_id: 'intfloat/multilingual-e5-small',
     resolved_revision: 'rev-1',

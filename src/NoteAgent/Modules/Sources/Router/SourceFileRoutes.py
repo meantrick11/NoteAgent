@@ -40,11 +40,11 @@ async def upload(request: Request, file: UploadFile = File(...)):
     service = _service(request)
     data = await file.read(MAX_BYTES + 1)
     status = request.app.state.container.model_runtime.status()
-    profile = status.active_chat
+    model = status.active_model
     try:
         source = service.upload(file.filename or "", data, content_type=file.content_type,
-                                profile_id=profile.id if profile else None,
-                                profile_revision=status.revision)
+                                profile_id=model.id if model else None,
+                                profile_revision=model.revision if model else None)
     except SourceFileError as exc:
         _error(exc)
     return _out(source)
@@ -164,9 +164,9 @@ def delete_source(request: Request, source_id: uuid.UUID):
 @router.post("/{source_id}/retry", response_model=SourceFileOut)
 def retry(request: Request, source_id: uuid.UUID):
     status = request.app.state.container.model_runtime.status()
-    profile = status.active_chat
+    model = status.active_model
     try:
-        return _out(_service(request).retry(str(source_id), profile_id=profile.id if profile else None,
-                                        profile_revision=status.revision))
+        return _out(_service(request).retry(str(source_id), profile_id=model.id if model else None,
+                                        profile_revision=model.revision if model else None))
     except SourceFileError as exc:
         _error(exc)

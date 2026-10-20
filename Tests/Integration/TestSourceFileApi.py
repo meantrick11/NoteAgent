@@ -21,7 +21,7 @@ def test_upload_parse_preview_and_delete(tmp_path):
     app.include_router(router)
     app.state.container = SimpleNamespace(
         source_files=service,
-        model_runtime=SimpleNamespace(status=lambda: SimpleNamespace(active_chat=None, revision=0)),
+        model_runtime=SimpleNamespace(status=lambda: SimpleNamespace(active_model=None)),
     )
     client = TestClient(app)
     response = client.post("/source-files", files={"file": ("sample.txt", b"hello", "text/plain")})
@@ -43,7 +43,7 @@ def test_upload_rejects_spoofed_pdf(tmp_path):
     app = FastAPI()
     app.include_router(router)
     app.state.container = SimpleNamespace(source_files=service,
-        model_runtime=SimpleNamespace(status=lambda: SimpleNamespace(active_chat=None, revision=0)))
+        model_runtime=SimpleNamespace(status=lambda: SimpleNamespace(active_model=None)))
     response = TestClient(app).post("/source-files", files={"file": ("fake.pdf", b"not-a-pdf", "application/pdf")})
     assert response.status_code == 400
     assert service.list() == []
@@ -56,7 +56,7 @@ def test_upload_rejects_mime_conflict_and_exposes_record_fields(tmp_path):
     app = FastAPI()
     app.include_router(router)
     app.state.container = SimpleNamespace(source_files=service,
-        model_runtime=SimpleNamespace(status=lambda: SimpleNamespace(active_chat=None, revision=0)))
+        model_runtime=SimpleNamespace(status=lambda: SimpleNamespace(active_model=None)))
     client = TestClient(app)
     rejected = client.post("/source-files", files={"file": ("lesson.txt", b"hello", "image/png")})
     assert rejected.status_code == 400
@@ -78,7 +78,7 @@ def test_cross_origin_upload_is_refused(tmp_path):
     app = FastAPI()
     app.include_router(router)
     app.state.container = SimpleNamespace(source_files=service,
-        model_runtime=SimpleNamespace(status=lambda: SimpleNamespace(active_chat=None, revision=0)))
+        model_runtime=SimpleNamespace(status=lambda: SimpleNamespace(active_model=None)))
     response = TestClient(app).post("/source-files", files={"file": ("a.txt", b"hello", "text/plain")},
                                     headers={"Origin": "https://untrusted.example"})
     assert response.status_code == 403
