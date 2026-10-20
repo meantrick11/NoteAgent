@@ -192,6 +192,8 @@ export interface ChatProfile {
   has_api_key: boolean
   credential_source: CredentialSource
   capabilities: Array<'text' | 'vision'>
+  verified_capabilities?: Array<'text' | 'vision'>
+  capability_checked_at?: Partial<Record<'text' | 'vision', string>>
 }
 
 /** 提交用的配置体；省略 api_key 表示保留已保存的那一个。 */

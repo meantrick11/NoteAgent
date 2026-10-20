@@ -84,6 +84,45 @@ const CANDIDATES = [
   },
 ]
 
+test('模型卡片点击 vision 后验证并点亮，编辑区不再有视觉复选框', async ({ page }) => {
+  const profile = { ...(BASE_STATUS.chat_profiles as Record<string, unknown>[])[0],
+    capabilities: ['text'] as string[], verified_capabilities: [] as string[] }
+  const status = { ...BASE_STATUS, chat_profiles: [profile], active_chat: profile }
+  await stubApi(page, { status })
+  await page.route('**/model-settings/chat/profiles/env-default/capabilities/vision/verify', async route => {
+    await new Promise(resolve => setTimeout(resolve, 250))
+    profile.capabilities = ['text', 'vision']
+    profile.verified_capabilities = ['text', 'vision']
+    await route.fulfill({ json: profile })
+  })
+  await page.goto('/settings')
+  const row = page.locator('.ms-row', { hasText: '环境默认' }).first()
+  await expect(row.getByRole('button', { name: 'vision' })).not.toHaveClass(/verified/)
+  await row.getByRole('button', { name: 'vision' }).click()
+  await expect(row.getByRole('button', { name: 'vision' })).toHaveText('验证中')
+  await expect(row.getByRole('button', { name: 'vision' })).toHaveClass(/verified/)
+  await page.route('**/model-settings/chat/profiles/env-default/capabilities/vision?*', async route => {
+    profile.capabilities = ['text']
+    profile.verified_capabilities = ['text']
+    await route.fulfill({ json: profile })
+  })
+  await row.getByRole('button', { name: 'vision' }).click()
+  await expect(row.getByRole('button', { name: 'vision' })).not.toHaveClass(/verified/)
+  await row.getByRole('button', { name: '编辑' }).click()
+  await expect(section(page, 'models').getByText('支持视觉输入')).toHaveCount(0)
+})
+
+test('视觉验证失败显示弹窗且不点亮', async ({ page }) => {
+  await stubApi(page)
+  await page.route('**/model-settings/chat/profiles/env-default/capabilities/vision/verify', route =>
+    route.fulfill({ status: 502, json: { code: 'protocol_unsupported', message: '模型未识别测试图片' } }))
+  await page.goto('/settings')
+  const vision = page.locator('.ms-row', { hasText: '环境默认' }).first().getByRole('button', { name: 'vision' })
+  await vision.click()
+  await expect(page.getByText('能力验证失败')).toBeVisible()
+  await expect(vision).not.toHaveClass(/verified/)
+})
+
 interface StubOptions {
   status?: Record<string, unknown>
   saveStatus?: number

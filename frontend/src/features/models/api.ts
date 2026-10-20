@@ -23,6 +23,19 @@ export function testChatProfile(profile: ChatProfileWriteIn | Record<string, unk
   return jsonRequest<ChatTestResult>(`${BASE}/chat/test`, 'POST', profile)
 }
 
+export function verifyCapability(id: string, capability: 'text' | 'vision', expectedRevision: number): Promise<ChatProfile> {
+  return jsonRequest<ChatProfile>(`${BASE}/chat/profiles/${encodeURIComponent(id)}/capabilities/${capability}/verify`, 'POST', {
+    expected_revision: expectedRevision,
+  })
+}
+
+export function disableVision(id: string, expectedRevision: number): Promise<ChatProfile> {
+  return requestJson<ChatProfile>(
+    `${BASE}/chat/profiles/${encodeURIComponent(id)}/capabilities/vision?expected_revision=${encodeURIComponent(String(expectedRevision))}`,
+    { method: 'DELETE' },
+  )
+}
+
 /** POST /model-settings/chat/profiles —— 新增配置，保存不启用。 */
 export function createChatProfile(body: ChatProfileWriteIn): Promise<ChatProfile> {
   return jsonRequest<ChatProfile>(`${BASE}/chat/profiles`, 'POST', body)

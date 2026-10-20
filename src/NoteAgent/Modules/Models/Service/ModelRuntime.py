@@ -15,14 +15,14 @@ import re
 import threading
 import uuid
 from contextlib import contextmanager, nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
 
 
 from NoteAgent.Modules.Chat.Agent.Graph.ChatAgent import ChatAgent
 from NoteAgent.Modules.Models.Domain.Vo import ModelCatalog as catalog
-from NoteAgent.Modules.Models.Domain.Vo.ModelContracts import ActiveEmbedding, ChatActivateIn, ChatProfile, ChatProfileIn, ChatProfileOut, ChatProfileWriteIn, ChatTestOut, EmbeddingJobRecord, ModelSettingsStatusOut, StoredModelSettings
+from NoteAgent.Modules.Models.Domain.Vo.ModelContracts import ActiveEmbedding, ChatActivateIn, ChatProfile, ChatProfileIn, ChatProfileOut, ChatProfileWriteIn, ChatTestOut, EmbeddingJobRecord, ModelSettingsStatusOut, StoredModelSettings, credential_hash
 from NoteAgent.Modules.Models.Mapper.ModelSettingsStorage import ModelSettingsRevisionError, ModelSettingsStore, default_chat_profile
 from NoteAgent.Modules.Notes.Storage.Markdown.MarkdownRepository import FileNoteRepository
 from NoteAgent.Modules.Retrieval.Service.NoteRetrievalService import RetrievalService, index_targets
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 
 from NoteAgent.Modules.Models.Domain.Vo.ModelErrors import BusyError, InvalidProfileError, JobNotFoundError, ModelUnavailableError, ProfileNotFoundError, ProtocolUnsupportedError, RepairRequiredError, RevisionConflictError, RuntimeConfigurationError, UnknownModelError, _public_error
-from NoteAgent.Modules.Models.Provider.ModelProbes import ChatProbeResult, probe_model, _describe_probe
+from NoteAgent.Modules.Models.Provider.ModelProbes import ChatProbeResult, probe_model, probe_vision, _describe_probe
 from NoteAgent.Modules.Models.Domain.Vo.ModelProfiles import merge_candidate
 
 _logger = logging.getLogger(__name__)
@@ -325,6 +325,61 @@ class ModelRuntimeService:
             message=result.message,
         )
 
+    async def verify_capability(self, profile_id: str, capability: str, expected_revision: int) -> ChatProfileOut:
+        """Probe the saved configuration, then publish evidence only if it is unchanged."""
+        if capability not in ("text", "vision"):
+            raise InvalidProfileError("仅支持 text 和 vision 能力验证")
+        with self._lock:
+            self._ensure_not_maintenance()
+            self._check_revision(expected_revision)
+            profile = self._require_document().profile_by_id(profile_id)
+            if profile is None:
+                raise ProfileNotFoundError(f"未找到配置 {profile_id}")
+        result = await self._probe_impl(profile)
+        if not result.verified:
+            raise ProtocolUnsupportedError(_describe_probe(result))
+        if capability == "vision" and not await probe_vision(self._assembler.build_chat_model(profile)):
+            raise ProtocolUnsupportedError("模型未正确识别测试图片，vision 未启用")
+        now = _now()
+        additions = ("text", "vision") if capability == "vision" else ("text",)
+        with self._lock:
+            self._ensure_not_maintenance()
+            self._check_revision(expected_revision)
+            document = self._require_document()
+            current = document.profile_by_id(profile_id)
+            if current is None:
+                raise ProfileNotFoundError(f"未找到配置 {profile_id}")
+            updated = current.model_copy(update={
+                "capabilities": list(dict.fromkeys([*current.capabilities, *additions])),
+                "verified_capabilities": list(dict.fromkeys([*current.verified_capabilities, *additions])),
+                "capability_checked_at": {**current.capability_checked_at, **{cap: now for cap in additions}},
+                "credential_hash": credential_hash(current.api_key),
+            })
+            profiles = [updated if item.id == profile_id else item for item in document.chat_profiles]
+            saved = self._save_locked(document.model_copy(update={"chat_profiles": profiles}))
+            if self._snapshot and self._snapshot.chat_profile_id == profile_id:
+                self._snapshot = replace(self._snapshot, revision=saved.revision)
+            return updated.to_out()
+
+    def disable_vision(self, profile_id: str, expected_revision: int) -> ChatProfileOut:
+        with self._lock:
+            self._ensure_not_maintenance()
+            self._check_revision(expected_revision)
+            document = self._require_document()
+            current = document.profile_by_id(profile_id)
+            if current is None:
+                raise ProfileNotFoundError(f"未找到配置 {profile_id}")
+            updated = current.model_copy(update={
+                "capabilities": [cap for cap in current.capabilities if cap != "vision"],
+                "verified_capabilities": [cap for cap in current.verified_capabilities if cap != "vision"],
+                "capability_checked_at": {cap: time for cap, time in current.capability_checked_at.items() if cap != "vision"},
+            })
+            profiles = [updated if item.id == profile_id else item for item in document.chat_profiles]
+            saved = self._save_locked(document.model_copy(update={"chat_profiles": profiles}))
+            if self._snapshot and self._snapshot.chat_profile_id == profile_id:
+                self._snapshot = replace(self._snapshot, revision=saved.revision)
+            return updated.to_out()
+
     def save_chat_profile(
         self, write: ChatProfileWriteIn, *, profile_id: str | None
     ) -> ChatProfileOut:
@@ -441,6 +496,11 @@ class ModelRuntimeService:
             self._ensure_not_maintenance()
             self._check_revision(payload.expected_revision)
             document = self._require_document()
+            profile = profile.model_copy(update={
+                "verified_capabilities": list(dict.fromkeys([*profile.verified_capabilities, "text"])),
+                "capability_checked_at": {**profile.capability_checked_at, "text": _now()},
+                "credential_hash": credential_hash(profile.api_key),
+            })
             profiles = [p for p in document.chat_profiles if p.id != profile.id]
             profiles.append(profile)
             saved = self._save_locked(

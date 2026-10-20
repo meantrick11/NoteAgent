@@ -9,6 +9,7 @@ from NoteAgent.Common.Http.RequestDependencies import get_model_runtime, require
 import logging
 
 from fastapi import APIRouter, Depends, Request, Response
+from NoteAgent.Modules.Models.Domain.Vo.ModelContracts import CapabilityChangeIn
 
 from NoteAgent.Modules.Models.Domain.Dto.ModelSettingsSchemas import ChatActivateIn, ChatProfileIn, ChatProfileOut, ChatProfileWriteIn, ChatTestOut, EmbeddingCandidateOut, EmbeddingSwitchIn, EmbeddingSwitchOut, EmbeddingJobRecord, ModelSettingsStatusOut
 
@@ -31,6 +32,19 @@ async def get_model_settings(request: Request) -> ModelSettingsStatusOut:
 async def test_chat_profile(body: ChatProfileIn, request: Request) -> ChatTestOut:
     """Probe a candidate's streaming and tool-calling support. Saves nothing."""
     return await get_model_runtime(request).test_chat_profile(body)
+
+
+@router.post("/chat/profiles/{profile_id}/capabilities/{capability}/verify", response_model=ChatProfileOut,
+             dependencies=[Depends(require_same_origin)])
+async def verify_chat_capability(profile_id: str, capability: str, body: CapabilityChangeIn,
+                                 request: Request) -> ChatProfileOut:
+    return await get_model_runtime(request).verify_capability(profile_id, capability, body.expected_revision)
+
+
+@router.delete("/chat/profiles/{profile_id}/capabilities/vision", response_model=ChatProfileOut,
+               dependencies=[Depends(require_same_origin)])
+async def disable_chat_vision(profile_id: str, expected_revision: int, request: Request) -> ChatProfileOut:
+    return get_model_runtime(request).disable_vision(profile_id, expected_revision)
 
 
 @router.post(

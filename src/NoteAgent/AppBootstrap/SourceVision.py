@@ -13,12 +13,12 @@ from NoteAgent.Modules.Sources.Parser.SourceFileParsers import ParseError, Visio
 def vision_factory(source: SourceFile, settings_store: ModelSettingsStore, app_settings) -> Vision | None:
     document = settings_store.load_effective(app_settings)
     profile = document.profile_by_id(source.parse_profile_id)
-    if source.media_type == "application/pdf" and (profile is None or "vision" not in profile.capabilities):
+    if source.media_type == "application/pdf" and (profile is None or "vision" not in profile.verified_capabilities):
         return None
     if source.parse_profile_revision != document.revision:
         raise ParseError("模型配置已变化，请重试解析")
-    if profile is None or "vision" not in profile.capabilities:
-        raise ParseError("需要已标记 vision 的模型配置")
+    if profile is None or "vision" not in profile.capabilities or "vision" not in profile.verified_capabilities:
+        raise ParseError("需要已验证 vision 的模型配置")
     model = create_chat_model_from_config(
         provider=profile.provider, model=profile.model, base_url=profile.base_url,
         api_key=api_key_for_profile(profile),

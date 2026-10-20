@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-import { confirmDialog } from '@/shared/ui/confirm'
+import { alertDialog, confirmDialog } from '@/shared/ui/confirm'
 import type { ChatProfile } from '@/shared/api/types'
 import ChatProfileForm from './ChatProfileForm.vue'
 import { useModelsStore } from './store'
+import { disableVision, verifyCapability } from './api'
 
 /** 聊天配置列表 + 新增／编辑表单。Settings 页与 Assistant 快捷弹层共用。 */
 const models = useModelsStore()
 
 const editing = ref<ChatProfile | null>(null)
 const forming = ref(false)
+const verifying = ref<string | null>(null)
 
 const PROVIDER_TEXT: Record<string, string> = {
   deepseek: 'DeepSeek',
@@ -49,6 +51,29 @@ function credentialText(profile: ChatProfile): string {
       ? '已保存 Key'
       : '无需 Key'
 }
+
+async function changeCapability(profile: ChatProfile, capability: 'text' | 'vision'): Promise<void> {
+  if (verifying.value || models.modelActionsLocked || forming.value) return
+  verifying.value = `${profile.id}:${capability}`
+  try {
+    await models.refreshIfStale()
+    const current = models.chatProfiles.find(item => item.id === profile.id)
+    if (!current) throw new Error('配置已被删除，请刷新页面')
+    const verified = current.verified_capabilities?.includes(capability) ?? false
+    if (capability === 'vision' && verified) await disableVision(profile.id, models.revision)
+    else await verifyCapability(profile.id, capability, models.revision)
+    await models.fetchStatus(true)
+  } catch (error) {
+    try {
+      await models.fetchStatus(true)
+    } catch (refreshError) {
+      models.showChatError((refreshError as Error).message)
+    }
+    await alertDialog('能力验证失败', (error as Error).message)
+  } finally {
+    verifying.value = null
+  }
+}
 </script>
 
 <template>
@@ -73,6 +98,17 @@ function credentialText(profile: ChatProfile): string {
           <template v-if="profile.base_url"> · {{ profile.base_url }}</template>
           · 上下文 {{ profile.context_window }}
         </div>
+      </div>
+
+      <div class="ms-capabilities" aria-label="模型能力">
+        <button v-for="capability in (['text', 'vision'] as const)" :key="capability"
+          type="button" class="ms-capability"
+          :class="{ verified: profile.verified_capabilities?.includes(capability) }"
+          :aria-label="capability"
+          :title="profile.verified_capabilities?.includes(capability) ? '最近验证通过；点击可重新验证或关闭视觉' : '点击验证能力'"
+          :disabled="models.modelActionsLocked || Boolean(verifying) || forming"
+          @click="changeCapability(profile, capability)"
+        >{{ verifying === `${profile.id}:${capability}` ? '验证中' : capability }}</button>
       </div>
 
       <span v-if="models.activeChat?.id === profile.id" class="chip chip-on">已启用</span>
@@ -170,6 +206,10 @@ function credentialText(profile: ChatProfile): string {
   font-size: 11px;
   flex-shrink: 0;
 }
+
+.ms-capabilities { display: flex; gap: 4px; flex-wrap: wrap; }
+.ms-capability { border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface); color: var(--text-secondary); padding: 3px 8px; cursor: pointer; font-size: 11px; }
+.ms-capability.verified { background: var(--ok-bg); color: var(--ok-text); border-color: var(--ok-text); }
 
 .ms-chip-button {
   flex-shrink: 0;

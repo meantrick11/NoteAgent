@@ -2,13 +2,49 @@
 
 from __future__ import annotations
 import asyncio
+import base64
+import io
+import secrets
 from dataclasses import dataclass
+from PIL import Image, ImageDraw
 from langchain.tools import tool
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 from NoteAgent.Modules.Models.Domain.Vo.ModelErrors import ModelProbeTimeoutError, _probe_error
 
 PROBE_TIMEOUT_SECONDS = 20.0
+
+
+async def probe_vision(model: BaseChatModel) -> bool:
+    """用与文件解析相同的 image_url 协议完成两轮独立的识图挑战。"""
+    colors = {"红": "#d62828", "蓝": "#2458d3", "绿": "#238636"}
+    prompt = "请从左到右识别图片中六个色块的颜色，只回答六个汉字（红、蓝或绿），不要解释。"
+    try:
+        async with asyncio.timeout(PROBE_TIMEOUT_SECONDS):
+            for _ in range(2):
+                names = tuple(secrets.choice(tuple(colors)) for _ in range(6))
+                while len(set(names)) != len(colors):
+                    names = tuple(secrets.choice(tuple(colors)) for _ in range(6))
+                picture = Image.new("RGB", (660, 100), "white")
+                draw = ImageDraw.Draw(picture)
+                for index, name in enumerate(names):
+                    left = 10 + index * 110
+                    draw.rectangle((left, 12, left + 80, 88), fill=colors[name])
+                output = io.BytesIO()
+                picture.save(output, format="PNG")
+                encoded = base64.b64encode(output.getvalue()).decode("ascii")
+                reply = await model.ainvoke([HumanMessage(content=[
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded}"}},
+                ])])
+                response = _chunk_text(reply.content).replace(" ", "").replace("，", "").replace(",", "").strip()
+                if response != "".join(names):
+                    return False
+    except TimeoutError as exc:
+        raise ModelProbeTimeoutError("视觉验证超时（20 秒）") from exc
+    except Exception as exc:
+        raise _probe_error(exc) from exc
+    return True
 
 @dataclass(frozen=True)
 class ChatProbeResult:

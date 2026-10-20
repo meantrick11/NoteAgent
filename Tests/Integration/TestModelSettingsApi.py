@@ -222,6 +222,24 @@ def test_status_reports_the_environment_default(tmp_path):
     assert body["embedding_job"] is None
 
 
+def test_text_capability_verification_is_revision_guarded_and_secret_free(tmp_path):
+    client, _, _, _, _ = build_client(tmp_path)
+    url = "/model-settings/chat/profiles/env-default/capabilities/text/verify"
+    response = client.post(url, json={"expected_revision": 0})
+    assert response.status_code == 200
+    assert response.json()["verified_capabilities"] == ["text"]
+    assert "api_key" not in response.json()
+    assert "credential_hash" not in response.json()
+    assert client.post(url, json={"expected_revision": 0}).status_code == 409
+
+
+def test_disable_vision_never_removes_required_text(tmp_path):
+    client, _, _, _, _ = build_client(tmp_path)
+    response = client.delete("/model-settings/chat/profiles/env-default/capabilities/vision?expected_revision=0")
+    assert response.status_code == 200
+    assert response.json()["capabilities"] == ["text"]
+
+
 def test_invalid_profile_never_echoes_secret(tmp_path):
     """A rejected body must not send the submitted key back in the error detail."""
     client, _, _, _, _ = build_client(tmp_path)

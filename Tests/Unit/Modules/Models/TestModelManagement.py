@@ -1,5 +1,6 @@
 """Runtime management: leases, the maintenance window, and rebuild publishing."""
 
+import asyncio
 import threading
 import time
 from pathlib import Path
@@ -14,7 +15,7 @@ from NoteAgent.AppBootstrap.RuntimeAssembler import api_key_for_profile
 from NoteAgent.AppBootstrap.AppSettings import Settings
 from NoteAgent.Modules.Models.Domain.Vo.ModelCatalog import repo_dir_name
 from NoteAgent.Modules.Models.Domain.Vo.ModelContracts import ChatActivateIn, ChatProfile, ChatProfileIn, ChatProfileWriteIn, EmbeddingJobRecord, EmbeddingSwitchIn
-from NoteAgent.Modules.Models.Domain.Vo.ModelErrors import BusyError, InvalidProfileError, JobNotFoundError, ModelProbeFailedError, ModelUnavailableError, ProfileNotFoundError, ProtocolUnsupportedError, RepairRequiredError, RevisionConflictError, RuntimeConfigurationError
+from NoteAgent.Modules.Models.Domain.Vo.ModelErrors import BusyError, InvalidProfileError, JobNotFoundError, ModelProbeFailedError, ModelProbeTimeoutError, ModelUnavailableError, ProfileNotFoundError, ProtocolUnsupportedError, RepairRequiredError, RevisionConflictError, RuntimeConfigurationError
 from NoteAgent.Modules.Models.Provider.ModelProbes import ChatProbeResult
 from NoteAgent.Modules.Models.Service.ModelRuntime import ModelRuntimeService, embedding_collection_name
 from NoteAgent.Modules.Models.Mapper.ModelSettingsStorage import ModelSettingsStore
@@ -211,6 +212,103 @@ def build_service(tmp_path: Path, *, block=None, probe=None, **overrides):
 async def ok_probe(profile) -> ChatProbeResult:
     """A probe that reports both capabilities working."""
     return ChatProbeResult(streaming=True, tool_calling=True)
+
+
+@pytest.mark.asyncio
+async def test_capability_verification_persists_only_after_real_probe(tmp_path, monkeypatch):
+    service, _, _, store = build_service(tmp_path)
+    async def vision_ok(model):
+        return True
+    monkeypatch.setattr("NoteAgent.Modules.Models.Service.ModelRuntime.probe_vision", vision_ok)
+    profile = service.status().active_chat
+    assert profile.verified_capabilities == []
+    result = await service.verify_capability(profile.id, "vision", service.status().revision)
+    assert result.capabilities == ["text", "vision"]
+    assert result.verified_capabilities == ["text", "vision"]
+    assert store.load().profile_by_id(profile.id).verified_capabilities == ["text", "vision"]
+    assert service.snapshot().revision == service.status().revision
+
+
+@pytest.mark.asyncio
+async def test_verifying_inactive_profile_does_not_switch_runtime(tmp_path):
+    service, _, _, store = build_service(tmp_path)
+    created = service.save_chat_profile(saved_profile(expected_revision=0), profile_id=None)
+    active_before = service.snapshot()
+    result = await service.verify_capability(created.id, "text", service.status().revision)
+    assert result.verified_capabilities == ["text"]
+    assert store.load().profile_by_id(created.id).verified_capabilities == ["text"]
+    assert service.snapshot() is active_before
+    assert service.status().active_chat.id == active_before.chat_profile_id
+
+
+@pytest.mark.asyncio
+async def test_failed_vision_probe_does_not_enable_declared_legacy_vision(tmp_path, monkeypatch):
+    service, _, _, store = build_service(tmp_path)
+    profile = service.status().active_chat
+    async def vision_no(model):
+        return False
+    monkeypatch.setattr("NoteAgent.Modules.Models.Service.ModelRuntime.probe_vision", vision_no)
+    with pytest.raises(ProtocolUnsupportedError):
+        await service.verify_capability(profile.id, "vision", service.status().revision)
+    assert store.load() is None
+    assert service.status().active_chat.verified_capabilities == []
+
+
+@pytest.mark.asyncio
+async def test_timed_out_vision_probe_keeps_capability_unverified(tmp_path, monkeypatch):
+    service, _, _, store = build_service(tmp_path)
+    async def vision_timeout(model):
+        raise ModelProbeTimeoutError("视觉验证超时")
+    monkeypatch.setattr("NoteAgent.Modules.Models.Service.ModelRuntime.probe_vision", vision_timeout)
+    with pytest.raises(ModelProbeTimeoutError):
+        await service.verify_capability("env-default", "vision", 0)
+    assert store.load() is None
+    assert service.status().active_chat.verified_capabilities == []
+
+
+@pytest.mark.asyncio
+async def test_capability_probe_rejects_stale_revision(tmp_path):
+    service, _, _, _ = build_service(tmp_path)
+    with pytest.raises(RevisionConflictError):
+        await service.verify_capability("env-default", "text", 99)
+
+
+@pytest.mark.asyncio
+async def test_environment_key_change_invalidates_prior_capability_probe(tmp_path):
+    service, _, _, store = build_service(tmp_path)
+    await service.verify_capability("env-default", "text", 0)
+    changed = make_settings(tmp_path, deepseek_api_key=SecretStr("different-key"))
+    profile = store.load_effective(changed).profile_by_id("env-default")
+    assert profile.verified_capabilities == []
+
+
+@pytest.mark.asyncio
+async def test_capability_result_is_discarded_when_profile_changes_during_probe(tmp_path):
+    started = asyncio.Event()
+    resume = asyncio.Event()
+    async def slow_probe(profile):
+        started.set()
+        await resume.wait()
+        return ChatProbeResult(streaming=True, tool_calling=True)
+    service, _, _, _ = build_service(tmp_path, probe=slow_probe)
+    task = asyncio.create_task(service.verify_capability("env-default", "text", 0))
+    await started.wait()
+    service.save_chat_profile(saved_profile(expected_revision=0), profile_id=None)
+    resume.set()
+    with pytest.raises(RevisionConflictError):
+        await task
+    assert service.status().active_chat.verified_capabilities == []
+
+
+@pytest.mark.asyncio
+async def test_editing_saved_model_invalidates_its_capability_result(tmp_path):
+    service, _, _, _ = build_service(tmp_path)
+    created = service.save_chat_profile(saved_profile(expected_revision=0), profile_id=None)
+    await service.verify_capability(created.id, "text", service.status().revision)
+    edited = service.save_chat_profile(
+        saved_profile(id=created.id, model="other-model", api_key=None,
+                      expected_revision=service.status().revision), profile_id=created.id)
+    assert edited.verified_capabilities == []
 
 
 class TracingEmbedder:

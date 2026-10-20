@@ -5,6 +5,7 @@
 """
 
 from datetime import datetime
+import hashlib
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -22,8 +23,13 @@ EmbeddingAvailability = Literal["available", "incomplete", "unsupported"]
 RetrievalState = Literal["ok", "empty", "missing", "config_mismatch", "unavailable"]
 
 DEFAULT_CONTEXT_WINDOW = 32768
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 ChatCapability = Literal["text", "vision"]
+
+
+def credential_hash(secret: SecretStr) -> str:
+    """Internal invalidation marker; never expose it through HTTP."""
+    return hashlib.sha256(secret.get_secret_value().encode("utf-8")).hexdigest()
 # 从环境生成的默认 profile 使用固定 id，保证重启后 active 指针依然有效。
 ENV_PROFILE_ID = "env-default"
 
@@ -65,6 +71,9 @@ class ChatProfile(BaseModel):
     context_window: int = DEFAULT_CONTEXT_WINDOW
     credential_source: CredentialSource = "ui"
     capabilities: list[ChatCapability] = ["text"]
+    verified_capabilities: list[ChatCapability] = []
+    capability_checked_at: dict[ChatCapability, datetime] = {}
+    credential_hash: str | None = None
 
     @field_validator("capabilities")
     @classmethod
@@ -72,6 +81,12 @@ class ChatProfile(BaseModel):
         if "text" not in value or len(set(value)) != len(value):
             raise ValueError("聊天模型必须包含 text 且能力标签不能重复")
         return value
+
+    @model_validator(mode="after")
+    def _verified_must_be_enabled(self) -> "ChatProfile":
+        if len(set(self.verified_capabilities)) != len(self.verified_capabilities) or not set(self.verified_capabilities) <= set(self.capabilities):
+            raise ValueError("已验证能力必须已启用且不能重复")
+        return self
 
     @field_validator("model")
     @classmethod
@@ -113,6 +128,8 @@ class ChatProfile(BaseModel):
             has_api_key=self.has_api_key(),
             credential_source=self.credential_source,
             capabilities=self.capabilities,
+            verified_capabilities=self.verified_capabilities,
+            capability_checked_at=self.capability_checked_at,
         )
 
 
@@ -129,6 +146,12 @@ class ChatProfileOut(BaseModel):
     has_api_key: bool
     credential_source: CredentialSource
     capabilities: list[ChatCapability]
+    verified_capabilities: list[ChatCapability] = []
+    capability_checked_at: dict[ChatCapability, datetime] = {}
+
+
+class CapabilityChangeIn(BaseModel):
+    expected_revision: int
 
 
 class ChatProfileIn(BaseModel):
