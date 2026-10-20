@@ -46,3 +46,6 @@
 - `Scripts/IndexNotes.py` 仍读该 store 的 embedding 状态，符合当前边界。
 - `.env` 中 `DEEPSEEK_API_KEY` 等旧变量只在迁移导入时使用；新安装不再需要。
 - 串行执行中的“模型行 revision + embedding revision”已分域；前端不再使用全局 revision。
+- 前端 `EmbeddingSettings.vue` 仍在 `features/models`，与模型 store 共用文件但 revision 已独立；按规范拆出 `features/retrieval` 留待后续。
+- `RuntimeSnapshot` 仍引用具体 `ChatAgent` 类型；`ChatAgentPort` 抽象未在本轮抽出，Models 对 Chat 的具体类型依赖仍在。
+- API Key 仍以明文入库；加密与多用户隔离未实现。
