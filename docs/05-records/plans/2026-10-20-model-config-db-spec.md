@@ -5,7 +5,7 @@
 | 项 | 值 |
 |---|---|
 | Spec ID | SPEC-MODEL-CONFIG-001 |
-| 状态 | Draft |
+| 状态 | Implemented（真实 Provider/生产迁移待验收） |
 | 范围 | NoteAgent 模型配置、Provider 抽象、能力验证、激活与运行选择、配置迁移 |
 | 不包含 | RAG 切片/embedding 检索策略、角色路由、多用户/租户、任意协议透传 |
 | 适用形态 | 本地单用户部署（当前唯一形态） |

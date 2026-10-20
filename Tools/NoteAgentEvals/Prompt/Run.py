@@ -109,6 +109,7 @@ async def run_case(
     service: ConversationService,
     judge_model=None,
     judge_model_name: str | None = None,
+    chat_model_name: str | None = None,
     judge_prompt_path: Path = JUDGE_PROMPT_PATH,
 ) -> CaseRun:
     """One user turn: seed files, stream, collect tools/draft, score. No review."""
@@ -180,6 +181,7 @@ async def run_eval(
     model,
     judge_model=None,
     judge_model_name: str | None = None,
+    chat_model_name: str | None = None,
     judge_prompt_path: Path = JUDGE_PROMPT_PATH,
     cases_sha256: str,
     prompt_display: str,
@@ -189,11 +191,8 @@ async def run_eval(
 ) -> list[CaseRun]:
     """Run every case with a fresh temp notes dir. Reuse the same chat model."""
     started = datetime.now(timezone.utc)
-    effective_judge_name = (
-        judge_model_name
-        or settings.judge_model.strip()
-        or settings.chat_model.strip()
-    )
+    effective_chat_name = chat_model_name or settings.chat_model.strip()
+    effective_judge_name = judge_model_name or effective_chat_name
     prompt_text = prompt_path.read_text(encoding="utf-8")
     prompt_sha = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()
     runs: list[CaseRun] = []
@@ -230,13 +229,13 @@ async def run_eval(
             else "mixed"
         ),
         "rubric_versions": rubric_versions,
-        "chat_model": settings.chat_model,
+        "chat_model": effective_chat_name,
         "prompt_sha256": prompt_sha,
         "cases_sha256": cases_sha256,
         "judge_model": effective_judge_name if judge_model is not None else None,
         "judge_prompt_sha256": judge_prompt_sha256(judge_prompt_path),
         "judge_independent": bool(
-            judge_model is not None and effective_judge_name != settings.chat_model
+            judge_model is not None and effective_judge_name != effective_chat_name
         ),
         "judge_failures": {
             run.case.id: run.judge_error for run in runs if run.judge_error is not None

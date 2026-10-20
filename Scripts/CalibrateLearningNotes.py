@@ -16,8 +16,8 @@ import logging
 from datetime import datetime, timezone
 
 from NoteAgent.AppBootstrap.AppSettings import Settings, project_root
-from NoteAgent.Modules.Models.Provider.ModelClients import create_judge_model
 from NoteAgent.Common.Logging.LoggingSetup import setup_logging
+from NoteAgentEvals.ModelResolver import build_judge, resolve_active_model
 from NoteAgentEvals.Prompt.Calibration import CANDIDATE_NAMES, calibrate_learning_note
 from NoteAgentEvals.Prompt.Cases import LEARNING_RUBRIC_VERSION
 from NoteAgentEvals.Prompt.Judge import JUDGE_PROMPT_PATH, judge_prompt_sha256
@@ -37,6 +37,11 @@ def main(argv: list[str] | None = None) -> int:
         default=str(DEFAULT_FIXTURES),
         help="Directory containing the four fixed Markdown candidates",
     )
+    parser.add_argument(
+        "--judge-model",
+        default="",
+        help="Optional Judge model name on the active connection",
+    )
     args = parser.parse_args(argv)
 
     root = project_root()
@@ -50,15 +55,18 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     settings = Settings()
-    if not settings.deepseek_api_key.get_secret_value().strip():
-        print("DEEPSEEK_API_KEY is not set", file=sys.stderr)
+    try:
+        active = resolve_active_model(settings)
+        judge = build_judge(settings, args.judge_model or None)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
         return 1
-    judge_model_name = settings.judge_model.strip() or settings.chat_model.strip()
-    judge_independent = judge_model_name != settings.chat_model.strip()
-    if not settings.judge_model.strip():
+    judge_model_name = judge.config.model
+    judge_independent = judge_model_name != active.model
+    if not judge_independent:
         print(
-            f"WARNING: JUDGE_MODEL is empty; using CHAT_MODEL={judge_model_name} "
-            "(judge_independent=false)",
+            f"WARNING: Judge uses the active model ({judge_model_name}); "
+            "judge_independent=false",
             file=sys.stderr,
         )
 
@@ -72,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
         judge_model_name,
         judge_independent,
     )
-    judge_model = create_judge_model(settings, model_name=judge_model_name)
+    judge_model = judge.client
     result = asyncio.run(
         calibrate_learning_note(
             case_path=case_path,

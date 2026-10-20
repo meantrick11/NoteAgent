@@ -59,7 +59,7 @@ python Scripts/EvalRag.py --split dev --variant baseline --run-id rag-v1-baselin
 python Scripts/EvalRagAgent.py --split dev --variant baseline --run-id agent-v1-baseline-dev --repeat 3
 ```
 
-进程内 `ChatAgent`（`CHAT_MODEL` + 四工具），临时 notes / SQLite，不启动 HTTP，不人审写盘。无 `DEEPSEEK_API_KEY` 时退出码 1。
+进程内 `ChatAgent`（数据库 active 模型 + 四工具），临时 notes / SQLite，不启动 HTTP，不人审写盘。没有启用模型时退出码 1。
 
 每条先过 **行为门**，再评笔记正文（仅实际提案时评 `content`）：
 

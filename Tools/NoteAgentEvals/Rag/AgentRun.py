@@ -724,7 +724,7 @@ def run_agent_eval(
     embed_heading_prefix: bool | None = None,
 ) -> dict:
     """Run every case in the split ``repeats`` times and write local + committed reports."""
-    from NoteAgent.Modules.Models.Provider.ModelClients import create_chat_model
+    from NoteAgentEvals.ModelResolver import build_active_chat
     from NoteAgentEvals.Rag.Dataset import load_agent_cases, load_corpus, load_queries
 
     corpus = load_corpus(corpus_dir)
@@ -748,7 +748,7 @@ def run_agent_eval(
         overrides["embed_heading_prefix"] = embed_heading_prefix
     if overrides:
         settings = settings.model_copy(update=overrides)
-    model = create_chat_model(settings)
+    model = build_active_chat(settings).client
     run_dir = var_root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 

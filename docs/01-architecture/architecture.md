@@ -25,7 +25,7 @@ POST /chat 校验版本并认领运行→保存输入前 boundary 与 user→从
 
 V2.4 已接入指定 URL 读取：用户提供 URL 后，模型逐个调用 `read_webpage`；生产读取器使用 HTTPX 获取 HTML、Trafilatura 抽取正文，结果作为 `ToolMessage` 随会话 checkpoint 保存。工具步骤与 SSE 只展示简短状态，不建立独立网页正文库；后续回合缺少正文时重新读取。模型仅按用户意图提交笔记草稿，采用网页的草稿末尾含来源 URL，仍由现有人审写盘。接口和待验收项见 [聊天工具](../02-api/chat-tools.md) 与 [V2.4 执行结果](../05-records/plans/2026-10-11-v24-user-url-reading-results.md)。
 
-## 模型配置与激活（目标方案，实现中）
+## 模型配置与激活
 
 模型配置以 PostgreSQL `model_configs`（每条配置一行）和 `model_capabilities`（每个能力一行）为权威；`is_active` 部分唯一索引保证全局最多一个启用模型。Provider 由注册表驱动，内置 deepseek / openai / openai-compatible，领域校验不再写死供应商规则。
 
@@ -35,7 +35,7 @@ V2.4 已接入指定 URL 读取：用户提供 URL 后，模型逐个调用 `rea
 - 上传/重试固定 active 模型的 `model id` 与该行 revision；解析按固定身份读取能力行，active 切换不改变已入队来源。
 - 代码按 Domain / Mapper / Provider / Service / Router 分层，仓储、Provider、Agent 装配与 Retrieval 通过端口交互；`ModelConfigService`、`ModelActivationService`、`ModelRuntimeService` 分别负责配置、激活编排与快照租约。
 
-迁移完成前，旧 `var/model_settings/settings.json` 仍是运行代码的配置来源；该文件只由一次性导入器在迁移时读取，导入后聊天配置字段清空、embedding 字段保留给 Retrieval。上层设计见 [MOD-007](../../../NoteAgent-docs/docs/04-modules/MOD-007-模型配置与运行对象管理.md)、[API-004](../../../NoteAgent-docs/docs/05-interfaces/API-004-模型配置与索引切换契约.md)、[DATA-002](../../../NoteAgent-docs/docs/06-data/DATA-002-业务对象与权威存储.md)。
+启动时执行 Alembic 迁移与幂等导入：表为空且旧 `var/model_settings/settings.json` 存在时，旧 profile/能力/active 写入数据库，原文件保留 embedding 字段供 Retrieval 读取，并生成 `settings.pre-db.json` 作为回滚备份。实现与验证结果见 [模型配置数据库化结果](../05-records/plans/2026-10-20-model-config-db-results.md)；上层设计见 [MOD-007](../../../NoteAgent-docs/docs/04-modules/MOD-007-模型配置与运行对象管理.md)、[API-004](../../../NoteAgent-docs/docs/05-interfaces/API-004-模型配置与索引切换契约.md)、[DATA-002](../../../NoteAgent-docs/docs/06-data/DATA-002-业务对象与权威存储.md)。
 
 ## 整体恢复
 

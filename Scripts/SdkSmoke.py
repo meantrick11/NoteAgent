@@ -1,27 +1,24 @@
-"""Optional DeepSeek API smoke test. Reads credentials from the environment only."""
+"""Optional active-model smoke test. Resolves the model from PostgreSQL, not .env."""
 
 from __future__ import annotations
 
-import os
 import sys
 
-from openai import OpenAI
+from langchain_core.messages import HumanMessage
+
+from NoteAgent.AppBootstrap.AppSettings import Settings
+from NoteAgentEvals.ModelResolver import build_active_chat
 
 
 def main() -> int:
-    """Send a one-shot ping to DeepSeek using env credentials."""
-    api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
-    if not api_key:
-        print("DEEPSEEK_API_KEY is not set", file=sys.stderr)
+    """Send a one-shot ping using the active model configuration."""
+    try:
+        chat = build_active_chat(Settings())
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
         return 1
-    base_url = os.environ.get("DEEPSEEK_API_BASE", "https://api.deepseek.com")
-    client = OpenAI(api_key=api_key, base_url=base_url)
-    response = client.chat.completions.create(
-        model=os.environ.get("CHAT_MODEL", "deepseek-v4-flash"),
-        messages=[{"role": "user", "content": "ping"}],
-        stream=False,
-    )
-    print(response.choices[0].message.content)
+    response = chat.client.invoke([HumanMessage(content="ping")])
+    print(response.content)
     return 0
 
 
