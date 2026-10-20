@@ -221,6 +221,7 @@ def test_a_file_without_a_schema_version_is_read_as_legacy(tmp_path):
     assert loaded.active_chat_profile_id == "old-1"
     profile = loaded.profile_by_id("old-1")
     assert profile.api_key.get_secret_value() == "legacy-key"
+    assert profile.text_enabled is True
     # 旧文件没有 credential_source，按"UI 保存的凭据"解释——这正是它实际的含义。
     assert profile.credential_source == "ui"
     assert loaded.active_embedding.collection == "legacy_collection"

@@ -23,7 +23,7 @@ EmbeddingAvailability = Literal["available", "incomplete", "unsupported"]
 RetrievalState = Literal["ok", "empty", "missing", "config_mismatch", "unavailable"]
 
 DEFAULT_CONTEXT_WINDOW = 32768
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 ChatCapability = Literal["text", "vision"]
 
 
@@ -71,6 +71,7 @@ class ChatProfile(BaseModel):
     context_window: int = DEFAULT_CONTEXT_WINDOW
     credential_source: CredentialSource = "ui"
     capabilities: list[ChatCapability] = ["text"]
+    text_enabled: bool = True
     verified_capabilities: list[ChatCapability] = []
     capability_checked_at: dict[ChatCapability, datetime] = {}
     credential_hash: str | None = None
@@ -128,6 +129,7 @@ class ChatProfile(BaseModel):
             has_api_key=self.has_api_key(),
             credential_source=self.credential_source,
             capabilities=self.capabilities,
+            text_enabled=self.text_enabled,
             verified_capabilities=self.verified_capabilities,
             capability_checked_at=self.capability_checked_at,
         )
@@ -146,6 +148,7 @@ class ChatProfileOut(BaseModel):
     has_api_key: bool
     credential_source: CredentialSource
     capabilities: list[ChatCapability]
+    text_enabled: bool = True
     verified_capabilities: list[ChatCapability] = []
     capability_checked_at: dict[ChatCapability, datetime] = {}
 

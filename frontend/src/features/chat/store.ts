@@ -720,10 +720,12 @@ export const useChatStore = defineStore('chat', () => {
     } catch {
       // 刷新失败不影响发送本身：后端仍会按维护状态拒绝。
     }
-    if (!models.canSend) {
+    if (!models.canChat) {
       streaming.value = false
       models.setStreaming(false)
-      pushNotice('向量索引重建中，暂时不能发送消息；已有内容仍可查看。')
+      pushNotice(models.activeChat?.text_enabled === false
+        ? '当前模型已关闭 text 能力，请先重新验证后再聊天。'
+        : '向量索引重建中，暂时不能发送消息；已有内容仍可查看。')
       return 'refused'
     }
 

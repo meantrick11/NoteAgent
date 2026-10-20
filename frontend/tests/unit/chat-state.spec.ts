@@ -204,6 +204,19 @@ describe('发送门闩', () => {
     expect(chat.messages.filter((item) => item.role === 'user')).toHaveLength(1)
   })
 
+  it('关闭 text 后发送在本地消息写入前被拒绝', async () => {
+    const paused = { ...modelSettings, active_chat: { ...modelSettings.active_chat, text_enabled: false } }
+    const stub = routeFetch([['/model-settings', () => jsonResponse(paused)]])
+    vi.stubGlobal('fetch', stub.fetch)
+    const models = useModelsStore()
+    await models.fetchStatus(true)
+    const chat = useChatStore()
+
+    expect(await chat.send('测试问题')).toBe('refused')
+    expect(stub.calls.some(call => call.url === '/chat')).toBe(false)
+    expect(chat.messages.filter(item => item.role === 'user')).toHaveLength(0)
+  })
+
   it('维护窗口里不发送，并把原因告诉用户', async () => {
     const stub = routeFetch([
       ['/model-settings', () => jsonResponse({ ...modelSettings, busy: true })],

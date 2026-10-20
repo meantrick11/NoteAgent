@@ -97,6 +97,15 @@ describe('状态读取', () => {
 })
 
 describe('维护窗口与流式状态', () => {
+  it('关闭 text 时禁止聊天，但不锁定笔记写入', async () => {
+    const paused = { ...modelSettings, active_chat: { ...modelSettings.active_chat, text_enabled: false } }
+    vi.stubGlobal('fetch', routeFetch([['/model-settings', () => jsonResponse(paused)]]).fetch)
+    const store = useModelsStore()
+    await store.fetchStatus(true)
+    expect(store.canChat).toBe(false)
+    expect(store.canSend).toBe(true)
+  })
+
   it('busy 时 canSend 为 false，笔记与聊天写入都要看它', async () => {
     vi.stubGlobal(
       'fetch',

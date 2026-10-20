@@ -92,7 +92,7 @@ test('模型卡片点击 vision 后验证并点亮，编辑区不再有视觉复
   await page.route('**/model-settings/chat/profiles/env-default/capabilities/vision/verify', async route => {
     await new Promise(resolve => setTimeout(resolve, 250))
     profile.capabilities = ['text', 'vision']
-    profile.verified_capabilities = ['text', 'vision']
+    profile.verified_capabilities = ['vision']
     await route.fulfill({ json: profile })
   })
   await page.goto('/settings')
@@ -101,13 +101,15 @@ test('模型卡片点击 vision 后验证并点亮，编辑区不再有视觉复
   await row.getByRole('button', { name: 'vision' }).click()
   await expect(row.getByRole('button', { name: 'vision' })).toHaveText('验证中')
   await expect(row.getByRole('button', { name: 'vision' })).toHaveClass(/verified/)
+  await expect(row.getByRole('button', { name: 'text' })).not.toHaveClass(/verified/)
   await page.route('**/model-settings/chat/profiles/env-default/capabilities/vision?*', async route => {
     profile.capabilities = ['text']
-    profile.verified_capabilities = ['text']
+    profile.verified_capabilities = []
     await route.fulfill({ json: profile })
   })
   await row.getByRole('button', { name: 'vision' }).click()
   await expect(row.getByRole('button', { name: 'vision' })).not.toHaveClass(/verified/)
+  await expect(row.getByRole('button', { name: 'text' })).not.toHaveClass(/verified/)
   await row.getByRole('button', { name: '编辑' }).click()
   await expect(section(page, 'models').getByText('支持视觉输入')).toHaveCount(0)
 })
@@ -120,7 +122,42 @@ test('视觉验证失败显示弹窗且不点亮', async ({ page }) => {
   const vision = page.locator('.ms-row', { hasText: '环境默认' }).first().getByRole('button', { name: 'vision' })
   await vision.click()
   await expect(page.getByText('能力验证失败')).toBeVisible()
+  await expect(vision).toHaveText('vision')
   await expect(vision).not.toHaveClass(/verified/)
+})
+
+test('text 和 vision 分别着色，点击已验证的 text 只关闭 text', async ({ page }) => {
+  const profile = { ...(BASE_STATUS.chat_profiles as Record<string, unknown>[])[0],
+    capabilities: ['text', 'vision'], verified_capabilities: ['text', 'vision'], text_enabled: true }
+  const status = { ...BASE_STATUS, chat_profiles: [profile], active_chat: profile }
+  await stubApi(page, { status })
+  await page.route('**/model-settings/chat/profiles/env-default/capabilities/text?*', async route => {
+    profile.verified_capabilities = ['vision']
+    profile.text_enabled = false
+    await route.fulfill({ json: profile })
+  })
+  await page.goto('/settings')
+  const row = page.locator('.ms-row', { hasText: '环境默认' }).first()
+  const text = row.getByRole('button', { name: 'text' })
+  const vision = row.getByRole('button', { name: 'vision' })
+  await expect(row.getByRole('button', { name: '启用', exact: true })).toHaveCount(0)
+  await expect(text).toHaveClass(/verified/)
+  await expect(vision).toHaveClass(/verified/)
+  const textColor = await text.evaluate(node => getComputedStyle(node).backgroundColor)
+  const visionColor = await vision.evaluate(node => getComputedStyle(node).backgroundColor)
+  expect(textColor).not.toBe(visionColor)
+  await text.click()
+  await expect(text).not.toHaveClass(/verified/)
+  await expect(vision).toHaveClass(/verified/)
+  await expect(row.getByText('聊天暂停')).toBeVisible()
+  await page.route('**/model-settings/chat/profiles/env-default/capabilities/text/verify', async route => {
+    profile.verified_capabilities = ['text', 'vision']
+    profile.text_enabled = true
+    await route.fulfill({ json: profile })
+  })
+  await text.click()
+  await expect(text).toHaveClass(/verified/)
+  await expect(row.getByText('聊天暂停')).toHaveCount(0)
 })
 
 interface StubOptions {

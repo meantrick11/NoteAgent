@@ -41,10 +41,10 @@ async def verify_chat_capability(profile_id: str, capability: str, body: Capabil
     return await get_model_runtime(request).verify_capability(profile_id, capability, body.expected_revision)
 
 
-@router.delete("/chat/profiles/{profile_id}/capabilities/vision", response_model=ChatProfileOut,
+@router.delete("/chat/profiles/{profile_id}/capabilities/{capability}", response_model=ChatProfileOut,
                dependencies=[Depends(require_same_origin)])
-async def disable_chat_vision(profile_id: str, expected_revision: int, request: Request) -> ChatProfileOut:
-    return get_model_runtime(request).disable_vision(profile_id, expected_revision)
+async def disable_chat_capability(profile_id: str, capability: str, expected_revision: int, request: Request) -> ChatProfileOut:
+    return get_model_runtime(request).disable_capability(profile_id, capability, expected_revision)
 
 
 @router.post(

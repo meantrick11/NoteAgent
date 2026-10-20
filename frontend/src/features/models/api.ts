@@ -29,9 +29,9 @@ export function verifyCapability(id: string, capability: 'text' | 'vision', expe
   })
 }
 
-export function disableVision(id: string, expectedRevision: number): Promise<ChatProfile> {
+export function disableCapability(id: string, capability: 'text' | 'vision', expectedRevision: number): Promise<ChatProfile> {
   return requestJson<ChatProfile>(
-    `${BASE}/chat/profiles/${encodeURIComponent(id)}/capabilities/vision?expected_revision=${encodeURIComponent(String(expectedRevision))}`,
+    `${BASE}/chat/profiles/${encodeURIComponent(id)}/capabilities/${capability}?expected_revision=${encodeURIComponent(String(expectedRevision))}`,
     { method: 'DELETE' },
   )
 }

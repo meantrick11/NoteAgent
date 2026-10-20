@@ -99,6 +99,7 @@ def _profile_to_file(profile: ChatProfile) -> dict[str, object]:
         "context_window": profile.context_window,
         "credential_source": profile.credential_source,
         "capabilities": profile.capabilities,
+        "text_enabled": profile.text_enabled,
         "verified_capabilities": profile.verified_capabilities,
         "capability_checked_at": {key: value.isoformat() for key, value in profile.capability_checked_at.items()},
         "credential_hash": profile.credential_hash,

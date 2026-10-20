@@ -5,7 +5,7 @@ import { alertDialog, confirmDialog } from '@/shared/ui/confirm'
 import type { ChatProfile } from '@/shared/api/types'
 import ChatProfileForm from './ChatProfileForm.vue'
 import { useModelsStore } from './store'
-import { disableVision, verifyCapability } from './api'
+import { disableCapability, verifyCapability } from './api'
 
 /** 聊天配置列表 + 新增／编辑表单。Settings 页与 Assistant 快捷弹层共用。 */
 const models = useModelsStore()
@@ -13,6 +13,7 @@ const models = useModelsStore()
 const editing = ref<ChatProfile | null>(null)
 const forming = ref(false)
 const verifying = ref<string | null>(null)
+const capabilityAction = ref<'verify' | 'disable'>('verify')
 
 const PROVIDER_TEXT: Record<string, string> = {
   deepseek: 'DeepSeek',
@@ -60,7 +61,8 @@ async function changeCapability(profile: ChatProfile, capability: 'text' | 'visi
     const current = models.chatProfiles.find(item => item.id === profile.id)
     if (!current) throw new Error('配置已被删除，请刷新页面')
     const verified = current.verified_capabilities?.includes(capability) ?? false
-    if (capability === 'vision' && verified) await disableVision(profile.id, models.revision)
+    capabilityAction.value = verified ? 'disable' : 'verify'
+    if (verified) await disableCapability(profile.id, capability, models.revision)
     else await verifyCapability(profile.id, capability, models.revision)
     await models.fetchStatus(true)
   } catch (error) {
@@ -69,6 +71,7 @@ async function changeCapability(profile: ChatProfile, capability: 'text' | 'visi
     } catch (refreshError) {
       models.showChatError((refreshError as Error).message)
     }
+    verifying.value = null
     await alertDialog('能力验证失败', (error as Error).message)
   } finally {
     verifying.value = null
@@ -103,15 +106,18 @@ async function changeCapability(profile: ChatProfile, capability: 'text' | 'visi
       <div class="ms-capabilities" aria-label="模型能力">
         <button v-for="capability in (['text', 'vision'] as const)" :key="capability"
           type="button" class="ms-capability"
-          :class="{ verified: profile.verified_capabilities?.includes(capability) }"
+          :class="[{ verified: profile.verified_capabilities?.includes(capability) }, `cap-${capability}`]"
           :aria-label="capability"
-          :title="profile.verified_capabilities?.includes(capability) ? '最近验证通过；点击可重新验证或关闭视觉' : '点击验证能力'"
+          :title="profile.verified_capabilities?.includes(capability) ? `点击关闭 ${capability} 能力` : `点击验证 ${capability} 能力`"
           :disabled="models.modelActionsLocked || Boolean(verifying) || forming"
           @click="changeCapability(profile, capability)"
-        >{{ verifying === `${profile.id}:${capability}` ? '验证中' : capability }}</button>
+        >{{ verifying === `${profile.id}:${capability}` ? (capabilityAction === 'verify' ? '验证中' : '关闭中') : capability }}</button>
       </div>
 
-      <span v-if="models.activeChat?.id === profile.id" class="chip chip-on">已启用</span>
+      <template v-if="models.activeChat?.id === profile.id">
+        <span class="chip chip-on">已启用</span>
+        <span v-if="profile.text_enabled === false" class="chip chip-paused">聊天暂停</span>
+      </template>
       <button
         v-else
         type="button"
@@ -207,9 +213,19 @@ async function changeCapability(profile: ChatProfile, capability: 'text' | 'visi
   flex-shrink: 0;
 }
 
+.chip-paused {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
 .ms-capabilities { display: flex; gap: 4px; flex-wrap: wrap; }
 .ms-capability { border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface); color: var(--text-secondary); padding: 3px 8px; cursor: pointer; font-size: 11px; }
-.ms-capability.verified { background: var(--ok-bg); color: var(--ok-text); border-color: var(--ok-text); }
+.ms-capability.verified.cap-text { background: var(--accent-soft); color: var(--accent-hover); border-color: var(--accent); }
+.ms-capability.verified.cap-vision { background: #f3e8ff; color: #6b21a8; border-color: #a855f7; }
 
 .ms-chip-button {
   flex-shrink: 0;

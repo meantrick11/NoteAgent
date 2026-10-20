@@ -240,6 +240,20 @@ def test_disable_vision_never_removes_required_text(tmp_path):
     assert response.json()["capabilities"] == ["text"]
 
 
+def test_disable_text_persists_independent_capability_state(tmp_path):
+    client, _, _, _, _ = build_client(tmp_path)
+    verified = client.post("/model-settings/chat/profiles/env-default/capabilities/text/verify",
+                           json={"expected_revision": 0})
+    assert verified.status_code == 200
+    response = client.delete("/model-settings/chat/profiles/env-default/capabilities/text?expected_revision=1")
+    assert response.status_code == 200
+    assert response.json()["text_enabled"] is False
+    assert response.json()["verified_capabilities"] == []
+    blocked = client.post("/chat", json={"question": "hello"})
+    assert blocked.status_code == 422
+    assert "text" in blocked.json()["message"]
+
+
 def test_invalid_profile_never_echoes_secret(tmp_path):
     """A rejected body must not send the submitted key back in the error detail."""
     client, _, _, _, _ = build_client(tmp_path)

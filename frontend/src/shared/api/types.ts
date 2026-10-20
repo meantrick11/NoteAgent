@@ -192,6 +192,7 @@ export interface ChatProfile {
   has_api_key: boolean
   credential_source: CredentialSource
   capabilities: Array<'text' | 'vision'>
+  text_enabled?: boolean
   verified_capabilities?: Array<'text' | 'vision'>
   capability_checked_at?: Partial<Record<'text' | 'vision', string>>
 }

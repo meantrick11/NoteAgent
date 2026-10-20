@@ -66,6 +66,7 @@ def merge_candidate(
             context_window=candidate.context_window,
             credential_source=source,
             capabilities=candidate.capabilities,
+            text_enabled=existing.text_enabled if existing is not None else True,
             verified_capabilities=verified,
             capability_checked_at=checked,
             credential_hash=existing.credential_hash if same_connection else None,

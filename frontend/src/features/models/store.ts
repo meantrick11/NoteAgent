@@ -3,7 +3,7 @@
  *
  * Settings 页面与 Assistant 的模型快捷弹层共用这一个 store，所以：
  *   - 轮询只有一份，由 init() 统一注册 visibilitychange／focus，dispose() 统一清理；
- *   - 「维护窗口」是全局状态，聊天发送与笔记写入都读同一个 canSend；
+ *   - 「维护窗口」是全局状态；笔记写入读 canSend，聊天发送读包含 text 开关的 canChat；
  *   - 保存／启用／删除都必须带 expected_revision，409 时刷新状态让用户重试。
  */
 
@@ -81,6 +81,7 @@ export const useModelsStore = defineStore('models', () => {
   const jobRunning = computed(() => embeddingJob.value?.status === 'running')
   /** 维护窗口：busy 期间不能发送消息、不能写笔记。 */
   const canSend = computed(() => !busy.value)
+  const canChat = computed(() => canSend.value && activeChat.value?.text_enabled !== false)
   /** 配置类操作在流式输出或重建期间都要禁用。 */
   const modelActionsLocked = computed(() => streaming.value || jobRunning.value)
   const activeEmbeddingId = computed(
@@ -394,6 +395,7 @@ export const useModelsStore = defineStore('models', () => {
     embeddingNotice,
     jobRunning,
     canSend,
+    canChat,
     modelActionsLocked,
     activeEmbeddingId,
     retrievalStatus,

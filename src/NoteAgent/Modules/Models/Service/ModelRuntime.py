@@ -264,7 +264,7 @@ class ModelRuntimeService:
     @contextmanager
     def chat(self):
         with (self._workspace.operation("chat") if self._workspace else nullcontext()):
-            snapshot = self._enter()
+            snapshot = self._enter(require_text=True)
             try:
                 yield snapshot
             finally:
@@ -341,7 +341,7 @@ class ModelRuntimeService:
         if capability == "vision" and not await probe_vision(self._assembler.build_chat_model(profile)):
             raise ProtocolUnsupportedError("模型未正确识别测试图片，vision 未启用")
         now = _now()
-        additions = ("text", "vision") if capability == "vision" else ("text",)
+        additions = (capability,)
         with self._lock:
             self._ensure_not_maintenance()
             self._check_revision(expected_revision)
@@ -353,6 +353,7 @@ class ModelRuntimeService:
                 "capabilities": list(dict.fromkeys([*current.capabilities, *additions])),
                 "verified_capabilities": list(dict.fromkeys([*current.verified_capabilities, *additions])),
                 "capability_checked_at": {**current.capability_checked_at, **{cap: now for cap in additions}},
+                "text_enabled": True if capability == "text" else current.text_enabled,
                 "credential_hash": credential_hash(current.api_key),
             })
             profiles = [updated if item.id == profile_id else item for item in document.chat_profiles]
@@ -361,7 +362,9 @@ class ModelRuntimeService:
                 self._snapshot = replace(self._snapshot, revision=saved.revision)
             return updated.to_out()
 
-    def disable_vision(self, profile_id: str, expected_revision: int) -> ChatProfileOut:
+    def disable_capability(self, profile_id: str, capability: str, expected_revision: int) -> ChatProfileOut:
+        if capability not in ("text", "vision"):
+            raise InvalidProfileError("仅支持 text 和 vision 能力")
         with self._lock:
             self._ensure_not_maintenance()
             self._check_revision(expected_revision)
@@ -370,9 +373,10 @@ class ModelRuntimeService:
             if current is None:
                 raise ProfileNotFoundError(f"未找到配置 {profile_id}")
             updated = current.model_copy(update={
-                "capabilities": [cap for cap in current.capabilities if cap != "vision"],
-                "verified_capabilities": [cap for cap in current.verified_capabilities if cap != "vision"],
-                "capability_checked_at": {cap: time for cap, time in current.capability_checked_at.items() if cap != "vision"},
+                "capabilities": [cap for cap in current.capabilities if cap != capability] if capability == "vision" else current.capabilities,
+                "verified_capabilities": [cap for cap in current.verified_capabilities if cap != capability],
+                "capability_checked_at": {cap: time for cap, time in current.capability_checked_at.items() if cap != capability},
+                "text_enabled": False if capability == "text" else current.text_enabled,
             })
             profiles = [updated if item.id == profile_id else item for item in document.chat_profiles]
             saved = self._save_locked(document.model_copy(update={"chat_profiles": profiles}))
@@ -499,6 +503,7 @@ class ModelRuntimeService:
             profile = profile.model_copy(update={
                 "verified_capabilities": list(dict.fromkeys([*profile.verified_capabilities, "text"])),
                 "capability_checked_at": {**profile.capability_checked_at, "text": _now()},
+                "text_enabled": True,
                 "credential_hash": credential_hash(profile.api_key),
             })
             profiles = [p for p in document.chat_profiles if p.id != profile.id]
@@ -741,7 +746,7 @@ class ModelRuntimeService:
             raise BusyError("运行对象尚未就绪，请稍后重试")
         return snapshot
 
-    def _enter(self) -> RuntimeSnapshot:
+    def _enter(self, *, require_text: bool = False) -> RuntimeSnapshot:
         """Take an operation lease unless a maintenance window is open."""
         with self._lock:
             if self._maintenance:
@@ -751,6 +756,8 @@ class ModelRuntimeService:
             snapshot = self._snapshot
             if snapshot is None:
                 raise BusyError("运行对象尚未就绪，请稍后重试")
+            if require_text and not self._require_document().active_chat_profile().text_enabled:
+                raise InvalidProfileError("当前模型已关闭 text 能力，请先重新验证后再聊天")
             self._active_operations += 1
             return snapshot
 

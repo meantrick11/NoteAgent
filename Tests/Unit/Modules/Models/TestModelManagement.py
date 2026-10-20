@@ -224,8 +224,8 @@ async def test_capability_verification_persists_only_after_real_probe(tmp_path, 
     assert profile.verified_capabilities == []
     result = await service.verify_capability(profile.id, "vision", service.status().revision)
     assert result.capabilities == ["text", "vision"]
-    assert result.verified_capabilities == ["text", "vision"]
-    assert store.load().profile_by_id(profile.id).verified_capabilities == ["text", "vision"]
+    assert result.verified_capabilities == ["vision"]
+    assert store.load().profile_by_id(profile.id).verified_capabilities == ["vision"]
     assert service.snapshot().revision == service.status().revision
 
 
@@ -239,6 +239,28 @@ async def test_verifying_inactive_profile_does_not_switch_runtime(tmp_path):
     assert store.load().profile_by_id(created.id).verified_capabilities == ["text"]
     assert service.snapshot() is active_before
     assert service.status().active_chat.id == active_before.chat_profile_id
+
+
+@pytest.mark.asyncio
+async def test_disabling_text_blocks_new_chat_until_text_is_reverified(tmp_path, monkeypatch):
+    service, _, _, store = build_service(tmp_path)
+    async def vision_ok(model):
+        return True
+    monkeypatch.setattr("NoteAgent.Modules.Models.Service.ModelRuntime.probe_vision", vision_ok)
+    await service.verify_capability("env-default", "text", 0)
+    await service.verify_capability("env-default", "vision", service.status().revision)
+    disabled = service.disable_capability("env-default", "text", service.status().revision)
+    assert disabled.text_enabled is False
+    assert disabled.verified_capabilities == ["vision"]
+    assert store.load().profile_by_id("env-default").text_enabled is False
+    with pytest.raises(InvalidProfileError, match="text"):
+        with service.chat():
+            pass
+    restored = await service.verify_capability("env-default", "text", service.status().revision)
+    assert restored.text_enabled is True
+    assert restored.verified_capabilities == ["vision", "text"]
+    with service.chat() as snapshot:
+        assert snapshot.chat_profile_id == "env-default"
 
 
 @pytest.mark.asyncio
