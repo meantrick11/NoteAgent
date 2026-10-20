@@ -86,19 +86,13 @@ uv run python Scripts/IndexNotes.py Agent.md
 
 1. 安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)，确认能执行 `docker compose version`（旧环境可用 `docker-compose`）。
 2. 克隆本仓库，进入根目录（有 `docker-compose.yml` 的那一层）。
-3. 复制环境文件并只改三行：
+3. 复制环境文件（Docker 下不需要提前填模型 Key）：
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-```text
-DEEPSEEK_API_KEY=sk-...
-DEEPSEEK_API_BASE=https://api.deepseek.com
-CHAT_MODEL=deepseek-v4-flash
-```
-
-账号没有 `deepseek-v4-flash` 时，改成平台上实际可用的模型名。不要改 `EMBEDDING_*`、`HOST`、`DATABASE_URL`：compose 会覆盖。容器自带 Postgres。
+模型配置保存在 PostgreSQL，启动后在 **Settings → 模型与连接** 添加：选择 Provider、填写模型名/Base URL/API Key，点“测试”通过后“保存并启用”。不要改 `EMBEDDING_*`、`HOST`、`DATABASE_URL`：compose 会覆盖。容器自带 Postgres。
 
 4. 启动：
 
@@ -109,7 +103,7 @@ docker compose up --build
 第一次构建会拉镜像并下载嵌入模型，可能要几分钟。镜像里有一个 Node 阶段先把 Vue 前端编译好，
 再拷进 Python 镜像；运行容器里没有 Node，也不会多开端口。入口脚本先 `alembic upgrade head` 再起应用。
 
-5. 浏览器打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)。
+5. 浏览器打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)。首次启动没有启用模型时页面可用，聊天接口会返回 503；到 Settings 添加并启用模型后即可对话。
 
 Git Bash / macOS / Linux 用 `cp .env.example .env`。排错（端口占用、对话失败、停服务）：[零基础教程](docs/04-ops/getting-started.md)。
 
@@ -119,8 +113,8 @@ Git Bash / macOS / Linux 用 `cp .env.example .env`。排错（端口占用、�
 
 ```powershell
 Copy-Item .env.example .env
-# 填 DEEPSEEK_* / CHAT_MODEL，以及：
-# DATABASE_URL=postgresql+psycopg://postgres:YOUR_PASSWORD@127.0.0.1:5432/noteagent
+# 填 DATABASE_URL=postgresql+psycopg://postgres:YOUR_PASSWORD@127.0.0.1:5432/noteagent
+# 模型配置不写 .env：启动后在 Settings → 模型与连接 添加、测试并启用
 uv sync
 uv run alembic upgrade head
 npm --prefix frontend ci
@@ -173,10 +167,11 @@ npm --prefix frontend run test:e2e
 | `var/notes_history` | 独立影子 Git，记录笔记材料版本；消息回退通过选择性恢复保留无关改动 |
 | `chromadb_persist` | 派生向量；丢了可按文件重建 |
 | `var/logs` | Agent / 索引日志；完整 prompt 在这里，不进聊天表 |
-| `var/model_settings/settings.json` | 界面上保存的聊天配置与向量选择。**界面上填写的 API Key 明文在这里**（未加密，`chmod 600` 尽力而为）；`.env` 的 Key 不被复制进来 |
-| `.env` | 密钥与路径；不要提交。从 `.env.example` 复制 |
+| PostgreSQL 模型表 | 模型配置、Provider/端点、API Key 与能力验证证据。Key 不进入 HTTP 响应或日志；**数据库备份包含凭据**，必须按密钥材料保护 |
+| `var/model_settings` | Retrieval 的 embedding 状态；迁移前旧模型配置备份 `settings.pre-db.json`（0600），仅遗留导入器读取 |
+| `.env` | 引导与基础设施配置（数据库、路径、端口）；不要提交。从 `.env.example` 复制 |
 
-备份或迁移：备份 PostgreSQL（含 checkpoint）、`notes/`、`var/notes_history` 和 `var/model_settings`；Chroma 可按正文重建。移除某条凭据只有两条路——界面上「清除已保存的 Key」或删除该配置；删除配置是唯一会连凭据一起移除的操作。Docker 下该目录必须挂持久卷，否则容器重建等于丢凭据。
+备份或迁移：备份 PostgreSQL（含 checkpoint、模型配置与凭据）、`notes/`、`var/notes_history` 和 `var/model_settings`；Chroma 可按正文重建。移除某条凭据只有两条路——界面上「清除已保存的 Key」或删除该配置；删除配置是唯一会连凭据一起移除的操作。数据库备份和 `settings.pre-db.json` 含明文凭据，分享前必须脱敏。
 
 不记录你在笔记以外的按键内容。没有账号系统，数据默认只在本机（或你自己的 Docker 卷）。卷说明见 [本机开发](docs/00-overview/local-dev.md)。
 

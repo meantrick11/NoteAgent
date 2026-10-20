@@ -1,13 +1,13 @@
 # 零基础：用 Docker 跑起来
 
-目标：在本机浏览器打开 NoteAgent。不需要安装 Python、PostgreSQL 或下载嵌入模型。聊天仍走外网 DeepSeek，所以必须自己准备 API Key。
+目标：在本机浏览器打开 NoteAgent。不需要安装 Python、PostgreSQL 或下载嵌入模型。聊天仍走外网模型服务，所以必须自己准备 API Key；Key 在启动后的设置页填写，不写进 `.env`。
 
 命令以 **Windows PowerShell** 为例。Git Bash / macOS / Linux 把复制文件改成 `cp .env.example .env` 即可。
 
 ## 1. 准备
 
 1. 安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)，安装后能执行 `docker compose version`（没有 Compose V2 时可用 `docker-compose`）。
-2. 到模型提供商申请密钥。默认按 DeepSeek：填 `DEEPSEEK_API_KEY`、接口地址 `DEEPSEEK_API_BASE`、模型名 `CHAT_MODEL`。
+2. 到模型提供商申请密钥。启动后可在 Settings 选择内置 Provider（DeepSeek、OpenAI、OpenAI 兼容端点）或后续注册的 Provider。
 3. 克隆本仓库，在资源管理器或终端进入仓库根目录（有 `docker-compose.yml` 的那一层）。
 
 ## 2. 配置
@@ -16,17 +16,9 @@
 Copy-Item .env.example .env
 ```
 
-用编辑器打开 `.env`，**只改这三行**（去掉示例里的空格和占位说明，改成你的真实值）：
+Docker 下 `.env` 不需要填写模型相关配置。不要改 `EMBEDDING_*`、`HOST`、`DATABASE_URL`：`docker compose` 会覆盖它们。容器自带 Postgres 和向量模型（`intfloat/multilingual-e5-small`），不用本机数据库。
 
-```text
-DEEPSEEK_API_KEY=sk-...
-DEEPSEEK_API_BASE=https://api.deepseek.com
-CHAT_MODEL=deepseek-v4-flash
-```
-
-若你的账号没有 `deepseek-v4-flash`，改成平台上实际可用的模型名。
-
-不要改 `EMBEDDING_*`、`HOST`、`DATABASE_URL`：`docker compose` 会覆盖它们。容器自带 Postgres 和向量模型（`intfloat/multilingual-e5-small`），不用本机数据库。
+模型配置在第一次打开设置页时添加：Provider、模型名、Base URL（按 Provider 规格决定是否必填）、API Key；先“测试”，通过后“保存并启用”。
 
 ## 3. 启动
 
@@ -65,12 +57,12 @@ docker-compose up --build
 
 **8000 端口被占用。** 改 [docker-compose.yml](../../docker-compose.yml) 里 `app.ports`，例如 `"18000:8000"`，然后访问 `http://127.0.0.1:18000`。
 
-**页面能开，对话失败。** 几乎都是没填或填错 `DEEPSEEK_API_KEY` / `DEEPSEEK_API_BASE` / `CHAT_MODEL`。改 `.env` 后需要重新 `docker compose up`（compose 用 `env_file` 读密钥）。
+**页面能开，对话失败。** 先看 Settings → 模型与连接：没有启用模型时聊天返回 503；Key 填错、Base URL 不匹配或能力未验证时，测试会失败并给出原因。修改配置不需要重启服务。若 active 模型缺少凭据，启动会失败并指出该模型，按提示修复或先在数据库/设置中改用其它模型。
 
 **本机开发、跑测试、环境变量全表。** 见 [local-dev.md](../00-overview/local-dev.md)。
 
 ## 材料历史与恢复
 
-Docker 镜像安装 Git；Compose 设置 NOTES_HISTORY_DIR=var/notes_history，独立 notes_history 卷挂载 /app/var/notes_history。备份同时覆盖 PostgreSQL（含 saver 表）、notes 和影子 Git；Chroma 可重建。不要用临时容器层保存历史，也不要覆盖整个 /app/var 遮住模型缓存。
+Docker 镜像安装 Git；Compose 设置 NOTES_HISTORY_DIR=var/notes_history，独立 notes_history 卷挂载 /app/var/notes_history。备份同时覆盖 PostgreSQL（含 saver 表、模型配置与凭据）、notes 和影子 Git；Chroma 可重建。数据库备份包含 API Key，分享或演练前必须脱敏；旧 `settings.pre-db.json` 同样受控。不要用临时容器层保存历史，也不要覆盖整个 /app/var 遮住模型缓存。
 
 服务启动先处理未完成 mutation/approval，再维修索引；恢复 maintenance 留给同一任务 retry。刷新 Assistant 可找回失败任务重试；prepared turn 可稍后继续生成。详见 [恢复实现](../03-modules/recovery/recovery.md)。本轮未构建/启动 Docker 镜像，Compose 仅静态校验；真实进程演练在隔离本机服务完成。

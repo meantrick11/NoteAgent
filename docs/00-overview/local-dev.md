@@ -62,7 +62,7 @@ uv run python main.py
 `src/NoteAgent/WebFrontend/dist/`。**没构建过时页面会返回 503 并给出构建提示**，而不是偷偷回退旧页面。
 想先用旧页面：`$env:FRONTEND_MODE="legacy"` 再启动，`/` 与 `/documents` 会下发旧模板。
 
-也要填 `DEEPSEEK_API_KEY`、`DEEPSEEK_API_BASE`、`CHAT_MODEL`，否则对话会失败。
+模型配置不在 `.env`：启动后在 Settings → 模型与连接 添加 Provider、模型名、Base URL 与 API Key，测试通过后“保存并启用”。没有启用模型时页面可用，聊天返回 503。
 
 ## 前端
 
@@ -95,15 +95,13 @@ uv run python Scripts/IndexNotes.py Agent.md
 
 | 变量 | 作用 |
 |------|------|
-| `DEEPSEEK_API_KEY` | 聊天模型密钥 |
-| `DEEPSEEK_API_BASE` | 可选，自定义 API 地址 |
-| `CHAT_MODEL` | 默认 `deepseek-v4-flash` |
-| `JUDGE_MODEL` | 仅离线评测；空则回退 `CHAT_MODEL` 并记 `judge_independent=false` |
+| 模型配置 | 不通过环境变量提供；存于 PostgreSQL 两张表，由 Settings 管理（Provider、模型名、Base URL、Key、能力） |
+| `MODEL_SETTINGS_DIR` | Retrieval embedding 状态目录；旧模型配置迁移备份 `settings.pre-db.json` 也只在此读取 |
 | `NOTES_DIR` | 笔记目录，默认 `notes` |
 | `CHROMA_DIR` | 向量库目录，默认 `chromadb_persist` |
 | `CHROMA_COLLECTION` | collection 名 |
 | `DATABASE_URL` | PostgreSQL，前缀须为 `postgresql+psycopg://` |
-| `CHAT_CONTEXT_WINDOW` 等 | 上下文窗口、压缩、stub、`CHAT_MAX_TOOL_HOPS`；见 `.env.example` |
+| `CONTEXT_*` / `CHAT_MAX_TOOL_HOPS` | 压缩阈值与工具 hop；模型上下文窗口改为每个模型配置行字段 |
 | `EMBEDDING_MODEL` | SentenceTransformer 模型名，默认 `intfloat/multilingual-e5-small`（评测选定；改它或改切块策略都必须重建索引） |
 | `CHUNK_STRATEGY` | `heading`（默认，章节感知）或 `char`（旧字符切块） |
 | `EMBED_HEADING_PREFIX` | `true`（默认）时把章节路径拼进被嵌入的文本，引用原文不变 |

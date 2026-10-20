@@ -42,6 +42,8 @@ replace 成默认分类并保留其他 query，服务端路径始终是 `/settin
 [`features/settings/sections.ts`](../../../frontend/src/features/settings/sections.ts)，其中仅 `models` 与
 `retrieval` 为 `available`，其余五个 ID 为后续预留、不渲染界面。
 
+**模型配置目标（实现中）。** “模型与连接”将从单一 active 表单改为模型配置中心：模型列表（启用标记、能力徽章）、新建/编辑表单、Provider 规格驱动的字段、测试与“保存并启用”。Provider 下拉来自 `GET /model-settings/providers`；模型 store 与检索 store 分别持有 revision，设置页只组合两块，互不覆盖。实现前以现有 `ChatProfiles`/`EmbeddingSettings` 行为为准。
+
 **模块分层。** 组件只负责渲染与转发交互，规则集中在 `features/*/store.ts` 与纯函数模块里：
 
 | 模块 | 职责 |

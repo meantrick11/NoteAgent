@@ -12,10 +12,10 @@
 | notes | repository 正文、versions 独立 bare Git、mutations 唯一正式写入口 |
 | retrieval | chunker、Chroma、正文/配置指纹、持久 index repairs |
 | recovery | workspace gate、纯 planner、持久 coordinator、HTTP |
-| model_management | 运行对象与模型切换；先 workspace gate 再 runtime 锁 |
+| models | 模型配置、Provider 注册表、能力验证、激活与运行快照；先 workspace gate 再 runtime 锁 |
 | frontend | Vue 页面、持久消息编辑/复制、预览确认、任务重试与续跑 |
 
-PostgreSQL 应用表保存会话元数据与运行/恢复台账；AsyncPostgresSaver 保存 GraphState。notes_dir 保存正文，NOTES_HISTORY_DIR 默认 var/notes_history 保存材料字节历史，Chroma 是可重建派生索引。工程 .git 不承担笔记版本。多个状态可共享 notes_commit，没有文件变化不提交笔记版本。
+PostgreSQL 应用表保存会话元数据、运行/恢复台账和模型配置；AsyncPostgresSaver 保存 GraphState。notes_dir 保存正文，NOTES_HISTORY_DIR 默认 var/notes_history 保存材料字节历史，Chroma 是可重建派生索引。模型配置由 `model_configs` 与 `model_capabilities` 两表承载，embedding 状态仍归 Retrieval。工程 .git 不承担笔记版本。多个状态可共享 notes_commit，没有文件变化不提交笔记版本。
 
 ## 一次聊天
 
@@ -24,6 +24,18 @@ POST /chat 校验版本并认领运行→保存输入前 boundary 与 user→从
 草稿保持 pending_draft；编辑只发布状态。批准经统一 mutation 写正文、Git 和按文件 RAG，随后发布清草稿状态。写正文时持久 approval maintenance，取消/崩溃后启动继续完成，避免重复写盘。未迁移 legacy 会话保持只读，禁止旁路审批。
 
 V2.4 已接入指定 URL 读取：用户提供 URL 后，模型逐个调用 `read_webpage`；生产读取器使用 HTTPX 获取 HTML、Trafilatura 抽取正文，结果作为 `ToolMessage` 随会话 checkpoint 保存。工具步骤与 SSE 只展示简短状态，不建立独立网页正文库；后续回合缺少正文时重新读取。模型仅按用户意图提交笔记草稿，采用网页的草稿末尾含来源 URL，仍由现有人审写盘。接口和待验收项见 [聊天工具](../02-api/chat-tools.md) 与 [V2.4 执行结果](../05-records/plans/2026-10-11-v24-user-url-reading-results.md)。
+
+## 模型配置与激活（目标方案，实现中）
+
+模型配置以 PostgreSQL `model_configs`（每条配置一行）和 `model_capabilities`（每个能力一行）为权威；`is_active` 部分唯一索引保证全局最多一个启用模型。Provider 由注册表驱动，内置 deepseek / openai / openai-compatible，领域校验不再写死供应商规则。
+
+- 保存配置只写数据库；启用走“测试 → 构造 → 事务内切换 active → 发布快照”，失败保留旧 active 与旧快照。
+- 行级 `revision` 做 CAS；embedding 使用 Retrieval 自己的 revision，模型与检索写入互不覆盖。
+- `text` 必须有启用状态与验证证据；`vision` 通过两轮图片挑战后才可用于文件解析。停用 text 阻止新聊天，停用 vision 清空验证结果。
+- 上传/重试固定 active 模型的 `model id` 与该行 revision；解析按固定身份读取能力行，active 切换不改变已入队来源。
+- 代码按 Domain / Mapper / Provider / Service / Router 分层，仓储、Provider、Agent 装配与 Retrieval 通过端口交互；`ModelConfigService`、`ModelActivationService`、`ModelRuntimeService` 分别负责配置、激活编排与快照租约。
+
+迁移完成前，旧 `var/model_settings/settings.json` 仍是运行代码的配置来源；该文件只由一次性导入器在迁移时读取，导入后聊天配置字段清空、embedding 字段保留给 Retrieval。上层设计见 [MOD-007](../../../NoteAgent-docs/docs/04-modules/MOD-007-模型配置与运行对象管理.md)、[API-004](../../../NoteAgent-docs/docs/05-interfaces/API-004-模型配置与索引切换契约.md)、[DATA-002](../../../NoteAgent-docs/docs/06-data/DATA-002-业务对象与权威存储.md)。
 
 ## 整体恢复
 
